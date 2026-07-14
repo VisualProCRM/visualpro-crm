@@ -1,0 +1,9 @@
+{
+  "mimeTypes": {
+    ".jsx": "text/javascript",
+    ".js": "text/javascript"
+  },
+  "navigationFallback": {
+    "rewrite": "/index.html"
+  }
+}
