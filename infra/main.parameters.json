@@ -1,0 +1,30 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": {
+      "value": "uksouth"
+    },
+    "sqlServerName": {
+      "value": "visualpro-crm-sql"
+    },
+    "sqlDatabaseName": {
+      "value": "visualpro-crm-db"
+    },
+    "storageAccountName": {
+      "value": "visualprocrmstorage"
+    },
+    "functionAppName": {
+      "value": "visualpro-crm-func"
+    },
+    "hostingPlanName": {
+      "value": "visualpro-crm-plan"
+    },
+    "appInsightsName": {
+      "value": "visualpro-crm-insights"
+    },
+    "keyVaultName": {
+      "value": "visualpro-crm-kv"
+    }
+  }
+}
