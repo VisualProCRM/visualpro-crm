@@ -3,7 +3,7 @@
 // The existing Static Web App in that resource group is untouched by this template.
 
 @description('Azure region for the new backend resources')
-param location string = 'uksouth'
+param location string = 'ukwest'
 
 @description('Display name of the Entra ID user or group that will be the SQL AAD admin')
 param sqlAadAdminLogin string
@@ -98,9 +98,6 @@ resource functionAppKeyVaultAccess 'Microsoft.KeyVault/vaults/accessPolicies@202
       }
     ]
   }
-  dependsOn: [
-    keyVault
-  ]
 }
 
 // Lets the Function App's managed identity read/write the documents & photos containers directly.
