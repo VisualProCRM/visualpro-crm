@@ -47,6 +47,8 @@ jobs:
               sqlAadAdminObjectId="${{ vars.SQL_AAD_ADMIN_OBJECT_ID }}" \
               sqlAadAdminType="${{ vars.SQL_AAD_ADMIN_TYPE }}" \
               deployPrincipalObjectId="${{ vars.AZURE_DEPLOY_PRINCIPAL_OBJECT_ID }}" \
+              aadAuthClientId="${{ vars.AAD_CLIENT_ID }}" \
+              aadAuthClientSecret="${{ secrets.AAD_CLIENT_SECRET }}" \
             --query properties.outputs -o json > outputs.json
           echo "functionAppName=$(jq -r .functionAppName.value outputs.json)" >> "$GITHUB_OUTPUT"
           echo "sqlServerFqdn=$(jq -r .sqlServerFqdn.value outputs.json)" >> "$GITHUB_OUTPUT"

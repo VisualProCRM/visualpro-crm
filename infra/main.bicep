@@ -1,6 +1,7 @@
 // Deploys the VisualPro CRM backend (SQL, Storage, Functions, Key Vault) into the
 // EXISTING resource group `visualpro-crm_group` (deploy with `az deployment group create`).
-// The existing Static Web App in that resource group is untouched by this template.
+// Also sets Entra ID auth app settings on the existing Static Web App (visualpro-crm) —
+// everything else about that resource is untouched by this template.
 
 @description('Azure region for all backend resources. UK South and UK West both currently reject new SQL Database server creation for this subscription (a subscription-wide restriction, not a template issue) so this defaults to Central US, matching the existing Static Web App, until that restriction is lifted.')
 param location string = 'centralus'
@@ -28,6 +29,14 @@ param functionAppName string = 'visualpro-crm-func'
 param hostingPlanName string = 'visualpro-crm-plan'
 param appInsightsName string = 'visualpro-crm-insights'
 param keyVaultName string = 'visualpro-crm-kv'
+param staticWebAppName string = 'visualpro-crm'
+
+@description('Application (client) ID of the visualpro-crm-auth Entra ID app registration, used by Static Web Apps built-in auth')
+param aadAuthClientId string
+
+@secure()
+@description('Client secret for the visualpro-crm-auth app registration')
+param aadAuthClientSecret string
 
 module storage 'modules/storage.bicep' = {
   name: 'storage-deploy'
@@ -125,6 +134,21 @@ resource blobDelegatorAssignment 'Microsoft.Authorization/roleAssignments@2022-0
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'db58b8e5-c6ad-4a2a-8342-4190687cbf4a')
     principalId: functionApp.outputs.functionAppPrincipalId
     principalType: 'ServicePrincipal'
+  }
+}
+
+// Existing Static Web App (created outside this template) — referenced, not re-declared,
+// so we can set its auth app settings without touching anything else about it.
+resource staticWebApp 'Microsoft.Web/staticSites@2022-09-01' existing = {
+  name: staticWebAppName
+}
+
+resource staticWebAppAuthSettings 'Microsoft.Web/staticSites/config@2022-09-01' = {
+  parent: staticWebApp
+  name: 'appsettings'
+  properties: {
+    AAD_CLIENT_ID: aadAuthClientId
+    AAD_CLIENT_SECRET: aadAuthClientSecret
   }
 }
 
