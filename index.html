@@ -297,6 +297,10 @@ const CardDetailModal = ({record,customers,onSave,onDelete,onClose,isJob,setting
 
   const setTab=(key,val)=>setData(d=>({...d,tabs:{...d.tabs,[key]:{...d.tabs[key],...val}}}));
 
+  // data carries _settings for this modal's own internal use (dropdowns etc.) — strip it
+  // before persisting, or every customer/job record would carry a full copy of Settings.
+  const save=()=>{ const {_settings,...toSave}=data; onSave(toSave); onClose(); };
+
   const addFile=(tabKey,file)=>setData(d=>({...d,tabs:{...d.tabs,[tabKey]:{...d.tabs[tabKey],files:[...d.tabs[tabKey].files,file]}}}));
   const removeFile=(tabKey,i)=>setData(d=>({...d,tabs:{...d.tabs,[tabKey]:{...d.tabs[tabKey],files:d.tabs[tabKey].files.filter((_,idx)=>idx!==i)}}}));
   const addImage=(file)=>setData(d=>({...d,tabs:{...d.tabs,survey:{...d.tabs.survey,images:[...d.tabs.survey.images,file]}}}));
@@ -310,7 +314,7 @@ const CardDetailModal = ({record,customers,onSave,onDelete,onClose,isJob,setting
   });
 
   return (
-    <Modal title={isJob?data.title:data.name} onClose={()=>{onSave(data);onClose();}} wide>
+    <Modal title={isJob?data.title:data.name} onClose={save} wide>
       {/* Tab bar */}
       <div style={{display:"flex",gap:0,borderBottom:`1px solid ${C.border}`,marginBottom:20,overflowX:"auto"}}>
         {CARD_TABS.map(t=><button key={t} style={tabStyle(t)} onClick={()=>setActiveTab(t)}>{t}</button>)}
@@ -531,7 +535,7 @@ const CardDetailModal = ({record,customers,onSave,onDelete,onClose,isJob,setting
           )}
           <div style={{display:"flex",gap:10,justifyContent:"space-between",paddingTop:8,borderTop:`1px solid ${C.border}`}}>
             <Btn variant="danger" onClick={()=>{onDelete(data.id);onClose();}}>Delete</Btn>
-            <Btn onClick={()=>{onSave(data);onClose();}}>Save & Close</Btn>
+            <Btn onClick={save}>Save & Close</Btn>
           </div>
         </div>
       )}
@@ -609,7 +613,7 @@ const CardDetailModal = ({record,customers,onSave,onDelete,onClose,isJob,setting
           </div>
           <TA label="Quote Notes" value={data.tabs.quote.notes} onChange={e=>setTab("quote",{notes:e.target.value})} placeholder="e.g. Prices valid for 30 days..."/>
           <div style={{display:"flex",justifyContent:"flex-end"}}>
-            <Btn onClick={()=>{onSave(data);onClose();}}>Save & Close</Btn>
+            <Btn onClick={save}>Save & Close</Btn>
           </div>
         </div>
       )}
@@ -621,7 +625,7 @@ const CardDetailModal = ({record,customers,onSave,onDelete,onClose,isJob,setting
           {data.tabs.invoices.files.length===0&&<div style={{textAlign:"center",padding:24,color:C.muted,fontSize:13,background:C.slateLight,borderRadius:8}}>No invoices attached yet.</div>}
           <TA label="Invoice Notes" value={data.tabs.invoices.notes} onChange={e=>setTab("invoices",{notes:e.target.value})} placeholder="e.g. Invoice #INV-001 sent 12 June..."/>
           <div style={{display:"flex",justifyContent:"flex-end"}}>
-            <Btn onClick={()=>{onSave(data);onClose();}}>Save & Close</Btn>
+            <Btn onClick={save}>Save & Close</Btn>
           </div>
         </div>
       )}
@@ -631,7 +635,7 @@ const CardDetailModal = ({record,customers,onSave,onDelete,onClose,isJob,setting
         <div style={{display:"flex",flexDirection:"column",gap:16}}>
           <TA label="Notes" value={data.tabs.notepad.text} onChange={e=>setTab("notepad",{text:e.target.value})} placeholder="Add any notes here..." style={{minHeight:220}}/>
           <div style={{display:"flex",justifyContent:"flex-end"}}>
-            <Btn onClick={()=>{onSave(data);onClose();}}>Save & Close</Btn>
+            <Btn onClick={save}>Save & Close</Btn>
           </div>
         </div>
       )}
@@ -677,7 +681,7 @@ const CardDetailModal = ({record,customers,onSave,onDelete,onClose,isJob,setting
           </div>
           <TA label="Survey Notes" value={data.tabs.survey.notes} onChange={e=>setTab("survey",{notes:e.target.value})} placeholder="e.g. Access issues on left side, check lintel above bay..."/>
           <div style={{display:"flex",justifyContent:"flex-end"}}>
-            <Btn onClick={()=>{onSave(data);onClose();}}>Save & Close</Btn>
+            <Btn onClick={save}>Save & Close</Btn>
           </div>
         </div>
       )}
@@ -691,7 +695,7 @@ const CardDetailModal = ({record,customers,onSave,onDelete,onClose,isJob,setting
           </div>
           <TA label="Notes" value={data.tabs.orderConfirmation.notes} onChange={e=>setTab("orderConfirmation",{notes:e.target.value})} placeholder="e.g. Signed by customer on 15 June, deposit received..."/>
           <div style={{display:"flex",justifyContent:"flex-end"}}>
-            <Btn onClick={()=>{onSave(data);onClose();}}>Save & Close</Btn>
+            <Btn onClick={save}>Save & Close</Btn>
           </div>
         </div>
       )}
@@ -706,7 +710,7 @@ const CardDetailModal = ({record,customers,onSave,onDelete,onClose,isJob,setting
           </div>
           <TA label="Notes" value={data.tabs.bills.notes||""} onChange={e=>setTab("bills",{...data.tabs.bills,notes:e.target.value})} placeholder="e.g. All supplier invoices received, awaiting hardware delivery..."/>
           <div style={{display:"flex",justifyContent:"flex-end"}}>
-            <Btn onClick={()=>{onSave(data);onClose();}}>Save & Close</Btn>
+            <Btn onClick={save}>Save & Close</Btn>
           </div>
         </div>
       )}
@@ -1133,7 +1137,7 @@ const CardDetailModal = ({record,customers,onSave,onDelete,onClose,isJob,setting
           </div>
 
           <div style={{display:"flex",justifyContent:"flex-end"}}>
-            <Btn onClick={()=>{onSave(data);onClose();}}>Save & Close</Btn>
+            <Btn onClick={save}>Save & Close</Btn>
           </div>
         </div>
       )}
@@ -1168,7 +1172,7 @@ const CardDetailModal = ({record,customers,onSave,onDelete,onClose,isJob,setting
           <TA label="Notes" value={data.tabs.guarantee.notes||""} onChange={e=>setData(d=>({...d,tabs:{...d.tabs,guarantee:{...d.tabs.guarantee,notes:e.target.value}}}))}
             placeholder="e.g. 10-year frame guarantee issued, FENSA cert #12345 sent to customer on 20 June..."/>
           <div style={{display:"flex",justifyContent:"flex-end"}}>
-            <Btn onClick={()=>{onSave(data);onClose();}}>Save & Close</Btn>
+            <Btn onClick={save}>Save & Close</Btn>
           </div>
         </div>
       )}
@@ -1249,7 +1253,7 @@ const CardDetailModal = ({record,customers,onSave,onDelete,onClose,isJob,setting
             )}
 
             <div style={{display:"flex",justifyContent:"flex-end",paddingTop:8,borderTop:`1px solid ${C.border}`}}>
-              <Btn onClick={()=>{onSave(data);onClose();}}>Save & Close</Btn>
+              <Btn onClick={save}>Save & Close</Btn>
             </div>
           </div>
         );
@@ -1436,7 +1440,7 @@ const CardDetailModal = ({record,customers,onSave,onDelete,onClose,isJob,setting
             </div>
 
             <div style={{display:"flex",justifyContent:"flex-end"}}>
-              <Btn onClick={()=>{onSave(data);onClose();}}>Save & Close</Btn>
+              <Btn onClick={save}>Save & Close</Btn>
             </div>
           </div>
         );
