@@ -2,6 +2,12 @@
 -- Deep per-record data (quotes, surveys, order confirmations, bills, guarantees, tasks, service
 -- calls) is kept in TabsJson for now, matching the app's existing `tabs` object shape 1:1, so no
 -- data is lost while the relational model for those sub-entities is built out in a later phase.
+--
+-- TenantId is included now (defaulted to 1, "VisualPro" itself) as cheap insurance against a
+-- painful migration later, in case this ever gets sold to other businesses as multi-tenant SaaS.
+-- No actual multi-tenancy (isolation, per-tenant auth, a real Tenants table) is built yet — every
+-- row today belongs to tenant 1 and the app doesn't filter by it. Revisit if/when productized.
+--
 -- Idempotent: safe to re-run. No GO batch separators — this is pasted directly into the Azure
 -- Portal Query Editor, which doesn't understand GO (a client-tool convention, not real T-SQL).
 
@@ -9,6 +15,7 @@ IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'Customers')
 BEGIN
     CREATE TABLE dbo.Customers (
         Id            INT IDENTITY(1,1) PRIMARY KEY,
+        TenantId      INT             NOT NULL DEFAULT 1,
         Name          NVARCHAR(200)   NOT NULL,
         Email         NVARCHAR(200)   NULL,
         Phone         NVARCHAR(50)    NULL,
@@ -30,10 +37,16 @@ BEGIN
     CREATE INDEX IX_Customers_Stage ON dbo.Customers(Stage);
 END
 
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Customers_TenantId')
+BEGIN
+    CREATE INDEX IX_Customers_TenantId ON dbo.Customers(TenantId);
+END
+
 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'Jobs')
 BEGIN
     CREATE TABLE dbo.Jobs (
         Id            INT IDENTITY(1,1) PRIMARY KEY,
+        TenantId      INT             NOT NULL DEFAULT 1,
         CustomerId    INT             NOT NULL,
         Title         NVARCHAR(300)   NOT NULL,
         ProductsJson  NVARCHAR(MAX)   NULL,
@@ -59,4 +72,9 @@ END
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Jobs_Status')
 BEGIN
     CREATE INDEX IX_Jobs_Status ON dbo.Jobs(Status);
+END
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Jobs_TenantId')
+BEGIN
+    CREATE INDEX IX_Jobs_TenantId ON dbo.Jobs(TenantId);
 END
