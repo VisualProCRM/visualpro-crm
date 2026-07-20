@@ -13,6 +13,12 @@ param sqlDatabaseName string
 param storageAccountName string
 param storageBlobEndpoint string
 
+@description('Origins allowed to call this API cross-origin (the frontend Static Web App, plus localhost for local dev)')
+param corsAllowedOrigins array = [
+  'https://mango-beach-0c25f86107.azurestaticapps.net'
+  'http://localhost:3000'
+]
+
 resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
   name: appInsightsName
   location: location
@@ -48,6 +54,10 @@ resource functionApp 'Microsoft.Web/sites@2023-01-01' = {
       linuxFxVersion: 'Node|20'
       minTlsVersion: '1.2'
       ftpsState: 'Disabled'
+      cors: {
+        allowedOrigins: corsAllowedOrigins
+        supportCredentials: false
+      }
       appSettings: [
         {
           name: 'AzureWebJobsStorage'
