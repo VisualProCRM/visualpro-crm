@@ -17,6 +17,13 @@ param sqlDatabaseName string
 param storageAccountName string
 param storageBlobEndpoint string
 
+@description('Azure Communication Services connection string, used to send emails (install reminders). Plain app setting, same pattern as the storage connection string above.')
+@secure()
+param acsConnectionString string
+
+@description('Name of the Communication Services Email Service resource, used by the sending Function to look up its assigned Azure-managed sender domain at runtime via the ARM API (needs the Reader role, granted in main.bicep).')
+param emailServiceName string
+
 @description('Origins allowed to call this API cross-origin (the frontend Static Web App, plus localhost for local dev). Note: the SWA hostname changed after upgrading from Free to Standard tier — this is the post-upgrade hostname, not the original.')
 param corsAllowedOrigins array = [
   'https://mango-beach-0c25f8610.7.azurestaticapps.net'
@@ -84,6 +91,10 @@ resource functionApp 'Microsoft.Web/sites@2023-01-01' = {
         { name: 'STORAGE_ACCOUNT_NAME', value: storageAccountName }
         { name: 'STORAGE_BLOB_ENDPOINT', value: storageBlobEndpoint }
         { name: 'KEY_VAULT_URI', value: keyVaultUri }
+        { name: 'ACS_CONNECTION_STRING', value: acsConnectionString }
+        { name: 'EMAIL_SERVICE_NAME', value: emailServiceName }
+        { name: 'RESOURCE_GROUP_NAME', value: resourceGroup().name }
+        { name: 'AZURE_SUBSCRIPTION_ID', value: subscription().subscriptionId }
       ]
     }
   }

@@ -38,6 +38,9 @@ param aadAuthClientId string
 @description('Client secret for the visualpro-crm-auth app registration')
 param aadAuthClientSecret string
 
+param communicationServiceName string = 'visualpro-crm-acs'
+param emailServiceName string = 'visualpro-crm-email'
+
 module storage 'modules/storage.bicep' = {
   name: 'storage-deploy'
   params: {
@@ -79,6 +82,25 @@ module keyVault 'modules/keyvault.bicep' = {
   }
 }
 
+module email 'modules/email.bicep' = {
+  name: 'email-deploy'
+  params: {
+    communicationServiceName: communicationServiceName
+    emailServiceName: emailServiceName
+  }
+}
+
+// Referenced (not re-declared) so we can build a connection string for the email-sending
+// Function without exposing the ACS access key as a module output.
+resource communicationServiceExisting 'Microsoft.Communication/communicationServices@2023-04-01' existing = {
+  name: communicationServiceName
+  dependsOn: [
+    email
+  ]
+}
+
+var acsConnectionString = communicationServiceExisting.listKeys().primaryConnectionString
+
 module functionApp 'modules/functionapp.bicep' = {
   name: 'functionapp-deploy'
   params: {
@@ -88,6 +110,8 @@ module functionApp 'modules/functionapp.bicep' = {
     appInsightsName: appInsightsName
     keyVaultUri: keyVault.outputs.vaultUri
     storageAccountConnectionString: storageConnectionString
+    acsConnectionString: acsConnectionString
+    emailServiceName: emailServiceName
     sqlServerFqdn: sql.outputs.sqlServerFqdn
     sqlDatabaseName: sql.outputs.sqlDatabaseName
     storageAccountName: storage.outputs.storageAccountName
@@ -119,6 +143,18 @@ resource blobDataContributorAssignment 'Microsoft.Authorization/roleAssignments@
   scope: storageAccountExisting
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'ba92f5b4-2d11-453d-a403-e96b0029c9fe')
+    principalId: functionApp.outputs.functionAppPrincipalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// Lets the Function App's managed identity read resource properties across the resource
+// group via the ARM API — used only to look up the ACS email domain's assigned sender
+// hostname at runtime (read-only, cannot modify or read secrets/keys).
+resource functionAppReaderAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(resourceGroup().id, functionAppName, 'Reader')
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'acdd72a7-3385-48ef-bd42-f606fba81ae7')
     principalId: functionApp.outputs.functionAppPrincipalId
     principalType: 'ServicePrincipal'
   }
