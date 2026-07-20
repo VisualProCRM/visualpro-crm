@@ -6,18 +6,6 @@
   "navigationFallback": {
     "rewrite": "/index.html"
   },
-  "routes": [
-    {
-      "route": "/*",
-      "allowedRoles": ["authenticated"]
-    }
-  ],
-  "responseOverrides": {
-    "401": {
-      "redirect": "/.auth/login/aad",
-      "statusCode": 302
-    }
-  },
   "auth": {
     "identityProviders": {
       "azureActiveDirectory": {

@@ -29,7 +29,7 @@
   </div>
   <div id="root"></div>
   <script type="text/babel" data-presets="react" data-plugins="transform-modules-umd">
-const { useState, useMemo } = React;
+const { useState, useMemo, useEffect } = React;
 
 // ── Palette ───────────────────────────────────────────────────────────────────
 const C = {
@@ -4067,7 +4067,20 @@ function App() {
   const [jobs,setJobs]=useState(seedJobs);
   const [page,setPage]=useState("dashboard");
   const [userRole,setUserRole]=useState(null);
+  const [officeAuthChecked,setOfficeAuthChecked]=useState(false);
   const [selectedFitter,setSelectedFitter]=useState(null);
+
+  // Office Admin now goes through real Microsoft/Entra ID login (see the button below)
+  // rather than being a single unprotected click. On load/redirect-back, check whether
+  // the browser already has an authenticated Entra ID session and, if so, go straight
+  // to the office view. Fitters are unaffected — they still use the password screen.
+  useEffect(()=>{
+    fetch('/.auth/me')
+      .then(r=>r.json())
+      .then(data=>{ if(data && data.clientPrincipal){ setUserRole('office'); } })
+      .catch(()=>{})
+      .finally(()=>setOfficeAuthChecked(true));
+  },[]);
   const [pwInput,setPwInput]=useState("");
   const [pwError,setPwError]=useState(false);
   const [showPw,setShowPw]=useState(false);
@@ -4093,6 +4106,15 @@ function App() {
   };
 
   const resetLogin=()=>{setSelectedFitter(null);setPwInput("");setPwError(false);setShowPw(false);};
+
+  // ── Login: waiting on the /.auth/me check above, before showing anything ──
+  if(!userRole&&!officeAuthChecked){
+    return (
+      <div style={{minHeight:"100vh",background:C.navy,display:"flex",alignItems:"center",justifyContent:"center"}}>
+        <div className="spinner"/>
+      </div>
+    );
+  }
 
   // ── Login: password screen ──
   if(!userRole&&selectedFitter){
@@ -4144,14 +4166,14 @@ function App() {
             <div style={{color:"rgba(255,255,255,0.5)",fontSize:13,marginTop:4}}>Select your name to continue</div>
           </div>
           <div style={{padding:20,display:"flex",flexDirection:"column",gap:8}}>
-            <button onClick={()=>setUserRole("office")}
+            <button onClick={()=>{window.location.href="/.auth/login/aad?post_login_redirect_uri=/";}}
               style={{display:"flex",alignItems:"center",gap:14,padding:"14px 16px",borderRadius:10,border:`1px solid ${C.border}`,background:C.white,cursor:"pointer",textAlign:"left"}}
               onMouseEnter={e=>e.currentTarget.style.background=C.slateLight}
               onMouseLeave={e=>e.currentTarget.style.background=C.white}>
               <div style={{width:40,height:40,borderRadius:"50%",background:C.navy,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>🏢</div>
               <div style={{flex:1}}>
                 <div style={{fontWeight:700,fontSize:15,color:C.navy}}>Office Admin</div>
-                <div style={{fontSize:12,color:C.slate,marginTop:1}}>Full CRM access</div>
+                <div style={{fontSize:12,color:C.slate,marginTop:1}}>Full CRM access · Microsoft sign-in</div>
               </div>
               <div style={{color:C.muted,fontSize:20}}>›</div>
             </button>
@@ -4218,7 +4240,7 @@ function App() {
             </button>
           ))}
         </nav>
-        <div onClick={()=>{setUserRole(null);resetLogin();}} style={{padding:"16px 20px",borderTop:"1px solid rgba(255,255,255,0.1)",cursor:"pointer"}}>
+        <div onClick={()=>{window.location.href="/.auth/logout?post_logout_redirect_uri=/";}} style={{padding:"16px 20px",borderTop:"1px solid rgba(255,255,255,0.1)",cursor:"pointer"}}>
           <div style={{fontSize:12,color:"rgba(255,255,255,0.4)"}}>🏢 Office Admin · <span style={{textDecoration:"underline"}}>Switch user</span></div>
         </div>
       </div>
