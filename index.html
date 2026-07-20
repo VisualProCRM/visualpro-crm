@@ -187,6 +187,20 @@ const readFileAsDataURL = (file) => new Promise(res => {
   const r=new FileReader(); r.onload=e=>res({name:file.name,type:file.type,data:e.target.result}); r.readAsDataURL(file);
 });
 
+// Uploads to Blob Storage (via the Function App) instead of keeping the file as a giant
+// base64 string in the record itself. Returns the same {name,type,data} shape as
+// readFileAsDataURL — data is now a real (long-lived, read-only) URL instead of a data:
+// URI, but every existing <a href={f.data}>/<img src={f.data}> usage keeps working as-is.
+const uploadFile = async (file, container) => {
+  const dataUrl = await readFileAsDataURL(file);
+  const base64 = dataUrl.data.split(",")[1];
+  const saved = await apiRequest("/upload", {
+    method: "POST",
+    body: JSON.stringify({ container, filename: file.name, contentType: file.type, dataBase64: base64 }),
+  });
+  return saved;
+};
+
 // ── Primitives ────────────────────────────────────────────────────────────────
 const Badge = ({label}) => {
   const c=STATUS_COLORS[label]||{bg:C.slateLight,text:C.slate};
@@ -235,7 +249,7 @@ const Modal = ({title,onClose,children,wide}) => (
 const FileAttach = ({files,onAdd,onRemove,accept,label="Attach File"}) => {
   const handleChange = async (e) => {
     const f=e.target.files[0]; if(!f) return;
-    const data=await readFileAsDataURL(f);
+    const data=await uploadFile(f,"documents");
     onAdd(data);
     e.target.value="";
   };
@@ -264,7 +278,7 @@ const FileAttach = ({files,onAdd,onRemove,accept,label="Attach File"}) => {
 const ImageGallery = ({images,onAdd,onRemove}) => {
   const handleChange = async (e) => {
     const files=Array.from(e.target.files);
-    const datas=await Promise.all(files.map(readFileAsDataURL));
+    const datas=await Promise.all(files.map(f=>uploadFile(f,"photos")));
     datas.forEach(onAdd);
     e.target.value="";
   };
@@ -1265,21 +1279,21 @@ const CardDetailModal = ({record,customers,onSave,onDelete,onClose,isJob,setting
         const updateSC=(field,val)=>setData(d=>({...d,tabs:{...d.tabs,serviceCall:{...d.tabs.serviceCall,[field]:val}}}));
         const addOfficePhoto=async(e)=>{
           const files=Array.from(e.target.files);
-          const datas=await Promise.all(files.map(readFileAsDataURL));
+          const datas=await Promise.all(files.map(f=>uploadFile(f,"photos")));
           updateSC("officePhotos",[...(sc.officePhotos||[]),...datas]);
           e.target.value="";
         };
         const removeOfficePhoto=(i)=>updateSC("officePhotos",(sc.officePhotos||[]).filter((_,idx)=>idx!==i));
         const addFitterPhoto=async(e)=>{
           const files=Array.from(e.target.files);
-          const datas=await Promise.all(files.map(readFileAsDataURL));
+          const datas=await Promise.all(files.map(f=>uploadFile(f,"photos")));
           updateSC("fitterPhotos",[...(sc.fitterPhotos||[]),...datas]);
           e.target.value="";
         };
         const removeFitterPhoto=(i)=>updateSC("fitterPhotos",(sc.fitterPhotos||[]).filter((_,idx)=>idx!==i));
         const addSupplierInvoice=async(e)=>{
           const file=e.target.files[0]; if(!file) return;
-          const data2=await readFileAsDataURL(file);
+          const data2=await uploadFile(file,"documents");
           updateSC("supplierInvoices",[...(sc.supplierInvoices||[]),data2]);
           e.target.value="";
         };
@@ -2890,7 +2904,7 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
 
   const addSurveyImage=async(e,job)=>{
     const files=Array.from(e.target.files);
-    const datas=await Promise.all(files.map(readFileAsDataURL));
+    const datas=await Promise.all(files.map(f=>uploadFile(f,"photos")));
     const updated={...job,tabs:{...job.tabs,survey:{...job.tabs.survey,images:[...(job.tabs.survey.images||[]),...datas]}}};
     updateJob(updated);
     setSelectedJob(updated);
@@ -2899,7 +2913,7 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
 
   const addInstallImage=async(e,job)=>{
     const files=Array.from(e.target.files);
-    const datas=await Promise.all(files.map(readFileAsDataURL));
+    const datas=await Promise.all(files.map(f=>uploadFile(f,"photos")));
     const updated={...job,tabs:{...job.tabs,installation:{...job.tabs.installation,installImages:[...(job.tabs.installation.installImages||[]),...datas]}}};
     updateJob(updated);
     setSelectedJob(updated);
@@ -3230,7 +3244,7 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
                     📷 Fitter Photos
                     <input type="file" accept="image/*" multiple capture="environment" onChange={async(e)=>{
                       const files=Array.from(e.target.files);
-                      const datas=await Promise.all(files.map(readFileAsDataURL));
+                      const datas=await Promise.all(files.map(f=>uploadFile(f,"photos")));
                       const updated={...job,tabs:{...job.tabs,serviceCall:{...job.tabs.serviceCall,fitterPhotos:[...(job.tabs.serviceCall?.fitterPhotos||[]),...datas]}}};
                       updateJob(updated);setSelectedJob(updated);
                       e.target.value="";
