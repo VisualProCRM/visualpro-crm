@@ -67,6 +67,12 @@ resource functionApp 'Microsoft.Web/sites@2023-01-01' = {
           name: 'AzureWebJobsStorage'
           value: storageAccountConnectionString
         }
+        // Used only to generate long-lived (multi-year) read-only SAS URLs for uploaded
+        // files in /api/upload. A user-delegation-key SAS (pure managed identity, no
+        // account key) was tried first, but Azure caps delegation key validity at 7 days
+        // — too short for files that need to stay viewable indefinitely — so this falls
+        // back to an account-key-based SAS, which has no such cap.
+        { name: 'STORAGE_CONNECTION_STRING', value: storageAccountConnectionString }
         { name: 'FUNCTIONS_EXTENSION_VERSION', value: '~4' }
         { name: 'FUNCTIONS_WORKER_RUNTIME', value: 'node' }
         { name: 'WEBSITE_NODE_DEFAULT_VERSION', value: '~20' }
