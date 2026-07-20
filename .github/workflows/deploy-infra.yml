@@ -79,7 +79,7 @@ jobs:
         with:
           connection-string: "Server=tcp:${{ steps.deploy.outputs.sqlServerFqdn }},1433;Database=${{ steps.deploy.outputs.sqlDatabaseName }};Authentication=Active Directory Default;"
           path: "./infra/scripts/grant-sql-access.sql"
-          sqlcmd-command: 'sqlcmd -v FunctionAppName="${{ steps.deploy.outputs.functionAppName }}"'
+          arguments: '-v FunctionAppName="${{ steps.deploy.outputs.functionAppName }}"'
 
       - name: Remove temporary SQL firewall rule
         if: always()
