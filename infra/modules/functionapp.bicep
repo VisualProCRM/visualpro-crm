@@ -5,8 +5,12 @@ param functionAppName string
 param hostingPlanName string
 param appInsightsName string
 
-@description('Key Vault URI (e.g. https://visualpro-crm-kv.vault.azure.net/) used only to fetch the runtime storage connection string via a Key Vault reference app setting')
+@description('Key Vault URI (e.g. https://visualpro-crm-kv.vault.azure.net/) — currently just surfaced as an app setting for later use, not used for AzureWebJobsStorage anymore (see below).')
 param keyVaultUri string
+
+@description('Storage account connection string for the Functions runtime\'s own internal AzureWebJobsStorage plumbing. Set directly (not via Key Vault reference) because azure/functions-action needs to read a literal connection string to manage deployment packages — it cannot resolve a @Microsoft.KeyVault(...) reference. Actual document/photo blob access still goes through the managed identity, not this value.')
+@secure()
+param storageAccountConnectionString string
 
 param sqlServerFqdn string
 param sqlDatabaseName string
@@ -61,7 +65,7 @@ resource functionApp 'Microsoft.Web/sites@2023-01-01' = {
       appSettings: [
         {
           name: 'AzureWebJobsStorage'
-          value: '@Microsoft.KeyVault(SecretUri=${keyVaultUri}secrets/StorageAccountConnectionString/)'
+          value: storageAccountConnectionString
         }
         { name: 'FUNCTIONS_EXTENSION_VERSION', value: '~4' }
         { name: 'FUNCTIONS_WORKER_RUNTIME', value: 'node' }

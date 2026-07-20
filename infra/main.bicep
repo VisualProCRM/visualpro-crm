@@ -78,6 +78,7 @@ module functionApp 'modules/functionapp.bicep' = {
     hostingPlanName: hostingPlanName
     appInsightsName: appInsightsName
     keyVaultUri: keyVault.outputs.vaultUri
+    storageAccountConnectionString: storageConnectionString
     sqlServerFqdn: sql.outputs.sqlServerFqdn
     sqlDatabaseName: sql.outputs.sqlDatabaseName
     storageAccountName: storage.outputs.storageAccountName
