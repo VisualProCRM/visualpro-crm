@@ -2,8 +2,12 @@ const { app } = require('@azure/functions');
 const { getPool, sql } = require('../db');
 const { mapCustomerRow } = require('../mapRow');
 
-// Auth (who's allowed to call these) is not enforced yet — see roadmap: Static Web Apps
-// Entra ID auth wiring. TenantId is hardcoded to 1 until real multi-tenancy exists.
+// Auth (who's allowed to call these) is not enforced yet — see roadmap: locking down the
+// API itself, deferred when Entra ID auth was wired up for the frontend. TenantId is
+// hardcoded to 1 until real multi-tenancy exists.
+//
+// DataJson stores the entire record the frontend sends, as-is — see schema.sql for why
+// (avoids silently dropping any field the app has that we haven't explicitly modeled).
 
 app.http('customersList', {
   methods: ['GET'],
@@ -54,21 +58,13 @@ app.http('customersCreate', {
       const pool = await getPool();
       const result = await pool
         .request()
-        .input('Name', sql.NVarChar, body.name)
-        .input('Email', sql.NVarChar, body.email || null)
-        .input('Phone', sql.NVarChar, body.phone || null)
-        .input('Address', sql.NVarChar, body.address || null)
-        .input('Source', sql.NVarChar, body.source || null)
+        .input('Name', sql.NVarChar, body.name || '')
         .input('Stage', sql.NVarChar, body.stage || 'New Enquiry')
-        .input('Notes', sql.NVarChar, body.notes || null)
-        .input('WindowCad', sql.NVarChar, body.windowcad || null)
-        .input('QuoteValue', sql.Decimal(10, 2), body.quoteValue || null)
-        .input('QuoteCost', sql.Decimal(10, 2), body.quoteCost || null)
-        .input('TabsJson', sql.NVarChar, JSON.stringify(body.tabs || {}))
+        .input('DataJson', sql.NVarChar, JSON.stringify(body))
         .query(
-          `INSERT INTO dbo.Customers (Name, Email, Phone, Address, Source, Stage, Notes, WindowCad, QuoteValue, QuoteCost, TabsJson)
+          `INSERT INTO dbo.Customers (Name, Stage, DataJson)
            OUTPUT INSERTED.*
-           VALUES (@Name, @Email, @Phone, @Address, @Source, @Stage, @Notes, @WindowCad, @QuoteValue, @QuoteCost, @TabsJson)`
+           VALUES (@Name, @Stage, @DataJson)`
         );
       return { status: 201, jsonBody: mapCustomerRow(result.recordset[0]) };
     } catch (err) {
@@ -90,22 +86,11 @@ app.http('customersUpdate', {
       const result = await pool
         .request()
         .input('Id', sql.Int, id)
-        .input('Name', sql.NVarChar, body.name)
-        .input('Email', sql.NVarChar, body.email || null)
-        .input('Phone', sql.NVarChar, body.phone || null)
-        .input('Address', sql.NVarChar, body.address || null)
-        .input('Source', sql.NVarChar, body.source || null)
-        .input('Stage', sql.NVarChar, body.stage)
-        .input('Notes', sql.NVarChar, body.notes || null)
-        .input('WindowCad', sql.NVarChar, body.windowcad || null)
-        .input('QuoteValue', sql.Decimal(10, 2), body.quoteValue || null)
-        .input('QuoteCost', sql.Decimal(10, 2), body.quoteCost || null)
-        .input('TabsJson', sql.NVarChar, JSON.stringify(body.tabs || {}))
+        .input('Name', sql.NVarChar, body.name || '')
+        .input('Stage', sql.NVarChar, body.stage || 'New Enquiry')
+        .input('DataJson', sql.NVarChar, JSON.stringify(body))
         .query(
-          `UPDATE dbo.Customers SET
-             Name=@Name, Email=@Email, Phone=@Phone, Address=@Address, Source=@Source,
-             Stage=@Stage, Notes=@Notes, WindowCad=@WindowCad, QuoteValue=@QuoteValue,
-             QuoteCost=@QuoteCost, TabsJson=@TabsJson, UpdatedAt=SYSUTCDATETIME()
+          `UPDATE dbo.Customers SET Name=@Name, Stage=@Stage, DataJson=@DataJson, UpdatedAt=SYSUTCDATETIME()
            OUTPUT INSERTED.*
            WHERE Id=@Id AND TenantId = 1`
         );
@@ -114,6 +99,27 @@ app.http('customersUpdate', {
     } catch (err) {
       context.error('customersUpdate failed', err);
       return { status: 500, jsonBody: { error: err.message } };
+    }
+  },
+});
+
+app.http('customersDelete', {
+  methods: ['DELETE'],
+  route: 'customers/{id}',
+  authLevel: 'anonymous',
+  handler: async (request, context) => {
+    try {
+      const id = Number(request.params.id);
+      const pool = await getPool();
+      await pool
+        .request()
+        .input('Id', sql.Int, id)
+        .query('DELETE FROM dbo.Customers WHERE Id=@Id AND TenantId = 1');
+      return { status: 204 };
+    } catch (err) {
+      // Most likely cause: this customer still has Jobs referencing it (FK constraint).
+      context.error('customersDelete failed', err);
+      return { status: 409, jsonBody: { error: err.message } };
     }
   },
 });

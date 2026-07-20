@@ -52,20 +52,13 @@ app.http('jobsCreate', {
       const result = await pool
         .request()
         .input('CustomerId', sql.Int, body.customerId)
-        .input('Title', sql.NVarChar, body.title)
-        .input('ProductsJson', sql.NVarChar, JSON.stringify(body.products || []))
+        .input('Title', sql.NVarChar, body.title || '')
         .input('Status', sql.NVarChar, body.status || 'Book Survey')
-        .input('SurveyDate', sql.Date, body.surveyDate || null)
-        .input('InstallDate', sql.Date, body.installDate || null)
-        .input('Installers', sql.NVarChar, body.installers || null)
-        .input('WindowCad', sql.NVarChar, body.windowcad || null)
-        .input('Value', sql.Decimal(10, 2), body.value || null)
-        .input('Notes', sql.NVarChar, body.notes || null)
-        .input('TabsJson', sql.NVarChar, JSON.stringify(body.tabs || {}))
+        .input('DataJson', sql.NVarChar, JSON.stringify(body))
         .query(
-          `INSERT INTO dbo.Jobs (CustomerId, Title, ProductsJson, Status, SurveyDate, InstallDate, Installers, WindowCad, Value, Notes, TabsJson)
+          `INSERT INTO dbo.Jobs (CustomerId, Title, Status, DataJson)
            OUTPUT INSERTED.*
-           VALUES (@CustomerId, @Title, @ProductsJson, @Status, @SurveyDate, @InstallDate, @Installers, @WindowCad, @Value, @Notes, @TabsJson)`
+           VALUES (@CustomerId, @Title, @Status, @DataJson)`
         );
       return { status: 201, jsonBody: mapJobRow(result.recordset[0]) };
     } catch (err) {
@@ -88,22 +81,11 @@ app.http('jobsUpdate', {
         .request()
         .input('Id', sql.Int, id)
         .input('CustomerId', sql.Int, body.customerId)
-        .input('Title', sql.NVarChar, body.title)
-        .input('ProductsJson', sql.NVarChar, JSON.stringify(body.products || []))
-        .input('Status', sql.NVarChar, body.status)
-        .input('SurveyDate', sql.Date, body.surveyDate || null)
-        .input('InstallDate', sql.Date, body.installDate || null)
-        .input('Installers', sql.NVarChar, body.installers || null)
-        .input('WindowCad', sql.NVarChar, body.windowcad || null)
-        .input('Value', sql.Decimal(10, 2), body.value || null)
-        .input('Notes', sql.NVarChar, body.notes || null)
-        .input('TabsJson', sql.NVarChar, JSON.stringify(body.tabs || {}))
+        .input('Title', sql.NVarChar, body.title || '')
+        .input('Status', sql.NVarChar, body.status || 'Book Survey')
+        .input('DataJson', sql.NVarChar, JSON.stringify(body))
         .query(
-          `UPDATE dbo.Jobs SET
-             CustomerId=@CustomerId, Title=@Title, ProductsJson=@ProductsJson, Status=@Status,
-             SurveyDate=@SurveyDate, InstallDate=@InstallDate, Installers=@Installers,
-             WindowCad=@WindowCad, Value=@Value, Notes=@Notes, TabsJson=@TabsJson,
-             UpdatedAt=SYSUTCDATETIME()
+          `UPDATE dbo.Jobs SET CustomerId=@CustomerId, Title=@Title, Status=@Status, DataJson=@DataJson, UpdatedAt=SYSUTCDATETIME()
            OUTPUT INSERTED.*
            WHERE Id=@Id AND TenantId = 1`
         );
@@ -111,6 +93,23 @@ app.http('jobsUpdate', {
       return { jsonBody: mapJobRow(result.recordset[0]) };
     } catch (err) {
       context.error('jobsUpdate failed', err);
+      return { status: 500, jsonBody: { error: err.message } };
+    }
+  },
+});
+
+app.http('jobsDelete', {
+  methods: ['DELETE'],
+  route: 'jobs/{id}',
+  authLevel: 'anonymous',
+  handler: async (request, context) => {
+    try {
+      const id = Number(request.params.id);
+      const pool = await getPool();
+      await pool.request().input('Id', sql.Int, id).query('DELETE FROM dbo.Jobs WHERE Id=@Id AND TenantId = 1');
+      return { status: 204 };
+    } catch (err) {
+      context.error('jobsDelete failed', err);
       return { status: 500, jsonBody: { error: err.message } };
     }
   },
