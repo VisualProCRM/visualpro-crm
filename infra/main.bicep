@@ -2,8 +2,11 @@
 // EXISTING resource group `visualpro-crm_group` (deploy with `az deployment group create`).
 // The existing Static Web App in that resource group is untouched by this template.
 
-@description('Azure region for the new backend resources')
-param location string = 'ukwest'
+@description('Azure region for most backend resources (Storage, Key Vault, Function App)')
+param location string = 'uksouth'
+
+@description('Azure region for the SQL server specifically. Kept separate from `location` because UK South has, at times, rejected new SQL logical server creation for this subscription.')
+param sqlLocation string = 'ukwest'
 
 @description('Display name of the Entra ID user or group that will be the SQL AAD admin')
 param sqlAadAdminLogin string
@@ -37,7 +40,7 @@ module storage 'modules/storage.bicep' = {
 module sql 'modules/sql.bicep' = {
   name: 'sql-deploy'
   params: {
-    location: location
+    location: sqlLocation
     sqlServerName: sqlServerName
     sqlDatabaseName: sqlDatabaseName
     aadAdminLogin: sqlAadAdminLogin
