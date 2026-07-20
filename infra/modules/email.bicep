@@ -1,5 +1,5 @@
-@description('Data residency location for the Communication/Email services (a logical region for Communication Services, independent of the ARM resource location which must be "global")')
-param dataLocation string = 'United Kingdom'
+@description('Data residency location for the Communication/Email services (a logical region for Communication Services, independent of the ARM resource location which must be "global"). Using "United States" — the value used in virtually all Microsoft ACS samples/docs, so most likely to be a valid enum value — rather than guessing at a UK-specific one; revisit if UK data residency matters later.')
+param dataLocation string = 'United States'
 
 param communicationServiceName string = 'visualpro-crm-acs'
 param emailServiceName string = 'visualpro-crm-email'
