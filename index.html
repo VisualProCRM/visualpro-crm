@@ -127,6 +127,32 @@ const STATUS_COLORS = {...STAGE_META,...INSTALL_META};
 let nextId = 200;
 const uid = () => ++nextId;
 
+// ── API client ────────────────────────────────────────────────────────────────
+// Talks directly to the Function App (not proxied through the Static Web App), so CORS is
+// configured on the Function App side to allow this origin. Not authenticated yet — see
+// roadmap for locking the API down; for now anyone with the URL can call it.
+const API_BASE = "https://visualpro-crm-func.azurewebsites.net/api";
+
+const apiRequest = async (path, options = {}) => {
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers: { "Content-Type": "application/json" },
+    ...options,
+  });
+  if (!res.ok) throw new Error(`${options.method || "GET"} ${path} failed: ${res.status}`);
+  if (res.status === 204) return null;
+  return res.json();
+};
+
+const apiListCustomers = () => apiRequest("/customers");
+const apiCreateCustomer = (data) => apiRequest("/customers", { method: "POST", body: JSON.stringify(data) });
+const apiUpdateCustomer = (data) => apiRequest(`/customers/${data.id}`, { method: "PUT", body: JSON.stringify(data) });
+const apiDeleteCustomer = (id) => apiRequest(`/customers/${id}`, { method: "DELETE" });
+
+const apiListJobs = () => apiRequest("/jobs");
+const apiCreateJob = (data) => apiRequest("/jobs", { method: "POST", body: JSON.stringify(data) });
+const apiUpdateJob = (data) => apiRequest(`/jobs/${data.id}`, { method: "PUT", body: JSON.stringify(data) });
+const apiDeleteJob = (id) => apiRequest(`/jobs/${id}`, { method: "DELETE" });
+
 const seedCustomers = [
   {id:1,name:"Sarah Mitchell",email:"sarah.mitchell@email.com",phone:"07712 345678",address:"14 Oak Lane, Camberley, GU15 2AB",source:"Website",stage:"Deal Won",notes:"Prefers morning calls",createdAt:"2025-06-01",windowcad:"WC-2025-001",quoteValue:4200,quoteCost:2650,tabs:{quote:{files:[],notes:""},invoices:{files:[],notes:""},notepad:{text:"Chase re: bay window size"},survey:{files:[],images:[],notes:"",date:"2025-06-05",fitter:"Tom Bailey"},orderConfirmation:{files:[],notes:"Signed and returned"},bills:{files:[],costs:"",notes:""},installation:{date:"",fitters:[],fittersNotes:""},guarantee:{files:[],notes:""}}},
   {id:2,name:"James & Karen Patel",email:"jpatel@outlook.com",phone:"07823 456789",address:"7 Birchwood Rd, Farnborough, GU14 6LT",source:"Referral",stage:"Contacted",notes:"Referred by Mitchell job",createdAt:"2025-06-10",windowcad:"",quoteValue:"",quoteCost:"",tabs:{quote:{files:[],notes:""},invoices:{files:[],notes:""},notepad:{text:""},survey:{files:[],images:[],notes:"",date:"",fitter:""},orderConfirmation:{files:[],notes:""},bills:{files:[],costs:"",notes:""},installation:{date:"",fitters:[],fittersNotes:""},guarantee:{files:[],notes:""}}},
@@ -1607,50 +1633,55 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
 
   const margin=c=>calcMargin(c.quoteValue,c.quoteCost);
 
-  const handleDealWon=(updated)=>{
-    // Create a new job in Installation Pipeline under "Book Survey"
+  // Takes the customer record AFTER it's been saved (so it has its real, server-assigned
+  // id) — the installation job's customerId always correctly points at the right customer.
+  const handleDealWon=(savedCustomer)=>{
     const newJob={
-      id:uid(),
-      customerId:updated.id,
-      title:`${updated.name} — Installation`,
-      products:updated.productsOfInterest||[],
+      customerId:savedCustomer.id,
+      title:`${savedCustomer.name} — Installation`,
+      products:savedCustomer.productsOfInterest||[],
       status:"Book Survey",
       surveyDate:"",installDate:"",installers:"",
-      windowcad:updated.windowcad||"",
-      value:updated.quoteValue||"",
+      windowcad:savedCustomer.windowcad||"",
+      value:savedCustomer.quoteValue||"",
       notes:`Auto-created from Sales Pipeline deal won on ${new Date().toLocaleDateString("en-GB")}`,
-      soldBy:updated.soldBy||"",
+      soldBy:savedCustomer.soldBy||"",
       tabs:emptyTabs(),
     };
-    setJobs(js=>[newJob,...js]);
-    setWonCustomer(updated.name);
-    setShowConfetti(true);
+    apiCreateJob(newJob).then(saved=>{
+      setJobs(js=>[saved,...js]);
+      setWonCustomer(savedCustomer.name);
+      setShowConfetti(true);
+    }).catch(err=>window.alert("Failed to create the installation job: "+err.message));
   };
 
   const saveCustomer=(updated)=>{
     const prev=customers.find(c=>c.id===updated.id);
-    const justWon=updated.stage==="Deal Won"&&prev?.stage!=="Deal Won";
-    if(modal==="add"){
-      setCustomers(cs=>[{...updated,id:uid(),createdAt:new Date().toISOString().slice(0,10)},...cs]);
-      if(updated.stage==="Deal Won") handleDealWon({...updated,id:uid()});
-    } else {
-      setCustomers(cs=>cs.map(c=>c.id===updated.id?updated:c));
-      if(justWon) handleDealWon(updated);
-    }
-    setModal(null);
+    const wasAlreadyWon=prev?.stage==="Deal Won";
+    const isAdd=modal==="add";
+    const persist=isAdd?apiCreateCustomer(updated):apiUpdateCustomer(updated);
+    persist.then(saved=>{
+      setCustomers(cs=>isAdd?[saved,...cs]:cs.map(c=>c.id===saved.id?saved:c));
+      if(saved.stage==="Deal Won"&&!wasAlreadyWon) handleDealWon(saved);
+      setModal(null);
+    }).catch(err=>window.alert("Failed to save customer: "+err.message));
   };
 
   // Also handle stage changes via kanban card detail inline save
   const handleCardSave=(updated)=>{
     const prev=customers.find(c=>c.id===updated.id);
     const justWon=updated.stage==="Deal Won"&&prev?.stage!=="Deal Won";
-    setCustomers(cs=>cs.map(c=>c.id===updated.id?updated:c));
-    if(justWon) handleDealWon(updated);
+    apiUpdateCustomer(updated).then(saved=>{
+      setCustomers(cs=>cs.map(c=>c.id===saved.id?saved:c));
+      if(justWon) handleDealWon(saved);
+    }).catch(err=>window.alert("Failed to save customer: "+err.message));
   };
 
   const deleteCustomer=(id)=>{
     if(!window.confirm("Delete this customer?")) return;
-    setCustomers(cs=>cs.filter(c=>c.id!==id));
+    apiDeleteCustomer(id).then(()=>{
+      setCustomers(cs=>cs.filter(c=>c.id!==id));
+    }).catch(err=>window.alert("Failed to delete customer: "+err.message));
   };
 
   const renderCard=(c)=>{
@@ -1758,14 +1789,19 @@ const InstallPipelinePage = ({jobs,setJobs,customers,settings}) => {
   },[completedJobs,archiveSearch]);
 
   const saveJob=form=>{
-    if(modal==="add"){setJobs(js=>[{...form,id:uid()},...js]);}
-    else{setJobs(js=>js.map(j=>j.id===form.id?form:j));}
-    setModal(null);
+    const isAdd=modal==="add";
+    const persist=isAdd?apiCreateJob(form):apiUpdateJob(form);
+    persist.then(saved=>{
+      setJobs(js=>isAdd?[saved,...js]:js.map(j=>j.id===saved.id?saved:j));
+      setModal(null);
+    }).catch(err=>window.alert("Failed to save job: "+err.message));
   };
 
   const deleteJob=id=>{
     if(!window.confirm("Delete this job?")) return;
-    setJobs(js=>js.filter(j=>j.id!==id));
+    apiDeleteJob(id).then(()=>{
+      setJobs(js=>js.filter(j=>j.id!==id));
+    }).catch(err=>window.alert("Failed to delete job: "+err.message));
   };
 
   const renderCard=(job)=>(
@@ -1823,7 +1859,7 @@ const InstallPipelinePage = ({jobs,setJobs,customers,settings}) => {
           })}
         </div>
         {detailRecord&&<CardDetailModal record={jobs.find(j=>j.id===detailRecord.id)||detailRecord} customers={customers} isJob={true} settings={settings}
-          onSave={updated=>setJobs(js=>js.map(j=>j.id===updated.id?updated:j))}
+          onSave={updated=>apiUpdateJob(updated).then(saved=>setJobs(js=>js.map(j=>j.id===saved.id?saved:j))).catch(err=>window.alert("Failed to save job: "+err.message))}
           onDelete={deleteJob} onClose={()=>setDetailRecord(null)}/>}
       </div>
     );
@@ -1849,7 +1885,7 @@ const InstallPipelinePage = ({jobs,setJobs,customers,settings}) => {
       </div>
       {modal==="add"&&<Modal title="New Job" onClose={()=>setModal(null)}><JobForm customers={customers} initial={{status:defaultStage}} onSave={saveJob} onCancel={()=>setModal(null)}/></Modal>}
       {detailRecord&&<CardDetailModal record={jobs.find(j=>j.id===detailRecord.id)||detailRecord} customers={customers} isJob={true} settings={settings}
-        onSave={updated=>setJobs(js=>js.map(j=>j.id===updated.id?updated:j))}
+        onSave={updated=>apiUpdateJob(updated).then(saved=>setJobs(js=>js.map(j=>j.id===saved.id?saved:j))).catch(err=>window.alert("Failed to save job: "+err.message))}
         onDelete={deleteJob} onClose={()=>setDetailRecord(null)}/>}
     </div>
   );
@@ -2842,7 +2878,11 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
     return evts.sort((a,b)=>a.date.localeCompare(b.date));
   },[jobs,fitterName]);
 
-  const updateJob=(updated)=>setJobs(js=>js.map(j=>j.id===updated.id?updated:j));
+  const updateJob=(updated)=>{
+    apiUpdateJob(updated).then(saved=>{
+      setJobs(js=>js.map(j=>j.id===saved.id?saved:j));
+    }).catch(err=>window.alert("Failed to save job: "+err.message));
+  };
 
   const addSurveyImage=async(e,job)=>{
     const files=Array.from(e.target.files);
@@ -3685,25 +3725,33 @@ const CustomerDirectoryPage = ({customers,setCustomers,jobs,setJobs,settings,onN
 
   const saveCustomer=(form)=>{
     if(editModal){
-      setCustomers(cs=>cs.map(c=>c.id===form.id?form:c));
-      setSelectedCustomer(form);
+      apiUpdateCustomer(form).then(saved=>{
+        setCustomers(cs=>cs.map(c=>c.id===saved.id?saved:c));
+        setSelectedCustomer(saved);
+      }).catch(err=>window.alert("Failed to save customer: "+err.message));
     } else {
-      const nc={...form,id:uid(),createdAt:new Date().toISOString().slice(0,10),stage:"New Enquiry",tabs:{quote:{files:[],notes:""},invoices:{files:[],notes:""},notepad:{text:""},survey:{files:[],images:[],notes:"",date:"",fitter:"",time:"",endTime:""},orderConfirmation:{files:[],notes:""},bills:{files:[],costs:"",notes:""},installation:{date:"",fitters:[],fittersNotes:"",startTime:"",duration:"2",emailReminders:{week:{status:"pending",sentAt:""},day:{status:"pending",sentAt:""}},deliveries:[]},guarantee:{files:[],notes:""},tasks:[],serviceCall:{notes:"",officePhotos:[],fitterPhotos:[],supplierInvoices:[],bookings:[]}}};
-      setCustomers(cs=>[nc,...cs]);
-      setSelectedCustomer(nc);
+      const nc={...form,stage:"New Enquiry",tabs:{quote:{files:[],notes:""},invoices:{files:[],notes:""},notepad:{text:""},survey:{files:[],images:[],notes:"",date:"",fitter:"",time:"",endTime:""},orderConfirmation:{files:[],notes:""},bills:{files:[],costs:"",notes:""},installation:{date:"",fitters:[],fittersNotes:"",startTime:"",duration:"2",emailReminders:{week:{status:"pending",sentAt:""},day:{status:"pending",sentAt:""}},deliveries:[]},guarantee:{files:[],notes:""},tasks:[],serviceCall:{notes:"",officePhotos:[],fitterPhotos:[],supplierInvoices:[],bookings:[]}}};
+      apiCreateCustomer(nc).then(saved=>{
+        setCustomers(cs=>[saved,...cs]);
+        setSelectedCustomer(saved);
+      }).catch(err=>window.alert("Failed to save customer: "+err.message));
     }
     setShowAddModal(false);setEditModal(false);
   };
 
   const deleteCustomer=(id)=>{
     if(!window.confirm("Delete this customer and all their data?")) return;
-    setCustomers(cs=>cs.filter(c=>c.id!==id));
-    setSelectedCustomer(null);
+    apiDeleteCustomer(id).then(()=>{
+      setCustomers(cs=>cs.filter(c=>c.id!==id));
+      setSelectedCustomer(null);
+    }).catch(err=>window.alert("Failed to delete customer: "+err.message));
   };
 
   const saveJob=(form)=>{
-    setJobs(js=>[{...form,id:uid()},...js]);
-    setAddJobModal(false);
+    apiCreateJob(form).then(saved=>{
+      setJobs(js=>[saved,...js]);
+      setAddJobModal(false);
+    }).catch(err=>window.alert("Failed to save job: "+err.message));
   };
 
   const cust=selectedCustomer?customers.find(c=>c.id===selectedCustomer.id)||selectedCustomer:null;
@@ -3911,8 +3959,8 @@ const CustomerDirectoryPage = ({customers,setCustomers,jobs,setJobs,settings,onN
       {selectedJob&&<CardDetailModal
         record={jobs.find(j=>j.id===selectedJob.id)||selectedJob}
         customers={customers} isJob={true} settings={settings}
-        onSave={updated=>setJobs(js=>js.map(j=>j.id===updated.id?updated:j))}
-        onDelete={id=>{setJobs(js=>js.filter(j=>j.id!==id));setSelectedJob(null);}}
+        onSave={updated=>apiUpdateJob(updated).then(saved=>setJobs(js=>js.map(j=>j.id===saved.id?saved:j))).catch(err=>window.alert("Failed to save job: "+err.message))}
+        onDelete={id=>{if(!window.confirm("Delete this job?"))return;apiDeleteJob(id).then(()=>{setJobs(js=>js.filter(j=>j.id!==id));setSelectedJob(null);}).catch(err=>window.alert("Failed to delete job: "+err.message));}}
         onClose={()=>setSelectedJob(null)}
       />}
     </div>
@@ -4063,8 +4111,10 @@ const CustomerDirectoryForm = ({initial={},onSave,onCancel}) => {
 
 // ── App Shell ─────────────────────────────────────────────────────────────────
 function App() {
-  const [customers,setCustomers]=useState(seedCustomers);
-  const [jobs,setJobs]=useState(seedJobs);
+  const [customers,setCustomers]=useState([]);
+  const [jobs,setJobs]=useState([]);
+  const [dataLoaded,setDataLoaded]=useState(false);
+  const [dataLoadError,setDataLoadError]=useState(null);
   const [page,setPage]=useState("dashboard");
   const [userRole,setUserRole]=useState(null);
   const [officeAuthChecked,setOfficeAuthChecked]=useState(false);
@@ -4081,6 +4131,17 @@ function App() {
       .catch(()=>{})
       .finally(()=>setOfficeAuthChecked(true));
   },[]);
+
+  // Load real customers/jobs from the API once someone's actually logged in (office or
+  // fitter) — no point fetching before then, and the API is what replaced the old
+  // seedCustomers/seedJobs in-memory-only data.
+  useEffect(()=>{
+    if(!userRole) return;
+    Promise.all([apiListCustomers(),apiListJobs()])
+      .then(([cs,js])=>{ setCustomers(cs); setJobs(js); })
+      .catch(err=>{ console.error("Failed to load data",err); setDataLoadError(err.message); })
+      .finally(()=>setDataLoaded(true));
+  },[userRole]);
   const [pwInput,setPwInput]=useState("");
   const [pwError,setPwError]=useState(false);
   const [showPw,setShowPw]=useState(false);
@@ -4200,6 +4261,26 @@ function App() {
             })}
           </div>
         </div>
+      </div>
+    );
+  }
+
+  // ── Waiting on customers/jobs to load from the API ──
+  if(!dataLoaded){
+    return (
+      <div style={{minHeight:"100vh",background:C.navy,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}>
+        <div className="spinner"/>
+        <div style={{color:"rgba(255,255,255,0.6)",fontSize:14}}>Loading customers and jobs…</div>
+      </div>
+    );
+  }
+  if(dataLoadError){
+    return (
+      <div style={{minHeight:"100vh",background:C.navy,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,padding:20,textAlign:"center"}}>
+        <div style={{fontSize:40}}>⚠️</div>
+        <div style={{color:"#fff",fontSize:16,fontWeight:700}}>Couldn't load data from the server</div>
+        <div style={{color:"rgba(255,255,255,0.6)",fontSize:13,maxWidth:400}}>{dataLoadError}</div>
+        <button onClick={()=>window.location.reload()} style={{background:C.sky,color:"#fff",border:"none",borderRadius:8,padding:"10px 20px",fontSize:14,fontWeight:700,cursor:"pointer"}}>Retry</button>
       </div>
     );
   }
@@ -4329,7 +4410,7 @@ function App() {
           {page==="calendar"&&<CalendarPage customers={customers} jobs={jobs} settings={settings}/>}
           {page==="orders"&&<TrackOrdersPage jobs={jobs} customers={customers}/>}
           {page==="customers"&&<CustomerDirectoryPage customers={customers} setCustomers={setCustomers} jobs={jobs} setJobs={setJobs} settings={settings} onNavigate={setPage}/>}
-          {page==="settings"&&<SettingsPage settings={settings} setSettings={setSettings} onNewEnquiry={lead=>setCustomers(cs=>[lead,...cs])}/>}
+          {page==="settings"&&<SettingsPage settings={settings} setSettings={setSettings} onNewEnquiry={lead=>apiCreateCustomer(lead).then(saved=>setCustomers(cs=>[saved,...cs])).catch(err=>window.alert("Failed to save enquiry: "+err.message))}/>}
         </div>
       </div>
     </div>
