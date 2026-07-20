@@ -18,7 +18,10 @@ param sqlAadAdminType string = 'User'
 @description('Object ID of the principal running this deployment (the gh-deploy-visualpro-crm app registration). Needs set/get/list on Key Vault secrets so the deployment can write them.')
 param deployPrincipalObjectId string
 
-param sqlServerName string = 'visualpro-crm-sql'
+// Note: not 'visualpro-crm-sql' — an earlier failed deployment attempt left Azure
+// holding a stale name reservation for that name against 'ukwest', so this uses a
+// different name to avoid the InvalidResourceLocation conflict.
+param sqlServerName string = 'visualpro-crm-sqlsvr'
 param sqlDatabaseName string = 'visualpro-crm-db'
 param storageAccountName string = 'visualprocrmstorage'
 param functionAppName string = 'visualpro-crm-func'

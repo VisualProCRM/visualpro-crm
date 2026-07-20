@@ -15,7 +15,7 @@ permissions:
 
 env:
   RESOURCE_GROUP: visualpro-crm_group
-  SQL_SERVER_NAME: visualpro-crm-sql
+  SQL_SERVER_NAME: visualpro-crm-sqlsvr
 
 jobs:
   deploy:
