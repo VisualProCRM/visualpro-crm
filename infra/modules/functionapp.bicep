@@ -17,9 +17,9 @@ param sqlDatabaseName string
 param storageAccountName string
 param storageBlobEndpoint string
 
-@description('Origins allowed to call this API cross-origin (the frontend Static Web App, plus localhost for local dev)')
+@description('Origins allowed to call this API cross-origin (the frontend Static Web App, plus localhost for local dev). Note: the SWA hostname changed after upgrading from Free to Standard tier — this is the post-upgrade hostname, not the original.')
 param corsAllowedOrigins array = [
-  'https://mango-beach-0c25f86107.azurestaticapps.net'
+  'https://mango-beach-0c25f8610.7.azurestaticapps.net'
   'http://localhost:3000'
 ]
 

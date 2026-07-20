@@ -50,7 +50,10 @@ added to it, so both you and the pipeline can administer the database.
 1. **Microsoft Entra ID** → **App registrations** → **New registration**
    - Name: `visualpro-crm-auth`
    - Redirect URI: `Web` →
-     `https://mango-beach-0c25f86107.azurestaticapps.net/.auth/login/aad/callback`
+     `https://mango-beach-0c25f8610.7.azurestaticapps.net/.auth/login/aad/callback`
+     (this is the Static Web App's hostname *after* upgrading to Standard tier — it changed
+     from the original `mango-beach-0c25f86107.azurestaticapps.net`; always check the
+     Portal's Overview page for the current domain rather than trusting this doc)
    - **Register**
 2. **Certificates & secrets** → **New client secret** → copy the **Value** immediately (it's
    only shown once) → this is `AAD_CLIENT_SECRET`.
