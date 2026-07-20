@@ -3,10 +3,7 @@
   "contentVersion": "1.0.0.0",
   "parameters": {
     "location": {
-      "value": "uksouth"
-    },
-    "sqlLocation": {
-      "value": "ukwest"
+      "value": "centralus"
     },
     "sqlServerName": {
       "value": "visualpro-crm-sql"
