@@ -34,6 +34,31 @@ resource senderUsername 'Microsoft.Communication/emailServices/domains/senderUse
   }
 }
 
+// Custom domain: visualglazing.co.uk, so reminder emails can come from (and be replied to
+// at) enquiries@visualglazing.co.uk instead of the unpolished donotreply@<guid>.azurecomm.net
+// Azure-managed address. Unlike AzureManagedDomain, this requires the domain owner to add
+// DNS TXT/CNAME verification records — Azure generates the exact records once this resource
+// is created (surfaced via ARM as `properties.verificationRecords`), they can't be predicted
+// ahead of time, so this deploys in "NotStarted" verification status until those records are
+// added and verification is triggered.
+resource customDomain 'Microsoft.Communication/emailServices/domains@2023-04-01' = {
+  parent: emailService
+  name: 'visualglazing.co.uk'
+  location: 'global'
+  properties: {
+    domainManagement: 'CustomerManaged'
+  }
+}
+
+resource customSenderUsername 'Microsoft.Communication/emailServices/domains/senderUsernames@2023-04-01' = {
+  parent: customDomain
+  name: 'enquiries'
+  properties: {
+    username: 'enquiries'
+    displayName: 'Visual Glazing Ltd'
+  }
+}
+
 resource communicationService 'Microsoft.Communication/communicationServices@2023-04-01' = {
   name: communicationServiceName
   location: 'global'
@@ -41,6 +66,7 @@ resource communicationService 'Microsoft.Communication/communicationServices@202
     dataLocation: dataLocation
     linkedDomains: [
       emailDomain.id
+      customDomain.id
     ]
   }
 }

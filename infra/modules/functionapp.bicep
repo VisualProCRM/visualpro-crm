@@ -24,6 +24,12 @@ param acsConnectionString string
 @description('Name of the Communication Services Email Service resource, used by the sending Function to look up its assigned Azure-managed sender domain at runtime via the ARM API (needs the Reader role, granted in main.bicep).')
 param emailServiceName string
 
+@description('Which ACS Email domain resource to send from — "AzureManagedDomain" (default, always-verified fallback) or the custom domain name (e.g. "visualglazing.co.uk") once its DNS verification records have been added and it shows Verified in the Portal.')
+param emailDomainName string = 'AzureManagedDomain'
+
+@description('Sender mailbox username within the chosen email domain — must match a senderUsernames resource under that domain in email.bicep (e.g. "donotreply" for AzureManagedDomain, "enquiries" for the custom domain).')
+param emailSenderUsername string = 'donotreply'
+
 @description('Origins allowed to call this API cross-origin (the frontend Static Web App, plus localhost for local dev, plus the Azure Portal so its built-in Test/Run feature works for manually invoking functions like the timer trigger). Note: the SWA hostname changed after upgrading from Free to Standard tier — this is the post-upgrade hostname, not the original.')
 param corsAllowedOrigins array = [
   'https://mango-beach-0c25f8610.7.azurestaticapps.net'
@@ -94,6 +100,8 @@ resource functionApp 'Microsoft.Web/sites@2023-01-01' = {
         { name: 'KEY_VAULT_URI', value: keyVaultUri }
         { name: 'ACS_CONNECTION_STRING', value: acsConnectionString }
         { name: 'EMAIL_SERVICE_NAME', value: emailServiceName }
+        { name: 'EMAIL_DOMAIN_NAME', value: emailDomainName }
+        { name: 'EMAIL_SENDER_USERNAME', value: emailSenderUsername }
         { name: 'RESOURCE_GROUP_NAME', value: resourceGroup().name }
         { name: 'AZURE_SUBSCRIPTION_ID', value: subscription().subscriptionId }
       ]
