@@ -155,6 +155,9 @@ const apiDeleteJob = (id) => apiRequest(`/jobs/${id}`, { method: "DELETE" });
 
 const apiGetSettings = () => apiRequest("/settings");
 const apiUpdateSettings = (data) => apiRequest("/settings", { method: "PUT", body: JSON.stringify(data) });
+
+const apiGetOrders = () => apiRequest("/orders");
+const apiUpdateOrders = (data) => apiRequest("/orders", { method: "PUT", body: JSON.stringify(data) });
 const apiSendReminder = (jobId, reminderKey) =>
   apiRequest("/send-reminder", { method: "POST", body: JSON.stringify({ jobId, reminderKey }) });
 
@@ -3479,9 +3482,36 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
 const TrackOrdersPage = ({jobs,customers}) => {
   const [viewDate,setViewDate]=useState(new Date());
   const [orders,setOrders]=useState([]);
+  const [ordersLoaded,setOrdersLoaded]=useState(false);
+  // idle | saving | saved | error
+  const [saveStatus,setSaveStatus]=useState("idle");
+  const skipNextSave=useRef(true); // don't fire a save for the initial load from the API
   const [showModal,setShowModal]=useState(false);
   const [editOrder,setEditOrder]=useState(null);
   const [form,setForm]=useState({jobId:"",supplier:"",description:"",deliveryDate:"",status:"Ordered",notes:""});
+
+  // Load the manually-added orders list from the API once on mount — separate from the job
+  // card deliveries below, which arrive via the jobs prop instead.
+  useEffect(()=>{
+    apiGetOrders()
+      .then(saved=>setOrders(saved||[]))
+      .catch(err=>console.error("Failed to load orders",err))
+      .finally(()=>setOrdersLoaded(true));
+  },[]);
+
+  // Auto-saves ~800ms after the last change, same pattern as Settings — no explicit
+  // "Save" button to forget to click.
+  useEffect(()=>{
+    if(skipNextSave.current){skipNextSave.current=false;return;}
+    setSaveStatus("saving");
+    const timer=setTimeout(()=>{
+      apiUpdateOrders(orders)
+        .then(()=>{setSaveStatus("saved");setTimeout(()=>setSaveStatus(s=>s==="saved"?"idle":s),2000);})
+        .catch(err=>{setSaveStatus("error");window.alert("Failed to save orders: "+err.message);});
+    },800);
+    return ()=>clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[orders]);
 
   const ORDER_STATUSES=["Ordered","In Transit","Out for Delivery","Delivered","Delayed"];
   const STATUS_STYLE={
@@ -3576,6 +3606,9 @@ const TrackOrdersPage = ({jobs,customers}) => {
           <div style={{fontSize:12,color:C.slate}}>
             <span style={{background:C.skyLight,color:C.sky,padding:"2px 8px",borderRadius:8,fontWeight:600,marginRight:6}}>📋 {jobDeliveries.length} from job cards</span>
             <span style={{background:C.slateLight,color:C.slate,padding:"2px 8px",borderRadius:8,fontWeight:600}}>➕ {orders.length} manual</span>
+          </div>
+          <div style={{background:saveStatus==="saving"?C.slateLight:saveStatus==="error"?"#FEF2F2":"#F0FDF4",color:saveStatus==="saving"?C.slate:saveStatus==="error"?C.red:C.mint,fontSize:12,fontWeight:700,padding:"7px 14px",borderRadius:8,border:`1px solid ${saveStatus==="saving"?C.border:saveStatus==="error"?"#FECACA":"#86EFAC"}`,whiteSpace:"nowrap"}}>
+            {saveStatus==="saving"?"Saving…":saveStatus==="error"?"⚠ Save failed":"✓ Saved"}
           </div>
           <Btn onClick={openAdd}>+ Add Delivery</Btn>
         </div>
