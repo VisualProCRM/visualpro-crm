@@ -24,10 +24,11 @@ param acsConnectionString string
 @description('Name of the Communication Services Email Service resource, used by the sending Function to look up its assigned Azure-managed sender domain at runtime via the ARM API (needs the Reader role, granted in main.bicep).')
 param emailServiceName string
 
-@description('Origins allowed to call this API cross-origin (the frontend Static Web App, plus localhost for local dev). Note: the SWA hostname changed after upgrading from Free to Standard tier — this is the post-upgrade hostname, not the original.')
+@description('Origins allowed to call this API cross-origin (the frontend Static Web App, plus localhost for local dev, plus the Azure Portal so its built-in Test/Run feature works for manually invoking functions like the timer trigger). Note: the SWA hostname changed after upgrading from Free to Standard tier — this is the post-upgrade hostname, not the original.')
 param corsAllowedOrigins array = [
   'https://mango-beach-0c25f8610.7.azurestaticapps.net'
   'http://localhost:3000'
+  'https://portal.azure.com'
 ]
 
 resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
