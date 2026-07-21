@@ -41,11 +41,11 @@ param aadAuthClientSecret string
 param communicationServiceName string = 'visualpro-crm-acs'
 param emailServiceName string = 'visualpro-crm-email'
 
-@description('Which ACS Email domain to send reminders from — stays "AzureManagedDomain" until the custom visualglazing.co.uk domain (provisioned in email.bicep) is DNS-verified, then flips to "visualglazing.co.uk".')
-param emailDomainName string = 'AzureManagedDomain'
+@description('Which ACS Email domain to send reminders from. Now "visualglazing.co.uk" — DNS-verified (Domain/SPF/DKIM/DKIM2 all Verified) on 2026-07-21. Was "AzureManagedDomain" before that.')
+param emailDomainName string = 'visualglazing.co.uk'
 
-@description('Sender mailbox username — "donotreply" for AzureManagedDomain, "enquiries" for the custom domain.')
-param emailSenderUsername string = 'donotreply'
+@description('Sender mailbox username — "enquiries" for the custom domain (was "donotreply" for AzureManagedDomain).')
+param emailSenderUsername string = 'enquiries'
 
 module storage 'modules/storage.bicep' = {
   name: 'storage-deploy'
