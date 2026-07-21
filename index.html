@@ -29,7 +29,7 @@
   </div>
   <div id="root"></div>
   <script type="text/babel" data-presets="react" data-plugins="transform-modules-umd">
-const { useState, useMemo, useEffect } = React;
+const { useState, useMemo, useEffect, useRef } = React;
 
 // ── Palette ───────────────────────────────────────────────────────────────────
 const C = {
@@ -2313,7 +2313,9 @@ const FitterRow = ({fitter,index,pw,settings,setSettings}) => {
 };
 const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
   const [activeSection,setActiveSection]=useState("fitters");
-  const [saved,setSaved]=useState(false);
+  // idle | saving | saved | error
+  const [saveStatus,setSaveStatus]=useState("idle");
+  const skipNextSave=useRef(true); // don't fire a save for the initial load from the API
 
   const update=(key,val)=>setSettings(s=>({...s,[key]:val}));
   const updateTemplate=(key,field,val)=>setSettings(s=>({...s,emailTemplates:{...s.emailTemplates,[key]:{...s.emailTemplates[key],[field]:val}}}));
@@ -2322,11 +2324,19 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
   const updatePerson=(key,i,val)=>setSettings(s=>({...s,[key]:s[key].map((p,idx)=>idx===i?val:p)}));
   const removePerson=(key,i)=>setSettings(s=>({...s,[key]:s[key].filter((_,idx)=>idx!==i)}));
 
-  const handleSave=()=>{
-    apiUpdateSettings(settings)
-      .then(()=>{setSaved(true);setTimeout(()=>setSaved(false),2000);})
-      .catch(err=>window.alert("Failed to save settings: "+err.message));
-  };
+  // Auto-saves ~800ms after the last change, rather than requiring an explicit click —
+  // that was a real trap (edit a bunch of settings, navigate away, lose it all silently).
+  useEffect(()=>{
+    if(skipNextSave.current){skipNextSave.current=false;return;}
+    setSaveStatus("saving");
+    const timer=setTimeout(()=>{
+      apiUpdateSettings(settings)
+        .then(()=>{setSaveStatus("saved");setTimeout(()=>setSaveStatus(s=>s==="saved"?"idle":s),2000);})
+        .catch(err=>{setSaveStatus("error");window.alert("Failed to save settings: "+err.message);});
+    },800);
+    return ()=>clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[settings]);
 
   const sectionBtn=(id,label,icon)=>(
     <button onClick={()=>setActiveSection(id)} style={{
@@ -2387,7 +2397,9 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
               + Add Fitter
             </button>
             <div style={{marginTop:20,paddingTop:20,borderTop:`1px solid ${C.border}`,display:"flex",justifyContent:"flex-end",gap:10}}>
-              <Btn onClick={handleSave}>{saved?"✓ Saved!":"Save Changes"}</Btn>
+              <div style={{background:saveStatus==="saving"?C.slateLight:saveStatus==="error"?"#FEF2F2":"#F0FDF4",color:saveStatus==="saving"?C.slate:saveStatus==="error"?C.red:C.mint,fontSize:12,fontWeight:700,padding:"7px 14px",borderRadius:8,border:`1px solid ${saveStatus==="saving"?C.border:saveStatus==="error"?"#FECACA":"#86EFAC"}`,whiteSpace:"nowrap"}}>
+                {saveStatus==="saving"?"Saving…":saveStatus==="error"?"⚠ Save failed":"✓ Saved"}
+              </div>
             </div>
           </div>
         )}
@@ -2411,7 +2423,9 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
               + Add Staff Member
             </button>
             <div style={{marginTop:20,paddingTop:20,borderTop:`1px solid ${C.border}`,display:"flex",justifyContent:"flex-end"}}>
-              <Btn onClick={handleSave}>{saved?"✓ Saved!":"Save Changes"}</Btn>
+              <div style={{background:saveStatus==="saving"?C.slateLight:saveStatus==="error"?"#FEF2F2":"#F0FDF4",color:saveStatus==="saving"?C.slate:saveStatus==="error"?C.red:C.mint,fontSize:12,fontWeight:700,padding:"7px 14px",borderRadius:8,border:`1px solid ${saveStatus==="saving"?C.border:saveStatus==="error"?"#FECACA":"#86EFAC"}`,whiteSpace:"nowrap"}}>
+                {saveStatus==="saving"?"Saving…":saveStatus==="error"?"⚠ Save failed":"✓ Saved"}
+              </div>
             </div>
           </div>
         )}
@@ -2435,7 +2449,9 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
               + Add Supplier
             </button>
             <div style={{marginTop:20,paddingTop:20,borderTop:`1px solid ${C.border}`,display:"flex",justifyContent:"flex-end"}}>
-              <Btn onClick={handleSave}>{saved?"✓ Saved!":"Save Changes"}</Btn>
+              <div style={{background:saveStatus==="saving"?C.slateLight:saveStatus==="error"?"#FEF2F2":"#F0FDF4",color:saveStatus==="saving"?C.slate:saveStatus==="error"?C.red:C.mint,fontSize:12,fontWeight:700,padding:"7px 14px",borderRadius:8,border:`1px solid ${saveStatus==="saving"?C.border:saveStatus==="error"?"#FECACA":"#86EFAC"}`,whiteSpace:"nowrap"}}>
+                {saveStatus==="saving"?"Saving…":saveStatus==="error"?"⚠ Save failed":"✓ Saved"}
+              </div>
             </div>
           </div>
         )}
@@ -2452,7 +2468,9 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
               <Inp label="Company Website" value={settings.companyWebsite} onChange={e=>update("companyWebsite",e.target.value)} placeholder="e.g. www.abcglazing.co.uk"/>
             </div>
             <div style={{marginTop:20,paddingTop:20,borderTop:`1px solid ${C.border}`,display:"flex",justifyContent:"flex-end"}}>
-              <Btn onClick={handleSave}>{saved?"✓ Saved!":"Save Changes"}</Btn>
+              <div style={{background:saveStatus==="saving"?C.slateLight:saveStatus==="error"?"#FEF2F2":"#F0FDF4",color:saveStatus==="saving"?C.slate:saveStatus==="error"?C.red:C.mint,fontSize:12,fontWeight:700,padding:"7px 14px",borderRadius:8,border:`1px solid ${saveStatus==="saving"?C.border:saveStatus==="error"?"#FECACA":"#86EFAC"}`,whiteSpace:"nowrap"}}>
+                {saveStatus==="saving"?"Saving…":saveStatus==="error"?"⚠ Save failed":"✓ Saved"}
+              </div>
             </div>
           </div>
         )}
@@ -2485,7 +2503,9 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
                 <div style={{marginTop:16,paddingTop:16,borderTop:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                   <button onClick={()=>updateTemplate(key,"body",DEFAULT_EMAIL_TEMPLATES[key].body)||updateTemplate(key,"subject",DEFAULT_EMAIL_TEMPLATES[key].subject)}
                     style={{background:"none",border:"none",color:C.muted,fontSize:13,cursor:"pointer"}}>↩ Reset to default</button>
-                  <Btn onClick={handleSave}>{saved?"✓ Saved!":"Save Changes"}</Btn>
+                  <div style={{background:saveStatus==="saving"?C.slateLight:saveStatus==="error"?"#FEF2F2":"#F0FDF4",color:saveStatus==="saving"?C.slate:saveStatus==="error"?C.red:C.mint,fontSize:12,fontWeight:700,padding:"7px 14px",borderRadius:8,border:`1px solid ${saveStatus==="saving"?C.border:saveStatus==="error"?"#FECACA":"#86EFAC"}`,whiteSpace:"nowrap"}}>
+                {saveStatus==="saving"?"Saving…":saveStatus==="error"?"⚠ Save failed":"✓ Saved"}
+              </div>
                 </div>
               </div>
             ))}
@@ -2524,7 +2544,9 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
                 + Add Question
               </button>
               <div style={{paddingTop:16,borderTop:`1px solid ${C.border}`,display:"flex",justifyContent:"flex-end"}}>
-                <Btn onClick={handleSave}>{saved?"✓ Saved!":"Save Changes"}</Btn>
+                <div style={{background:saveStatus==="saving"?C.slateLight:saveStatus==="error"?"#FEF2F2":"#F0FDF4",color:saveStatus==="saving"?C.slate:saveStatus==="error"?C.red:C.mint,fontSize:12,fontWeight:700,padding:"7px 14px",borderRadius:8,border:`1px solid ${saveStatus==="saving"?C.border:saveStatus==="error"?"#FECACA":"#86EFAC"}`,whiteSpace:"nowrap"}}>
+                {saveStatus==="saving"?"Saving…":saveStatus==="error"?"⚠ Save failed":"✓ Saved"}
+              </div>
               </div>
             </div>
           </div>
