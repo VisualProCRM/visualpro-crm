@@ -1,6 +1,6 @@
 const { app } = require('@azure/functions');
 const { getPool } = require('../db');
-const { sendJobReminder, getSenderDomain } = require('../reminderCore');
+const { sendJobReminder, getSenderDomain, getDomainProperties } = require('../reminderCore');
 
 // Manual trigger — used by the app's "Send Now" button. The automatic daily version is
 // reminderTimer.js, sharing the same sendJobReminder logic from reminderCore.js.
@@ -12,6 +12,11 @@ app.http('sendReminder', {
     try {
       const body = await request.json();
       const { jobId, reminderKey, testEmailOverride, debug } = body;
+
+      if (debug === 'customDomain') {
+        const props = await getDomainProperties('visualglazing.co.uk');
+        return { jsonBody: props };
+      }
 
       if (debug) {
         const domainInfo = await getSenderDomain();

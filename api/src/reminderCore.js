@@ -8,22 +8,31 @@ const { getPool, sql } = require('./db');
 const emailClient = new EmailClient(process.env.ACS_CONNECTION_STRING);
 const armCredential = new DefaultAzureCredential();
 
-// Looks up the Azure-managed domain's actual assigned sender hostname via the ARM API
-// (read-only, via the Function App's managed identity + Reader role) rather than hardcoding
-// it, since the exact hostname is only known after deployment.
-async function getSenderDomain() {
+// Looks up an ACS Email domain's properties via the ARM API (read-only, via the Function
+// App's managed identity + Reader role). Shared by getSenderDomain() (the domain currently
+// configured to send from) and the debug endpoint's custom-domain-verification lookup.
+async function getDomainProperties(domainName) {
   const token = await armCredential.getToken('https://management.azure.com/.default');
   const subId = process.env.AZURE_SUBSCRIPTION_ID;
   const rg = process.env.RESOURCE_GROUP_NAME;
   const emailServiceName = process.env.EMAIL_SERVICE_NAME;
-  const url = `https://management.azure.com/subscriptions/${subId}/resourceGroups/${rg}/providers/Microsoft.Communication/emailServices/${emailServiceName}/domains/AzureManagedDomain?api-version=2023-04-01`;
+  const url = `https://management.azure.com/subscriptions/${subId}/resourceGroups/${rg}/providers/Microsoft.Communication/emailServices/${emailServiceName}/domains/${domainName}?api-version=2023-04-01`;
   const res = await fetch(url, { headers: { Authorization: `Bearer ${token.token}` } });
   if (!res.ok) {
     throw new Error(`ARM lookup failed: ${res.status} ${await res.text()}`);
   }
   const json = await res.json();
-  const props = json.properties || {};
-  const hostname = props.mailFromSenderDomain || props.fromSenderDomain || props.dataLocation;
+  return json.properties || {};
+}
+
+// Looks up the actual assigned sender hostname for whichever domain is currently configured
+// (EMAIL_DOMAIN_NAME — "AzureManagedDomain" by default, or the custom domain once verified)
+// via the ARM API rather than hardcoding it, since the exact hostname is only known after
+// deployment.
+async function getSenderDomain() {
+  const domainName = process.env.EMAIL_DOMAIN_NAME || 'AzureManagedDomain';
+  const props = await getDomainProperties(domainName);
+  const hostname = props.mailFromSenderDomain || props.fromSenderDomain || props.dataLocation || domainName;
   return { hostname, rawProperties: props };
 }
 
@@ -97,7 +106,8 @@ async function sendJobReminder({ pool, jobId, reminderKey, testEmailOverride }) 
   const plainText = fillTemplate(tmpl.body, vars);
 
   const { hostname } = await getSenderDomain();
-  const senderAddress = `donotreply@${hostname}`;
+  const senderUsername = process.env.EMAIL_SENDER_USERNAME || 'donotreply';
+  const senderAddress = `${senderUsername}@${hostname}`;
 
   const poller = await emailClient.beginSend({
     senderAddress,
@@ -124,4 +134,4 @@ async function sendJobReminder({ pool, jobId, reminderKey, testEmailOverride }) 
   return { sent: true, to: recipient, senderAddress, messageId: result.id };
 }
 
-module.exports = { sendJobReminder, getSenderDomain };
+module.exports = { sendJobReminder, getSenderDomain, getDomainProperties };
