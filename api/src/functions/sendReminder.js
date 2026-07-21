@@ -8,9 +8,7 @@ const armCredential = new DefaultAzureCredential();
 
 // Looks up the Azure-managed domain's actual assigned sender hostname via the ARM API
 // (read-only, via the Function App's managed identity + Reader role) rather than hardcoding
-// it, since the exact hostname is only known after deployment. Returns the raw ARM
-// properties object too, so a caller can inspect the real field names if our guesses below
-// are wrong.
+// it, since the exact hostname is only known after deployment.
 async function getSenderDomain() {
   const token = await armCredential.getToken('https://management.azure.com/.default');
   const subId = process.env.AZURE_SUBSCRIPTION_ID;
@@ -34,41 +32,30 @@ function fillTemplate(tmpl, vars) {
   );
 }
 
-// Default templates mirror DEFAULT_EMAIL_TEMPLATES in index.html. Note: these are NOT read
-// from the frontend's Settings (which isn't persisted to the backend at all yet) — if a
-// customer edits templates in Settings, this backend copy won't reflect that until Settings
-// itself is persisted. Known limitation, flagged for follow-up.
-const TEMPLATES = {
-  week: {
-    subject: 'Your Installation is Coming Up - {{customerName}}',
-    body: `Dear {{customerName}},
+// Matches DEFAULT_EMAIL_TEMPLATES.installReminder in index.html — used only if Settings has
+// never been saved (no row yet). Once saved, the real settings.emailTemplates.installReminder
+// (whatever the office has customized it to) is used instead, fetched fresh from the
+// database on every send, not the frontend's in-memory copy.
+const DEFAULT_INSTALL_REMINDER = {
+  subject: 'Reminder: Your Installation is Tomorrow – {{customerName}}',
+  body: `Dear {{customerName}},
 
-Just a reminder that your installation is booked for:
-
-Date: {{installDate}}
-Installers: {{fitterNames}}
-Address: {{address}}
-
-If you have any questions before then, please get in touch.
-
-Kind regards,
-{{companyName}}`,
-  },
-  day: {
-    subject: 'Your Installation is Tomorrow - {{customerName}}',
-    body: `Dear {{customerName}},
-
-Just a reminder that your installation is tomorrow:
+This is a friendly reminder that your installation is scheduled for tomorrow:
 
 Date: {{installDate}}
 Installers: {{fitterNames}}
 Address: {{address}}
 
-Please ensure access is available and any furniture near windows/doors is moved.
+Please ensure:
+- Access to the property is available
+- Any furniture near the areas to be fitted is cleared
+- Pets are secured away from the work area
+
+We look forward to seeing you tomorrow!
 
 Kind regards,
-{{companyName}}`,
-  },
+{{companyName}}
+{{companyPhone}}`,
 };
 
 app.http('sendReminder', {
@@ -105,6 +92,10 @@ app.http('sendReminder', {
       const recipient = testEmailOverride || customer.email;
       if (!recipient) return { status: 400, jsonBody: { error: 'No recipient email available' } };
 
+      const settingsResult = await pool.request().query('SELECT * FROM dbo.Settings WHERE TenantId = 1');
+      const settings = settingsResult.recordset.length ? JSON.parse(settingsResult.recordset[0].DataJson) : {};
+      const tmpl = settings.emailTemplates?.installReminder || DEFAULT_INSTALL_REMINDER;
+
       const installDate = job.tabs?.installation?.date;
       const vars = {
         customerName: customer.name || '',
@@ -113,10 +104,10 @@ app.http('sendReminder', {
           ? new Date(installDate).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
           : '',
         fitterNames: (job.tabs?.installation?.fitters || []).join(', '),
-        companyName: 'VisualPro',
+        companyName: settings.companyName || 'VisualPro',
+        companyPhone: settings.companyPhone || '',
       };
 
-      const tmpl = TEMPLATES[reminderKey];
       const subject = fillTemplate(tmpl.subject, vars);
       const plainText = fillTemplate(tmpl.body, vars);
 

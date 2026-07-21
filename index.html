@@ -153,6 +153,11 @@ const apiCreateJob = (data) => apiRequest("/jobs", { method: "POST", body: JSON.
 const apiUpdateJob = (data) => apiRequest(`/jobs/${data.id}`, { method: "PUT", body: JSON.stringify(data) });
 const apiDeleteJob = (id) => apiRequest(`/jobs/${id}`, { method: "DELETE" });
 
+const apiGetSettings = () => apiRequest("/settings");
+const apiUpdateSettings = (data) => apiRequest("/settings", { method: "PUT", body: JSON.stringify(data) });
+const apiSendReminder = (jobId, reminderKey) =>
+  apiRequest("/send-reminder", { method: "POST", body: JSON.stringify({ jobId, reminderKey }) });
+
 const seedCustomers = [
   {id:1,name:"Sarah Mitchell",email:"sarah.mitchell@email.com",phone:"07712 345678",address:"14 Oak Lane, Camberley, GU15 2AB",source:"Website",stage:"Deal Won",notes:"Prefers morning calls",createdAt:"2025-06-01",windowcad:"WC-2025-001",quoteValue:4200,quoteCost:2650,tabs:{quote:{files:[],notes:""},invoices:{files:[],notes:""},notepad:{text:"Chase re: bay window size"},survey:{files:[],images:[],notes:"",date:"2025-06-05",fitter:"Tom Bailey"},orderConfirmation:{files:[],notes:"Signed and returned"},bills:{files:[],costs:"",notes:""},installation:{date:"",fitters:[],fittersNotes:""},guarantee:{files:[],notes:""}}},
   {id:2,name:"James & Karen Patel",email:"jpatel@outlook.com",phone:"07823 456789",address:"7 Birchwood Rd, Farnborough, GU14 6LT",source:"Referral",stage:"Contacted",notes:"Referred by Mitchell job",createdAt:"2025-06-10",windowcad:"",quoteValue:"",quoteCost:"",tabs:{quote:{files:[],notes:""},invoices:{files:[],notes:""},notepad:{text:""},survey:{files:[],images:[],notes:"",date:"",fitter:""},orderConfirmation:{files:[],notes:""},bills:{files:[],costs:"",notes:""},installation:{date:"",fitters:[],fittersNotes:""},guarantee:{files:[],notes:""}}},
@@ -1026,25 +1031,14 @@ const CardDetailModal = ({record,customers,onSave,onDelete,onClose,isJob,setting
             const weekDate=calcSendDate(7,instDate);
             const dayDate=calcSendDate(1,instDate);
 
-            const fillTemplate=(tmpl)=>{
-              if(!tmpl||!customerRec) return "";
-              return tmpl
-                .replace(/{{customerName}}/g,customerRec.name||"")
-                .replace(/{{address}}/g,customerRec.address||"")
-                .replace(/{{installDate}}/g,instDate?new Date(instDate).toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long",year:"numeric"}):"")
-                .replace(/{{fitterNames}}/g,(data.tabs.installation.fitters||[]).join(", ")||"")
-                .replace(/{{companyName}}/g,settings?.companyName||"VisualPro")
-                .replace(/{{companyPhone}}/g,settings?.companyPhone||"");
-            };
-
             const handleSendEmail=(reminderKey)=>{
               if(!instDate||!customerRec) return;
-              const tmpl=settings?.emailTemplates?.installReminder;
-              const body=fillTemplate(tmpl?.body||"");
-              const subject=fillTemplate(tmpl?.subject||"Install Reminder");
-              const mailto=`mailto:${customerRec.email||""}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-              window.open(mailto,"_blank");
-              setTab("installation",{emailReminders:{...emailReminders,[reminderKey]:{status:"sent",sentAt:new Date().toLocaleDateString("en-GB")}}});
+              if(!window.confirm(`This will send a real email to ${customerRec.email}. Are you sure?`)) return;
+              apiSendReminder(data.id,reminderKey)
+                .then(()=>{
+                  setTab("installation",{emailReminders:{...emailReminders,[reminderKey]:{status:"sent",sentAt:new Date().toLocaleDateString("en-GB")}}});
+                })
+                .catch(err=>window.alert("Failed to send email: "+err.message));
             };
 
             const ReminderRow=({label,icon,sendDate,reminderKey,daysLabel})=>{
@@ -1086,7 +1080,7 @@ const CardDetailModal = ({record,customers,onSave,onDelete,onClose,isJob,setting
                   <div>
                     <div style={{color:"#fff",fontWeight:700,fontSize:14}}>Customer Email Reminders</div>
                     <div style={{color:"rgba(255,255,255,0.6)",fontSize:11,marginTop:1}}>
-                      Emails open in your mail client. Automated sending will be active once Azure is connected.
+                      Sends a real email automatically using your saved template in Settings.
                     </div>
                   </div>
                 </div>
@@ -2048,6 +2042,19 @@ const DEFAULT_FEEDBACK_QUESTIONS = [
   {question:"Any additional comments?",type:"text"},
 ];
 
+const DEFAULT_SETTINGS = {
+  fitters:[...DEFAULT_FITTERS],
+  staff:[...DEFAULT_STAFF],
+  suppliers:[...DEFAULT_SUPPLIERS],
+  companyName:"VisualPro",
+  companyPhone:"",
+  companyEmail:"",
+  companyWebsite:"",
+  emailTemplates:{...DEFAULT_EMAIL_TEMPLATES},
+  feedbackQuestions:[...DEFAULT_FEEDBACK_QUESTIONS],
+  fitterPasswords:{"Tom Bailey":"glazing1","Steve Marsh":"glazing2","Dan Rees":"glazing3","Chris Wood":"glazing4"},
+};
+
 // ── Customer Feedback Form (live form for customer to fill in) ─────────────────
 const FeedbackFormModal = ({job,customers,settings,onSubmit,onClose}) => {
   const customer=customers.find(c=>c.id===job.customerId);
@@ -2315,7 +2322,11 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
   const updatePerson=(key,i,val)=>setSettings(s=>({...s,[key]:s[key].map((p,idx)=>idx===i?val:p)}));
   const removePerson=(key,i)=>setSettings(s=>({...s,[key]:s[key].filter((_,idx)=>idx!==i)}));
 
-  const handleSave=()=>{setSaved(true);setTimeout(()=>setSaved(false),2000);};
+  const handleSave=()=>{
+    apiUpdateSettings(settings)
+      .then(()=>{setSaved(true);setTimeout(()=>setSaved(false),2000);})
+      .catch(err=>window.alert("Failed to save settings: "+err.message));
+  };
 
   const sectionBtn=(id,label,icon)=>(
     <button onClick={()=>setActiveSection(id)} style={{
@@ -4165,18 +4176,19 @@ function App() {
   const [showPw,setShowPw]=useState(false);
   const [gs,setGs]=useState("");
   const [gsOpen,setGsOpen]=useState(false);
-  const [settings,setSettings]=useState({
-    fitters:[...DEFAULT_FITTERS],
-    staff:[...DEFAULT_STAFF],
-    suppliers:[...DEFAULT_SUPPLIERS],
-    companyName:"VisualPro",
-    companyPhone:"",
-    companyEmail:"",
-    companyWebsite:"",
-    emailTemplates:{...DEFAULT_EMAIL_TEMPLATES},
-    feedbackQuestions:[...DEFAULT_FEEDBACK_QUESTIONS],
-    fitterPasswords:{"Tom Bailey":"glazing1","Steve Marsh":"glazing2","Dan Rees":"glazing3","Chris Wood":"glazing4"},
-  });
+  const [settings,setSettings]=useState({...DEFAULT_SETTINGS});
+  const [settingsLoaded,setSettingsLoaded]=useState(false);
+
+  // Settings (fitters/passwords/templates/company details) are needed on the login screen
+  // itself, before anyone's authenticated — so this fetches independently of userRole,
+  // unlike customers/jobs below. Merges fetched values over the local defaults, so any
+  // field added to DEFAULT_SETTINGS later still has a sane fallback for older saved rows.
+  useEffect(()=>{
+    apiGetSettings()
+      .then(saved=>{ if(saved) setSettings(s=>({...s,...saved})); })
+      .catch(err=>console.error("Failed to load settings",err))
+      .finally(()=>setSettingsLoaded(true));
+  },[]);
 
   const handleFitterLogin=()=>{
     const storedPw=settings.fitterPasswords?.[selectedFitter]||"";
@@ -4186,8 +4198,8 @@ function App() {
 
   const resetLogin=()=>{setSelectedFitter(null);setPwInput("");setPwError(false);setShowPw(false);};
 
-  // ── Login: waiting on the /.auth/me check above, before showing anything ──
-  if(!userRole&&!officeAuthChecked){
+  // ── Login: waiting on the /.auth/me check and real Settings (fitters/passwords), before showing anything ──
+  if(!userRole&&(!officeAuthChecked||!settingsLoaded)){
     return (
       <div style={{minHeight:"100vh",background:C.navy,display:"flex",alignItems:"center",justifyContent:"center"}}>
         <div className="spinner"/>
