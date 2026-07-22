@@ -198,6 +198,12 @@ const calcMargin = (value,cost) => {
   return {profit:v-c,pct:((v-c)/v*100).toFixed(1)};
 };
 
+// A customer's quote is split into Product (quoteValue/quoteCost — the original fields,
+// just relabeled in the UI) and Installation (installationValue/installationCost, added
+// alongside). Margin is calculated from the combined total of both, not either alone.
+const totalQuoteValue = (c) => (Number(c?.quoteValue)||0) + (Number(c?.installationValue)||0);
+const totalQuoteCost = (c) => (Number(c?.quoteCost)||0) + (Number(c?.installationCost)||0);
+
 const readFileAsDataURL = (file) => new Promise(res => {
   const r=new FileReader(); r.onload=e=>res({name:file.name,type:file.type,data:e.target.result}); r.readAsDataURL(file);
 });
@@ -335,7 +341,7 @@ const CardDetailModal = ({record,customers,onSave,onDelete,onClose,isJob,setting
   const addImage=(file)=>setData(d=>({...d,tabs:{...d.tabs,survey:{...d.tabs.survey,images:[...d.tabs.survey.images,file]}}}));
   const removeImage=(i)=>setData(d=>({...d,tabs:{...d.tabs,survey:{...d.tabs.survey,images:d.tabs.survey.images.filter((_,idx)=>idx!==i)}}}));
 
-  const margin=calcMargin(data.quoteValue,data.quoteCost);
+  const margin=calcMargin(totalQuoteValue(data),totalQuoteCost(data));
   const tabStyle=(t)=>({
     padding:"8px 14px",border:"none",cursor:"pointer",fontSize:13,fontWeight:activeTab===t?700:500,
     borderBottom:`2px solid ${activeTab===t?C.sky:"transparent"}`,
@@ -361,7 +367,7 @@ const CardDetailModal = ({record,customers,onSave,onDelete,onClose,isJob,setting
               {/* Full customer info panel */}
               <div style={{background:C.slateLight,borderRadius:8,padding:12}}>
                 <div style={{fontSize:12,fontWeight:600,color:C.slate,marginBottom:8}}>CUSTOMER INFO</div>
-                {customer&&[["📧",customer.email],["📞",customer.phone],["🔗 Source",customer.source],["💰 Quote",customer.quoteValue?`£${Number(customer.quoteValue).toLocaleString()}`:"—"],["📊 Margin",customer.quoteValue&&customer.quoteCost?(()=>{const m=calcMargin(customer.quoteValue,customer.quoteCost);return m?`${m.pct}% (£${m.profit.toLocaleString()})`:"—"})():"—"]].map(([icon,val])=>(
+                {customer&&[["📧",customer.email],["📞",customer.phone],["🔗 Source",customer.source],["💰 Quote",totalQuoteValue(customer)?`£${totalQuoteValue(customer).toLocaleString()}`:"—"],["📊 Margin",totalQuoteValue(customer)&&totalQuoteCost(customer)?(()=>{const m=calcMargin(totalQuoteValue(customer),totalQuoteCost(customer));return m?`${m.pct}% (£${m.profit.toLocaleString()})`:"—"})():"—"]].map(([icon,val])=>(
                   <div key={icon} style={{fontSize:13,color:C.text,padding:"5px 0",borderBottom:`1px solid ${C.border}`,display:"flex",gap:8}}>
                     <span style={{color:C.slate,minWidth:90,flexShrink:0}}>{icon}</span>
                     <span style={{fontWeight:500}}>{val||"—"}</span>
@@ -630,10 +636,18 @@ const CardDetailModal = ({record,customers,onSave,onDelete,onClose,isJob,setting
           <div style={{background:C.slateLight,borderRadius:8,padding:14}}>
             <div style={{fontSize:12,fontWeight:700,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:12}}>Quote Financials</div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
-              <Inp label="Quote Value (£)" type="number" value={data.quoteValue||""} onChange={e=>setData(d=>({...d,quoteValue:e.target.value}))} placeholder="4200"/>
-              <Inp label="Total Cost (£)" type="number" value={data.quoteCost||""} onChange={e=>setData(d=>({...d,quoteCost:e.target.value}))} placeholder="2650"/>
+              <Inp label="Product Value (£)" type="number" value={data.quoteValue||""} onChange={e=>setData(d=>({...d,quoteValue:e.target.value}))} placeholder="4200"/>
+              <Inp label="Product Cost (£)" type="number" value={data.quoteCost||""} onChange={e=>setData(d=>({...d,quoteCost:e.target.value}))} placeholder="2650"/>
             </div>
-            {calcMargin(data.quoteValue,data.quoteCost)&&(()=>{const m=calcMargin(data.quoteValue,data.quoteCost);return(
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+              <Inp label="Installation Value (£)" type="number" value={data.installationValue||""} onChange={e=>setData(d=>({...d,installationValue:e.target.value}))} placeholder="800"/>
+              <Inp label="Installation Cost (£)" type="number" value={data.installationCost||""} onChange={e=>setData(d=>({...d,installationCost:e.target.value}))} placeholder="400"/>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+              <Inp label="Total Quote Value (£)" type="number" value={totalQuoteValue(data)||""} readOnly style={{background:C.white,color:C.slate}}/>
+              <Inp label="Total Quote Cost (£)" type="number" value={totalQuoteCost(data)||""} readOnly style={{background:C.white,color:C.slate}}/>
+            </div>
+            {calcMargin(totalQuoteValue(data),totalQuoteCost(data))&&(()=>{const m=calcMargin(totalQuoteValue(data),totalQuoteCost(data));return(
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
                 {[["Gross Profit",`£${m.profit.toLocaleString()}`,m.profit>=0?C.mint:C.red],["Margin",`${m.pct}%`,m.profit>=0?C.mint:C.red]].map(([l,v,col])=>(
                   <div key={l} style={{background:C.white,borderRadius:6,padding:"10px 12px",border:`1px solid ${C.border}`}}>
@@ -1473,9 +1487,9 @@ const CardDetailModal = ({record,customers,onSave,onDelete,onClose,isJob,setting
 
 // ── Customer / Lead Form (add new) ────────────────────────────────────────────
 const CustomerForm = ({initial={},onSave,onCancel}) => {
-  const [form,setForm]=useState({name:"",email:"",phone:"",address:"",source:"Website",stage:"New Enquiry",notes:"",windowcad:"",quoteValue:"",quoteCost:"",...initial});
+  const [form,setForm]=useState({name:"",email:"",phone:"",address:"",source:"Website",stage:"New Enquiry",notes:"",windowcad:"",quoteValue:"",quoteCost:"",installationValue:"",installationCost:"",...initial});
   const set=k=>e=>setForm(f=>({...f,[k]:e.target.value}));
-  const margin=calcMargin(form.quoteValue,form.quoteCost);
+  const margin=calcMargin(totalQuoteValue(form),totalQuoteCost(form));
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
       <Inp label="Full Name / Company" value={form.name} onChange={set("name")} placeholder="e.g. John Smith"/>
@@ -1491,9 +1505,17 @@ const CustomerForm = ({initial={},onSave,onCancel}) => {
       <Inp label="WindowCAD7 Reference" value={form.windowcad} onChange={set("windowcad")} placeholder="WC-2025-001"/>
       <div style={{background:C.slateLight,borderRadius:8,padding:14}}>
         <div style={{fontSize:12,fontWeight:700,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:12}}>Quote Financials</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+          <Inp label="Product Value (£)" type="number" value={form.quoteValue} onChange={set("quoteValue")} placeholder="4200"/>
+          <Inp label="Product Cost (£)" type="number" value={form.quoteCost} onChange={set("quoteCost")} placeholder="2650"/>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+          <Inp label="Installation Value (£)" type="number" value={form.installationValue} onChange={set("installationValue")} placeholder="800"/>
+          <Inp label="Installation Cost (£)" type="number" value={form.installationCost} onChange={set("installationCost")} placeholder="400"/>
+        </div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:margin?12:0}}>
-          <Inp label="Quote Value (£)" type="number" value={form.quoteValue} onChange={set("quoteValue")} placeholder="4200"/>
-          <Inp label="Total Cost (£)" type="number" value={form.quoteCost} onChange={set("quoteCost")} placeholder="2650"/>
+          <Inp label="Total Quote Value (£)" type="number" value={totalQuoteValue(form)||""} readOnly style={{background:C.white,color:C.slate}}/>
+          <Inp label="Total Quote Cost (£)" type="number" value={totalQuoteCost(form)||""} readOnly style={{background:C.white,color:C.slate}}/>
         </div>
         {margin&&(
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
@@ -1657,7 +1679,7 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
     return customers.filter(c=>!q||c.name.toLowerCase().includes(q)||c.phone.includes(q)||c.address.toLowerCase().includes(q));
   },[customers,search]);
 
-  const margin=c=>calcMargin(c.quoteValue,c.quoteCost);
+  const margin=c=>calcMargin(totalQuoteValue(c),totalQuoteCost(c));
 
   // Takes the customer record AFTER it's been saved (so it has its real, server-assigned
   // id) — the installation job's customerId always correctly points at the right customer.
@@ -1669,7 +1691,7 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
       status:"Book Survey",
       surveyDate:"",installDate:"",installers:"",
       windowcad:savedCustomer.windowcad||"",
-      value:savedCustomer.quoteValue||"",
+      value:totalQuoteValue(savedCustomer)||"",
       notes:`Auto-created from Sales Pipeline deal won on ${new Date().toLocaleDateString("en-GB")}`,
       soldBy:savedCustomer.soldBy||"",
       tabs:emptyTabs(),
@@ -1729,12 +1751,12 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
           )}
         </div>
         <div style={{fontSize:12,color:C.slate,marginBottom:3}}>{c.phone}</div>
-        <div style={{fontSize:11,color:C.muted,marginBottom:c.quoteValue?7:0}}>{c.address}</div>
-        {c.quoteValue&&(
+        <div style={{fontSize:11,color:C.muted,marginBottom:totalQuoteValue(c)?7:0}}>{c.address}</div>
+        {totalQuoteValue(c)>0&&(
           <div style={{display:"flex",gap:5,marginBottom:5}}>
             <div style={{background:C.skyLight,borderRadius:5,padding:"3px 7px",flex:1}}>
               <div style={{fontSize:10,color:C.slate}}>Quote</div>
-              <div style={{fontSize:12,fontWeight:800,color:C.navy}}>£{Number(c.quoteValue).toLocaleString()}</div>
+              <div style={{fontSize:12,fontWeight:800,color:C.navy}}>£{totalQuoteValue(c).toLocaleString()}</div>
             </div>
             {m&&<div style={{background:m.profit>=0?"#F0FDF4":"#FEF2F2",borderRadius:5,padding:"3px 7px",flex:1}}>
               <div style={{fontSize:10,color:C.slate}}>Margin</div>
@@ -1763,8 +1785,8 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
       <div style={{display:"flex",gap:10,overflowX:"auto",flex:1,paddingBottom:8,alignItems:"flex-start"}}>
         {LEAD_STAGES.map(stage=>{
           const stageItems=filtered.filter(c=>c.stage===stage);
-          const stageRevenue=stageItems.reduce((sum,c)=>sum+(Number(c.quoteValue)||0),0);
-          const marginsWithData=stageItems.map(c=>calcMargin(c.quoteValue,c.quoteCost)).filter(Boolean);
+          const stageRevenue=stageItems.reduce((sum,c)=>sum+totalQuoteValue(c),0);
+          const marginsWithData=stageItems.map(c=>calcMargin(totalQuoteValue(c),totalQuoteCost(c))).filter(Boolean);
           const avgMargin=marginsWithData.length>0
             ?(marginsWithData.reduce((sum,m)=>sum+parseFloat(m.pct),0)/marginsWithData.length).toFixed(1)
             :null;
@@ -2193,7 +2215,7 @@ const WebsiteEnquiryForm = ({companyName,onSubmit}) => {
       id:uid(),
       stage:"New Enquiry",
       createdAt:new Date().toISOString().slice(0,10),
-      windowcad:"",quoteValue:"",quoteCost:"",soldBy:"",notes:form.message,
+      windowcad:"",quoteValue:"",quoteCost:"",installationValue:"",installationCost:"",soldBy:"",notes:form.message,
       tabs:{
         quote:{files:[],notes:""},invoices:{files:[],notes:""},notepad:{text:""},
         survey:{files:[],images:[],notes:"",date:"",fitter:""},
@@ -2641,7 +2663,7 @@ const Dashboard = ({customers,jobs}) => {
     leads:customers.filter(c=>["New Enquiry","Contacted"].includes(c.stage)).length,
     won:customers.filter(c=>c.stage==="Deal Won").length,
     activeJobs:jobs.filter(j=>j.status!=="Send Guarantees").length,
-    pipeline:customers.reduce((s,c)=>s+(Number(c.quoteValue)||0),0),
+    pipeline:customers.reduce((s,c)=>s+totalQuoteValue(c),0),
   }),[customers,jobs]);
 
   const recent=[...customers].sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)).slice(0,5);
@@ -2800,7 +2822,7 @@ const Dashboard = ({customers,jobs}) => {
         const tempValue={hot:0,warm:0,cold:0};
         customers.filter(c=>!["Deal Won","Deal Lost"].includes(c.stage)).forEach(c=>{
           const t=c.tabs?.quote?.leadTemp;
-          if(t&&tempCounts[t]!==undefined){tempCounts[t]++;tempValue[t]+=(Number(c.quoteValue)||0);}
+          if(t&&tempCounts[t]!==undefined){tempCounts[t]++;tempValue[t]+=totalQuoteValue(c);}
         });
         if(tempCounts.hot===0&&tempCounts.warm===0&&tempCounts.cold===0) return null;
         return (
@@ -2838,7 +2860,7 @@ const Dashboard = ({customers,jobs}) => {
                           </div>
                         </div>
                         <div style={{textAlign:"right",flexShrink:0}}>
-                          {c.quoteValue&&<div style={{fontSize:13,fontWeight:800,color:C.navy}}>£{Number(c.quoteValue).toLocaleString()}</div>}
+                          {totalQuoteValue(c)>0&&<div style={{fontSize:13,fontWeight:800,color:C.navy}}>£{totalQuoteValue(c).toLocaleString()}</div>}
                           {daysLeft!==null&&<div style={{fontSize:11,fontWeight:600,color:daysLeft<=0?C.red:daysLeft<=7?"#92400E":C.mint,marginTop:2}}>{daysLeft<=0?"Overdue":daysLeft===0?"Today":`${daysLeft}d to close`}</div>}
                         </div>
                       </div>
@@ -2862,7 +2884,7 @@ const Dashboard = ({customers,jobs}) => {
           <div style={{background:C.white,borderRadius:10,padding:20,border:`1px solid ${C.border}`,marginBottom:20}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
               <h3 style={{margin:0,fontSize:15,color:C.navy,fontWeight:700}}>📅 Quotes Forecast</h3>
-              <div style={{fontSize:12,color:C.slate,fontWeight:600}}>£{quotesWithDates.reduce((s,c)=>s+(Number(c.quoteValue)||0),0).toLocaleString()} total</div>
+              <div style={{fontSize:12,color:C.slate,fontWeight:600}}>£{quotesWithDates.reduce((s,c)=>s+totalQuoteValue(c),0).toLocaleString()} total</div>
             </div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 100px 70px 90px 80px",gap:8,padding:"6px 0",borderBottom:`2px solid ${C.border}`,marginBottom:4}}>
               {["Customer","Expected Sale","Temp","Value","Sold By"].map(h=>(
@@ -2887,7 +2909,7 @@ const Dashboard = ({customers,jobs}) => {
                     <div style={{fontSize:10,fontWeight:600,color:isPast?C.red:isClose?"#92400E":C.muted}}>{isPast?`${Math.abs(diff)}d overdue`:diff===0?"Today":`in ${diff}d`}</div>
                   </div>
                   <div style={{fontSize:13,fontWeight:700,color:ts?ts.color:C.muted}}>{ts?`${ts.icon} ${temp.charAt(0).toUpperCase()+temp.slice(1)}`:"—"}</div>
-                  <div style={{fontSize:13,fontWeight:800,color:C.navy}}>{c.quoteValue?`£${Number(c.quoteValue).toLocaleString()}`:"—"}</div>
+                  <div style={{fontSize:13,fontWeight:800,color:C.navy}}>{totalQuoteValue(c)>0?`£${totalQuoteValue(c).toLocaleString()}`:"—"}</div>
                   <div style={{fontSize:12,color:C.slate,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.soldBy||"—"}</div>
                 </div>
               );
