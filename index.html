@@ -2922,6 +2922,25 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
   const [viewDate,setViewDate]=useState(new Date());
   const today=new Date().toISOString().slice(0,10);
 
+  // idle | saving | saved | error — for the note fields below, which used to call
+  // apiUpdateJob on every keystroke (a real network request per character typed, which is
+  // what caused the reported input lag on mobile). Debounced the same way as Settings/Track
+  // Orders: update local state instantly for smooth typing, only hit the API ~800ms after
+  // the last keystroke.
+  const [noteSaveStatus,setNoteSaveStatus]=useState("idle");
+  const noteSaveTimer=useRef(null);
+  const updateJobDebounced=(updated)=>{
+    setJobs(js=>js.map(j=>j.id===updated.id?updated:j));
+    setSelectedJob(updated);
+    setNoteSaveStatus("saving");
+    clearTimeout(noteSaveTimer.current);
+    noteSaveTimer.current=setTimeout(()=>{
+      apiUpdateJob(updated)
+        .then(()=>{setNoteSaveStatus("saved");setTimeout(()=>setNoteSaveStatus(s=>s==="saved"?"idle":s),2000);})
+        .catch(err=>{setNoteSaveStatus("error");window.alert("Failed to save notes: "+err.message);});
+    },800);
+  };
+
   // All jobs assigned to this fitter via installation tab
   const myEvents=useMemo(()=>{
     const evts=[];
@@ -2990,8 +3009,7 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
 
   const updateSurveyNotes=(val,job)=>{
     const updated={...job,tabs:{...job.tabs,survey:{...job.tabs.survey,notes:val}}};
-    updateJob(updated);
-    setSelectedJob(updated);
+    updateJobDebounced(updated);
   };
 
   const updateInstallNotes=(val,job)=>{
@@ -3152,7 +3170,10 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
               )}
               {/* Survey notes */}
               <div style={{background:C.white,borderRadius:12,padding:16,border:`1px solid ${C.border}`}}>
-                <div style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>Survey Notes</div>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                  <div style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em"}}>Survey Notes</div>
+                  {noteSaveStatus!=="idle"&&<div style={{fontSize:10,fontWeight:700,color:noteSaveStatus==="saving"?C.slate:noteSaveStatus==="error"?C.red:C.mint}}>{noteSaveStatus==="saving"?"Saving…":noteSaveStatus==="error"?"⚠ Save failed":"✓ Saved"}</div>}
+                </div>
                 <textarea value={job.tabs?.survey?.notes||""} onChange={e=>updateSurveyNotes(e.target.value,job)}
                   placeholder="Add survey notes here..." style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14,outline:"none",resize:"none",minHeight:120,boxSizing:"border-box",fontFamily:"inherit",lineHeight:1.6}}/>
               </div>
@@ -3211,10 +3232,13 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
               )}
               {/* Fitter's own install notes */}
               <div style={{background:C.white,borderRadius:12,padding:16,border:`1px solid ${C.border}`}}>
-                <div style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>My Install Notes</div>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                  <div style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em"}}>My Install Notes</div>
+                  {noteSaveStatus!=="idle"&&<div style={{fontSize:10,fontWeight:700,color:noteSaveStatus==="saving"?C.slate:noteSaveStatus==="error"?C.red:C.mint}}>{noteSaveStatus==="saving"?"Saving…":noteSaveStatus==="error"?"⚠ Save failed":"✓ Saved"}</div>}
+                </div>
                 <textarea value={job.tabs?.installation?.fitterInstallNotes||""} onChange={e=>{
                   const updated={...job,tabs:{...job.tabs,installation:{...job.tabs.installation,fitterInstallNotes:e.target.value}}};
-                  updateJob(updated);setSelectedJob(updated);
+                  updateJobDebounced(updated);
                 }} placeholder="Add your installation notes here..." style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14,outline:"none",resize:"none",minHeight:120,boxSizing:"border-box",fontFamily:"inherit",lineHeight:1.6}}/>
               </div>
               {/* Install photos */}
@@ -3255,10 +3279,13 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
                 </div>
               )}
               <div style={{background:C.white,borderRadius:12,padding:16,border:`1px solid ${C.border}`}}>
-                <div style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>General Notes</div>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                  <div style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em"}}>General Notes</div>
+                  {noteSaveStatus!=="idle"&&<div style={{fontSize:10,fontWeight:700,color:noteSaveStatus==="saving"?C.slate:noteSaveStatus==="error"?C.red:C.mint}}>{noteSaveStatus==="saving"?"Saving…":noteSaveStatus==="error"?"⚠ Save failed":"✓ Saved"}</div>}
+                </div>
                 <textarea value={job.tabs?.notepad?.text||""} onChange={e=>{
                   const updated={...job,tabs:{...job.tabs,notepad:{text:e.target.value}}};
-                  updateJob(updated);setSelectedJob(updated);
+                  updateJobDebounced(updated);
                 }} placeholder="Add general notes..." style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14,outline:"none",resize:"none",minHeight:160,boxSizing:"border-box",fontFamily:"inherit",lineHeight:1.6}}/>
               </div>
               {job.tabs?.survey?.notes&&(
