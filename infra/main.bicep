@@ -47,6 +47,10 @@ param emailDomainName string = 'visualglazing.co.uk'
 @description('Sender mailbox username — "enquiries" for the custom domain (was "donotreply" for AzureManagedDomain).')
 param emailSenderUsername string = 'enquiries'
 
+@secure()
+@description('Secret used to sign/verify the API\'s own session tokens (see api/src/auth.js) — passed in via a GitHub secret (SESSION_TOKEN_SECRET), same pattern as aadAuthClientSecret.')
+param sessionTokenSecret string
+
 module storage 'modules/storage.bicep' = {
   name: 'storage-deploy'
   params: {
@@ -120,6 +124,7 @@ module functionApp 'modules/functionapp.bicep' = {
     emailServiceName: emailServiceName
     emailDomainName: emailDomainName
     emailSenderUsername: emailSenderUsername
+    sessionTokenSecret: sessionTokenSecret
     sqlServerFqdn: sql.outputs.sqlServerFqdn
     sqlDatabaseName: sql.outputs.sqlDatabaseName
     storageAccountName: storage.outputs.storageAccountName

@@ -1,5 +1,6 @@
 const { app } = require('@azure/functions');
 const { BlobServiceClient, BlobSASPermissions } = require('@azure/storage-blob');
+const { requireAuth } = require('../auth');
 
 // Uploads a file (sent as base64 in the JSON body) and returns a long-lived (10 year)
 // read-only SAS URL, which the frontend stores directly as the file's "data" reference —
@@ -16,6 +17,7 @@ app.http('upload', {
   authLevel: 'anonymous',
   handler: async (request, context) => {
     try {
+      requireAuth(request);
       const body = await request.json();
       const container = body.container === 'photos' ? 'photos' : 'documents';
       const safeName = (body.filename || 'file').replace(/[^a-zA-Z0-9._-]/g, '_');
@@ -38,7 +40,7 @@ app.http('upload', {
       return { status: 201, jsonBody: { name: body.filename, type: body.contentType, data: url } };
     } catch (err) {
       context.error('upload failed', err);
-      return { status: 500, jsonBody: { error: err.message } };
+      return { status: err.status || 500, jsonBody: { error: err.message } };
     }
   },
 });

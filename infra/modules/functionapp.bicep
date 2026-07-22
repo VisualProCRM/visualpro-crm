@@ -30,6 +30,10 @@ param emailDomainName string = 'AzureManagedDomain'
 @description('Sender mailbox username within the chosen email domain — must match a senderUsernames resource under that domain in email.bicep (e.g. "donotreply" for AzureManagedDomain, "enquiries" for the custom domain).')
 param emailSenderUsername string = 'donotreply'
 
+@description('Secret used to sign/verify the API\'s own session tokens (see api/src/auth.js) — required by every endpoint except settingsGet (public, redacted) and login (which issues the token in the first place). Not a Key Vault reference, same reasoning as the other secure app settings here: azure/functions-action needs a literal value.')
+@secure()
+param sessionTokenSecret string
+
 @description('Origins allowed to call this API cross-origin (the frontend Static Web App, plus localhost for local dev, plus the Azure Portal so its built-in Test/Run feature works for manually invoking functions like the timer trigger). Note: the SWA hostname changed after upgrading from Free to Standard tier — this is the post-upgrade hostname, not the original.')
 param corsAllowedOrigins array = [
   'https://mango-beach-0c25f8610.7.azurestaticapps.net'
@@ -102,6 +106,7 @@ resource functionApp 'Microsoft.Web/sites@2023-01-01' = {
         { name: 'EMAIL_SERVICE_NAME', value: emailServiceName }
         { name: 'EMAIL_DOMAIN_NAME', value: emailDomainName }
         { name: 'EMAIL_SENDER_USERNAME', value: emailSenderUsername }
+        { name: 'SESSION_TOKEN_SECRET', value: sessionTokenSecret }
         { name: 'RESOURCE_GROUP_NAME', value: resourceGroup().name }
         { name: 'AZURE_SUBSCRIPTION_ID', value: subscription().subscriptionId }
       ]

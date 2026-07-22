@@ -129,15 +129,20 @@ const uid = () => ++nextId;
 
 // ── API client ────────────────────────────────────────────────────────────────
 // Talks directly to the Function App (not proxied through the Static Web App), so CORS is
-// configured on the Function App side to allow this origin. Not authenticated yet — see
-// roadmap for locking the API down; for now anyone with the URL can call it.
+// configured on the Function App side to allow this origin.
 const API_BASE = "https://visualpro-crm-func.azurewebsites.net/api";
 
+// Module-level (not React state) so the plain apiRequest() function below can read it
+// without every call site needing to pass it through explicitly. The React state that
+// drives this is kept in sync via setGlobalAuthToken(), called from a useEffect on the
+// actual authToken state — see the App component.
+let _authToken = null;
+const setGlobalAuthToken = (token) => { _authToken = token; };
+
 const apiRequest = async (path, options = {}) => {
-  const res = await fetch(`${API_BASE}${path}`, {
-    headers: { "Content-Type": "application/json" },
-    ...options,
-  });
+  const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
+  if (_authToken) headers["Authorization"] = `Bearer ${_authToken}`;
+  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
   if (!res.ok) throw new Error(`${options.method || "GET"} ${path} failed: ${res.status}`);
   if (res.status === 204) return null;
   return res.json();
@@ -158,6 +163,8 @@ const apiUpdateSettings = (data) => apiRequest("/settings", { method: "PUT", bod
 
 const apiGetOrders = () => apiRequest("/orders");
 const apiUpdateOrders = (data) => apiRequest("/orders", { method: "PUT", body: JSON.stringify(data) });
+
+const apiLogin = (role, password) => apiRequest("/login", { method: "POST", body: JSON.stringify({ role, password }) });
 const apiSendReminder = (jobId, reminderKey) =>
   apiRequest("/send-reminder", { method: "POST", body: JSON.stringify({ jobId, reminderKey }) });
 
@@ -4203,15 +4210,25 @@ function App() {
   const [userRole,setUserRole]=useState(null);
   const [officeAuthChecked,setOfficeAuthChecked]=useState(false);
   const [selectedFitter,setSelectedFitter]=useState(null);
+  const [authToken,setAuthToken]=useState(null);
+
+  // Keeps the module-level apiRequest() in sync with React state — see setGlobalAuthToken.
+  useEffect(()=>{ setGlobalAuthToken(authToken); },[authToken]);
 
   // Office Admin now goes through real Microsoft/Entra ID login (see the button below)
   // rather than being a single unprotected click. On load/redirect-back, check whether
-  // the browser already has an authenticated Entra ID session and, if so, go straight
-  // to the office view. Fitters are unaffected — they still use the password screen.
+  // the browser already has an authenticated Entra ID session and, if so, exchange it for
+  // an API session token (apiLogin) and go straight to the office view. The API trusts this
+  // call because it only ever fires after /.auth/me — a same-origin, cookie-gated endpoint
+  // an outside caller can't satisfy — confirms a real Entra session. Fitters are unaffected.
   useEffect(()=>{
     fetch('/.auth/me')
       .then(r=>r.json())
-      .then(data=>{ if(data && data.clientPrincipal){ setUserRole('office'); } })
+      .then(data=>{
+        if(data && data.clientPrincipal){
+          return apiLogin('office').then(({token})=>{ setAuthToken(token); setUserRole('office'); });
+        }
+      })
       .catch(()=>{})
       .finally(()=>setOfficeAuthChecked(true));
   },[]);
@@ -4245,10 +4262,20 @@ function App() {
       .finally(()=>setSettingsLoaded(true));
   },[]);
 
+  // Re-fetch Settings once logged in — the initial load above ran pre-login and got
+  // fitter passwords redacted to booleans (see api/src/functions/settings.js); office
+  // sessions need the real values to view/edit them on the Settings page.
+  useEffect(()=>{
+    if(!authToken) return;
+    apiGetSettings()
+      .then(saved=>{ if(saved) setSettings(s=>({...s,...saved})); })
+      .catch(err=>console.error("Failed to refresh settings",err));
+  },[authToken]);
+
   const handleFitterLogin=()=>{
-    const storedPw=settings.fitterPasswords?.[selectedFitter]||"";
-    if(!storedPw||pwInput===storedPw){setUserRole(selectedFitter);}
-    else{setPwError(true);setTimeout(()=>setPwError(false),2000);}
+    apiLogin(selectedFitter,pwInput)
+      .then(({token})=>{ setAuthToken(token); setUserRole(selectedFitter); })
+      .catch(()=>{ setPwError(true); setTimeout(()=>setPwError(false),2000); });
   };
 
   const resetLogin=()=>{setSelectedFitter(null);setPwInput("");setPwError(false);setShowPw(false);};
@@ -4291,7 +4318,7 @@ function App() {
             ):(
               <>
                 <div style={{background:"#FFFBEB",border:`1px solid ${C.amber}`,borderRadius:8,padding:"12px 14px",fontSize:13,color:"#92400E",marginBottom:16}}>⚠️ No password set. Contact your admin to set one up in Settings.</div>
-                <button onClick={()=>setUserRole(selectedFitter)} style={{width:"100%",background:C.mint,color:"#fff",border:"none",borderRadius:10,padding:"14px",fontSize:16,fontWeight:700,cursor:"pointer",marginBottom:10}}>Continue Without Password →</button>
+                <button onClick={()=>{apiLogin(selectedFitter,"").then(({token})=>{setAuthToken(token);setUserRole(selectedFitter);}).catch(()=>setPwError(true));}} style={{width:"100%",background:C.mint,color:"#fff",border:"none",borderRadius:10,padding:"14px",fontSize:16,fontWeight:700,cursor:"pointer",marginBottom:10}}>Continue Without Password →</button>
               </>
             )}
             <button onClick={resetLogin} style={{width:"100%",background:"none",border:"none",color:C.slate,fontSize:14,cursor:"pointer",padding:"8px"}}>← Back to login</button>
@@ -4372,7 +4399,7 @@ function App() {
 
   // ── Fitter view ──
   if(userRole!=="office"){
-    return <FitterApp fitterName={userRole} jobs={jobs} customers={customers} setJobs={setJobs} settings={settings} onLogout={()=>{setUserRole(null);resetLogin();}}/>;
+    return <FitterApp fitterName={userRole} jobs={jobs} customers={customers} setJobs={setJobs} settings={settings} onLogout={()=>{setUserRole(null);setAuthToken(null);resetLogin();}}/>;
   }
 
   // ── Office CRM ──

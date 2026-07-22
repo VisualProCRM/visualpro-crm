@@ -1,10 +1,11 @@
 const { app } = require('@azure/functions');
 const { getPool, sql } = require('../db');
 const { mapCustomerRow } = require('../mapRow');
+const { requireAuth } = require('../auth');
 
-// Auth (who's allowed to call these) is not enforced yet — see roadmap: locking down the
-// API itself, deferred when Entra ID auth was wired up for the frontend. TenantId is
-// hardcoded to 1 until real multi-tenancy exists.
+// Every handler requires a valid session token (see auth.js/login.js) — closes the gap
+// where anyone with the API URL could call it directly, bypassing the app's login entirely.
+// TenantId is hardcoded to 1 until real multi-tenancy exists.
 //
 // DataJson stores the entire record the frontend sends, as-is — see schema.sql for why
 // (avoids silently dropping any field the app has that we haven't explicitly modeled).
@@ -15,6 +16,7 @@ app.http('customersList', {
   authLevel: 'anonymous',
   handler: async (request, context) => {
     try {
+      requireAuth(request);
       const pool = await getPool();
       const result = await pool
         .request()
@@ -22,7 +24,7 @@ app.http('customersList', {
       return { jsonBody: result.recordset.map(mapCustomerRow) };
     } catch (err) {
       context.error('customersList failed', err);
-      return { status: 500, jsonBody: { error: err.message } };
+      return { status: err.status || 500, jsonBody: { error: err.message } };
     }
   },
 });
@@ -33,6 +35,7 @@ app.http('customersGet', {
   authLevel: 'anonymous',
   handler: async (request, context) => {
     try {
+      requireAuth(request);
       const id = Number(request.params.id);
       const pool = await getPool();
       const result = await pool
@@ -43,7 +46,7 @@ app.http('customersGet', {
       return { jsonBody: mapCustomerRow(result.recordset[0]) };
     } catch (err) {
       context.error('customersGet failed', err);
-      return { status: 500, jsonBody: { error: err.message } };
+      return { status: err.status || 500, jsonBody: { error: err.message } };
     }
   },
 });
@@ -54,6 +57,7 @@ app.http('customersCreate', {
   authLevel: 'anonymous',
   handler: async (request, context) => {
     try {
+      requireAuth(request);
       const body = await request.json();
       const pool = await getPool();
       const result = await pool
@@ -69,7 +73,7 @@ app.http('customersCreate', {
       return { status: 201, jsonBody: mapCustomerRow(result.recordset[0]) };
     } catch (err) {
       context.error('customersCreate failed', err);
-      return { status: 500, jsonBody: { error: err.message } };
+      return { status: err.status || 500, jsonBody: { error: err.message } };
     }
   },
 });
@@ -80,6 +84,7 @@ app.http('customersUpdate', {
   authLevel: 'anonymous',
   handler: async (request, context) => {
     try {
+      requireAuth(request);
       const id = Number(request.params.id);
       const body = await request.json();
       const pool = await getPool();
@@ -98,7 +103,7 @@ app.http('customersUpdate', {
       return { jsonBody: mapCustomerRow(result.recordset[0]) };
     } catch (err) {
       context.error('customersUpdate failed', err);
-      return { status: 500, jsonBody: { error: err.message } };
+      return { status: err.status || 500, jsonBody: { error: err.message } };
     }
   },
 });
@@ -109,6 +114,7 @@ app.http('customersDelete', {
   authLevel: 'anonymous',
   handler: async (request, context) => {
     try {
+      requireAuth(request);
       const id = Number(request.params.id);
       const pool = await getPool();
       await pool
@@ -119,7 +125,7 @@ app.http('customersDelete', {
     } catch (err) {
       // Most likely cause: this customer still has Jobs referencing it (FK constraint).
       context.error('customersDelete failed', err);
-      return { status: 409, jsonBody: { error: err.message } };
+      return { status: err.status || 409, jsonBody: { error: err.message } };
     }
   },
 });

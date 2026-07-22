@@ -1,6 +1,7 @@
 const { app } = require('@azure/functions');
 const { getPool, sql } = require('../db');
 const { mapJobRow } = require('../mapRow');
+const { requireAuth } = require('../auth');
 
 app.http('jobsList', {
   methods: ['GET'],
@@ -8,6 +9,7 @@ app.http('jobsList', {
   authLevel: 'anonymous',
   handler: async (request, context) => {
     try {
+      requireAuth(request);
       const pool = await getPool();
       const result = await pool
         .request()
@@ -15,7 +17,7 @@ app.http('jobsList', {
       return { jsonBody: result.recordset.map(mapJobRow) };
     } catch (err) {
       context.error('jobsList failed', err);
-      return { status: 500, jsonBody: { error: err.message } };
+      return { status: err.status || 500, jsonBody: { error: err.message } };
     }
   },
 });
@@ -26,6 +28,7 @@ app.http('jobsGet', {
   authLevel: 'anonymous',
   handler: async (request, context) => {
     try {
+      requireAuth(request);
       const id = Number(request.params.id);
       const pool = await getPool();
       const result = await pool
@@ -36,7 +39,7 @@ app.http('jobsGet', {
       return { jsonBody: mapJobRow(result.recordset[0]) };
     } catch (err) {
       context.error('jobsGet failed', err);
-      return { status: 500, jsonBody: { error: err.message } };
+      return { status: err.status || 500, jsonBody: { error: err.message } };
     }
   },
 });
@@ -47,6 +50,7 @@ app.http('jobsCreate', {
   authLevel: 'anonymous',
   handler: async (request, context) => {
     try {
+      requireAuth(request);
       const body = await request.json();
       const pool = await getPool();
       const result = await pool
@@ -63,7 +67,7 @@ app.http('jobsCreate', {
       return { status: 201, jsonBody: mapJobRow(result.recordset[0]) };
     } catch (err) {
       context.error('jobsCreate failed', err);
-      return { status: 500, jsonBody: { error: err.message } };
+      return { status: err.status || 500, jsonBody: { error: err.message } };
     }
   },
 });
@@ -74,6 +78,7 @@ app.http('jobsUpdate', {
   authLevel: 'anonymous',
   handler: async (request, context) => {
     try {
+      requireAuth(request);
       const id = Number(request.params.id);
       const body = await request.json();
       const pool = await getPool();
@@ -93,7 +98,7 @@ app.http('jobsUpdate', {
       return { jsonBody: mapJobRow(result.recordset[0]) };
     } catch (err) {
       context.error('jobsUpdate failed', err);
-      return { status: 500, jsonBody: { error: err.message } };
+      return { status: err.status || 500, jsonBody: { error: err.message } };
     }
   },
 });
@@ -104,13 +109,14 @@ app.http('jobsDelete', {
   authLevel: 'anonymous',
   handler: async (request, context) => {
     try {
+      requireAuth(request);
       const id = Number(request.params.id);
       const pool = await getPool();
       await pool.request().input('Id', sql.Int, id).query('DELETE FROM dbo.Jobs WHERE Id=@Id AND TenantId = 1');
       return { status: 204 };
     } catch (err) {
       context.error('jobsDelete failed', err);
-      return { status: 500, jsonBody: { error: err.message } };
+      return { status: err.status || 500, jsonBody: { error: err.message } };
     }
   },
 });

@@ -1,6 +1,7 @@
 const { app } = require('@azure/functions');
 const { getPool } = require('../db');
 const { sendJobReminder, getSenderDomain, getDomainProperties } = require('../reminderCore');
+const { requireAuth } = require('../auth');
 
 // Manual trigger — used by the app's "Send Now" button. The automatic daily version is
 // reminderTimer.js, sharing the same sendJobReminder logic from reminderCore.js.
@@ -10,6 +11,7 @@ app.http('sendReminder', {
   authLevel: 'anonymous',
   handler: async (request, context) => {
     try {
+      requireAuth(request);
       const body = await request.json();
       const { jobId, reminderKey, testEmailOverride, debug } = body;
 
@@ -32,7 +34,7 @@ app.http('sendReminder', {
       return { status: 200, jsonBody: result };
     } catch (err) {
       context.error('sendReminder failed', err);
-      return { status: 500, jsonBody: { error: err.message } };
+      return { status: err.status || 500, jsonBody: { error: err.message } };
     }
   },
 });
