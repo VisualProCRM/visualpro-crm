@@ -1915,7 +1915,7 @@ const InstallPipelinePage = ({jobs,setJobs,customers,settings}) => {
 
 // ── Calendar Page ─────────────────────────────────────────────────────────────
 const CalendarPage = ({customers,jobs,settings}) => {
-  const [viewDate,setViewDate]=useState(new Date(2025,5,1));
+  const [viewDate,setViewDate]=useState(new Date());
   const [filterFitter,setFilterFitter]=useState("All");
 
   const year=viewDate.getFullYear(), month=viewDate.getMonth();
