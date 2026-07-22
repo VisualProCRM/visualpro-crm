@@ -449,12 +449,16 @@ const CardDetailModal = ({record,customers,onSave,onDelete,onClose,isJob,setting
                   })}
                 </div>
               </div>
-              {/* Dates */}
+              {/* Dates — read-only, mirroring whatever's actually booked in the Survey/Installation
+                  tabs (falling back to the plain fields set at initial job creation, if those
+                  tabs haven't been booked yet) rather than being separately editable here, which
+                  is what let this go stale/out of sync with the real booking. */}
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-                <Inp label="Survey Date" type="date" value={data.surveyDate||""} onChange={e=>setData(d=>({...d,surveyDate:e.target.value}))}/>
-                <Inp label="Install Date" type="date" value={data.installDate||""} onChange={e=>setData(d=>({...d,installDate:e.target.value}))}/>
+                <Inp label="Survey Date" type="date" value={data.tabs?.survey?.date||data.surveyDate||""} readOnly style={{background:C.slateLight,color:C.slate}}/>
+                <Inp label="Install Date" type="date" value={data.tabs?.installation?.date||data.installDate||""} readOnly style={{background:C.slateLight,color:C.slate}}/>
               </div>
-              <Inp label="Installers" value={data.installers||""} onChange={e=>setData(d=>({...d,installers:e.target.value}))} placeholder="e.g. Tom & Steve"/>
+              <div style={{fontSize:11,color:C.muted,marginTop:-6}}>Set via the Survey / Installation tabs above</div>
+              <Inp label="Installers" value={(data.tabs?.installation?.fitters||[]).length?data.tabs.installation.fitters.join(", "):(data.installers||"")} readOnly placeholder="Set via the Installation tab" style={{background:C.slateLight,color:C.slate}}/>
               <Sel label="Sold By" value={data.soldBy||""} onChange={e=>setData(d=>({...d,soldBy:e.target.value}))}>
                 <option value="">— Select staff member —</option>
                 {(settings?.staff||DEFAULT_STAFF).map(s=><option key={s}>{s}</option>)}
@@ -1836,7 +1840,7 @@ const InstallPipelinePage = ({jobs,setJobs,customers,settings}) => {
       <div style={{fontSize:12,color:C.sky,fontWeight:600,marginBottom:3}}>{customerName(job.customerId)}</div>
       {job.value&&<div style={{fontSize:13,fontWeight:800,color:C.mint}}>£{Number(job.value).toLocaleString()}</div>}
       {job.products?.length>0&&<div style={{fontSize:11,color:C.muted,marginTop:3}}>{job.products.join(", ")}</div>}
-      {job.installDate&&<div style={{fontSize:11,color:C.slate,marginTop:3}}>🔨 {job.installDate}</div>}
+      {(job.tabs?.installation?.date||job.installDate)&&<div style={{fontSize:11,color:C.slate,marginTop:3}}>🔨 {job.tabs?.installation?.date||job.installDate}</div>}
     </div>
   );
 
@@ -1923,12 +1927,26 @@ const CalendarPage = ({customers,jobs,settings}) => {
   const daysInMonth=new Date(year,month+1,0).getDate();
   const adjusted=(firstDay+6)%7; // Mon=0
 
-  // Gather all survey bookings from customer tabs
-  const surveyEvents=customers.flatMap(c=>{
-    const s=c.tabs?.survey;
-    if(!s?.date||!s?.fitter) return [];
-    return [{date:s.date,fitter:s.fitter,label:c.name,type:"Survey",color:"#4A90D9",time:s.time||""}];
-  });
+  // Survey bookings can live in two places: a Customer's own Survey tab (used pre-Deal Won,
+  // while there's no Job yet) or a Job's Survey tab (used once a deal converts — see
+  // handleDealWon, which creates a fresh Job with empty tabs, so from that point on the
+  // Job's own Survey tab is what office staff actually book/edit). Excluding Deal Won
+  // customers here avoids showing a stale customer-level booking alongside — or instead of —
+  // whatever's actually booked on the Job, which is what caused the calendar to show
+  // out-of-date survey info after a deal converted.
+  const surveyEvents=[
+    ...customers.filter(c=>c.stage!=="Deal Won").flatMap(c=>{
+      const s=c.tabs?.survey;
+      if(!s?.date||!s?.fitter) return [];
+      return [{date:s.date,fitter:s.fitter,label:c.name,type:"Survey",color:"#4A90D9",time:s.time||""}];
+    }),
+    ...jobs.flatMap(j=>{
+      const s=j.tabs?.survey;
+      if(!s?.date||!s?.fitter) return [];
+      const cust=customers.find(c=>c.id===j.customerId);
+      return [{date:s.date,fitter:s.fitter,label:cust?.name||j.title,type:"Survey",color:"#4A90D9",time:s.time||"",notes:s.notes||""}];
+    }),
+  ];
   // Installation bookings from job installation tab — expanded across working days
   const installTabEvents=jobs.flatMap(j=>{
     const inst=j.tabs?.installation;
