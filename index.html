@@ -204,6 +204,14 @@ const calcMargin = (value,cost) => {
 const totalQuoteValue = (c) => (Number(c?.quoteValue)||0) + (Number(c?.installationValue)||0);
 const totalQuoteCost = (c) => (Number(c?.quoteCost)||0) + (Number(c?.installationCost)||0);
 
+// "Deals Won" reporting helpers — every Job represents a sold deal (there's no "unsold Job"
+// concept), stamped with wonAt at creation (see handleDealWon / JobForm). Revenue falls back
+// to the older flat `value` field for any Job created before Quote Financials existed on
+// JobForm; cost has no equivalent fallback, so margin is left uncomputed ("—") for those.
+const wonJobRevenue = (j) => totalQuoteValue(j) || Number(j?.value) || 0;
+const wonJobCost = (j) => totalQuoteCost(j);
+const wonJobsInRange = (jobs, start, end) => jobs.filter(j => j.wonAt && j.wonAt >= start && j.wonAt < end);
+
 const readFileAsDataURL = (file) => new Promise(res => {
   const r=new FileReader(); r.onload=e=>res({name:file.name,type:file.type,data:e.target.result}); r.readAsDataURL(file);
 });
@@ -324,11 +332,18 @@ const ImageGallery = ({images,onAdd,onRemove}) => {
 };
 
 // ── Card Detail Modal with Tabs ───────────────────────────────────────────────
-const CardDetailModal = ({record,customers,onSave,onDelete,onClose,isJob,settings}) => {
+const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,settings,onOpenJob}) => {
   const [activeTab,setActiveTab]=useState("Details");
   const [data,setData]=useState({...record,_settings:settings});
   const [showFeedbackForm,setShowFeedbackForm]=useState(false);
   const customer=isJob?customers.find(c=>c.id===data.customerId):null;
+
+  // Once a Customer has one or more linked Jobs, their own Quote/Notes/Survey/etc. tabs are
+  // retired (see handleDealWon) — content now lives on the Job(s) instead, so only "Details"
+  // is shown, plus a Jobs list to get to the real content. Not gated on stage==="Deal Won",
+  // since a repeat customer might have an old completed Job while back in an earlier stage
+  // for a brand new enquiry.
+  const linkedJobs=!isJob?(jobs||[]).filter(j=>j.customerId===data.id):[];
 
   const setTab=(key,val)=>setData(d=>({...d,tabs:{...d.tabs,[key]:{...d.tabs[key],...val}}}));
 
@@ -350,9 +365,9 @@ const CardDetailModal = ({record,customers,onSave,onDelete,onClose,isJob,setting
 
   return (
     <Modal title={isJob?data.title:data.name} onClose={save} wide>
-      {/* Tab bar */}
+      {/* Tab bar — collapses to just Details for a Customer once they have linked Jobs */}
       <div style={{display:"flex",gap:0,borderBottom:`1px solid ${C.border}`,marginBottom:20,overflowX:"auto"}}>
-        {CARD_TABS.map(t=><button key={t} style={tabStyle(t)} onClick={()=>setActiveTab(t)}>{t}</button>)}
+        {(!isJob&&linkedJobs.length>0?["Details"]:CARD_TABS).map(t=><button key={t} style={tabStyle(t)} onClick={()=>setActiveTab(t)}>{t}</button>)}
       </div>
 
       {/* ── DETAILS TAB ── */}
@@ -571,6 +586,29 @@ const CardDetailModal = ({record,customers,onSave,onDelete,onClose,isJob,setting
               </Sel>
               <TA label="Notes" value={data.notes||""} onChange={e=>setData(d=>({...d,notes:e.target.value}))}/>
             </>
+          )}
+          {!isJob&&linkedJobs.length>0&&(
+            <div style={{background:C.slateLight,borderRadius:8,padding:14}}>
+              <div style={{fontSize:12,fontWeight:700,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:12}}>Jobs ({linkedJobs.length})</div>
+              {linkedJobs.map(job=>{
+                const isCompleted=job.status===COMPLETED_STAGE;
+                return (
+                  <div key={job.id} onClick={()=>onOpenJob&&onOpenJob(job)}
+                    style={{border:`1px solid ${isCompleted?"#86EFAC":C.border}`,borderRadius:8,padding:12,marginBottom:8,cursor:onOpenJob?"pointer":"default",
+                      background:isCompleted?"#F0FDF4":C.white}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:4}}>
+                      <div style={{fontWeight:700,fontSize:14,color:C.navy}}>{job.title}</div>
+                      <Badge label={job.status}/>
+                    </div>
+                    <div style={{display:"flex",gap:14,fontSize:12,color:C.muted,flexWrap:"wrap"}}>
+                      {wonJobRevenue(job)>0&&<span style={{color:C.mint,fontWeight:700}}>£{wonJobRevenue(job).toLocaleString()}</span>}
+                      {job.tabs?.installation?.date&&<span>🔨 {new Date(job.tabs.installation.date).toLocaleDateString("en-GB")}</span>}
+                      {isCompleted&&job.completedAt&&<span style={{color:"#15803D",fontWeight:600}}>✅ {job.completedAt}</span>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           )}
           <div style={{display:"flex",gap:10,justifyContent:"space-between",paddingTop:8,borderTop:`1px solid ${C.border}`}}>
             <Btn variant="danger" onClick={()=>{onDelete(data.id);onClose();}}>Delete</Btn>
@@ -1539,9 +1577,10 @@ const CustomerForm = ({initial={},onSave,onCancel}) => {
 
 // ── Job Form (add new) ────────────────────────────────────────────────────────
 const JobForm = ({initial={},customers,onSave,onCancel}) => {
-  const [form,setForm]=useState({customerId:customers[0]?.id||"",title:"",products:[],status:"Book Survey",surveyDate:"",installDate:"",installers:"",windowcad:"",value:"",notes:"",...initial,products:initial.products||[]});
+  const [form,setForm]=useState({customerId:customers[0]?.id||"",title:"",products:[],status:"Book Survey",surveyDate:"",installDate:"",installers:"",windowcad:"",value:"",quoteValue:"",quoteCost:"",installationValue:"",installationCost:"",notes:"",...initial,products:initial.products||[]});
   const set=k=>e=>setForm(f=>({...f,[k]:e.target.value}));
   const toggleProd=p=>setForm(f=>({...f,products:f.products.includes(p)?f.products.filter(x=>x!==p):[...f.products,p]}));
+  const margin=calcMargin(totalQuoteValue(form),totalQuoteCost(form));
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
       <Sel label="Customer" value={form.customerId} onChange={e=>setForm(f=>({...f,customerId:Number(e.target.value)}))}>
@@ -1558,6 +1597,31 @@ const JobForm = ({initial={},customers,onSave,onCancel}) => {
         <Sel label="Stage" value={form.status} onChange={set("status")}>{INSTALL_STAGES.map(s=><option key={s}>{s}</option>)}</Sel>
         <Inp label="Value (£)" type="number" value={form.value} onChange={set("value")}/>
       </div>
+      <div style={{background:C.slateLight,borderRadius:8,padding:14}}>
+        <div style={{fontSize:12,fontWeight:700,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:12}}>Quote Financials</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+          <Inp label="Product Value (£)" type="number" value={form.quoteValue} onChange={set("quoteValue")} placeholder="4200"/>
+          <Inp label="Product Cost (£)" type="number" value={form.quoteCost} onChange={set("quoteCost")} placeholder="2650"/>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+          <Inp label="Installation Value (£)" type="number" value={form.installationValue} onChange={set("installationValue")} placeholder="800"/>
+          <Inp label="Installation Cost (£)" type="number" value={form.installationCost} onChange={set("installationCost")} placeholder="400"/>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:margin?12:0}}>
+          <Inp label="Total Quote Value (£)" type="number" value={totalQuoteValue(form)||""} readOnly style={{background:C.white,color:C.slate}}/>
+          <Inp label="Total Quote Cost (£)" type="number" value={totalQuoteCost(form)||""} readOnly style={{background:C.white,color:C.slate}}/>
+        </div>
+        {margin&&(
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+            {[["Gross Profit",`£${margin.profit.toLocaleString()}`,margin.profit>=0?C.mint:C.red],["Margin",`${margin.pct}%`,margin.profit>=0?C.mint:C.red]].map(([l,v,col])=>(
+              <div key={l} style={{background:C.white,borderRadius:6,padding:"10px 12px",border:`1px solid ${C.border}`}}>
+                <div style={{fontSize:11,color:C.slate,marginBottom:2}}>{l}</div>
+                <div style={{fontSize:18,fontWeight:800,color:col}}>{v}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
         <Inp label="Survey Date" type="date" value={form.surveyDate} onChange={set("surveyDate")}/>
         <Inp label="Install Date" type="date" value={form.installDate} onChange={set("installDate")}/>
@@ -1569,7 +1633,7 @@ const JobForm = ({initial={},customers,onSave,onCancel}) => {
       <TA label="Notes" value={form.notes} onChange={set("notes")}/>
       <div style={{display:"flex",gap:10,justifyContent:"flex-end",paddingTop:8}}>
         <Btn variant="secondary" onClick={onCancel}>Cancel</Btn>
-        <Btn onClick={()=>form.title&&onSave({...form,tabs:emptyTabs()})}>Save Job</Btn>
+        <Btn onClick={()=>form.title&&onSave({...form,tabs:emptyTabs(),wonAt:new Date().toISOString()})}>Save Job</Btn>
       </div>
     </div>
   );
@@ -1671,6 +1735,7 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
   const [modal,setModal]=useState(null);
   const [defaultStage,setDefaultStage]=useState("New Enquiry");
   const [detailRecord,setDetailRecord]=useState(null);
+  const [viewingJob,setViewingJob]=useState(null);
   const [showConfetti,setShowConfetti]=useState(false);
   const [wonCustomer,setWonCustomer]=useState(null);
 
@@ -1684,6 +1749,15 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
   // Takes the customer record AFTER it's been saved (so it has its real, server-assigned
   // id) — the installation job's customerId always correctly points at the right customer.
   const handleDealWon=(savedCustomer)=>{
+    // Carries the customer's whole tabs + quote financials across into the new job —
+    // previously this started completely blank, so office staff would enter survey/quote/
+    // notes info onto the job post-conversion while the original customer record silently
+    // kept its own separate (now stale) copy, causing exactly the "wrote it here, why isn't
+    // it showing there" confusion. leadTemp/expectedSaleDate are Sales-Pipeline-only
+    // concepts (nothing reads them off a Job) so those two are dropped, not carried over.
+    // The customer's own tabs are deliberately left untouched afterward — once linked jobs
+    // exist, its card shows a Jobs list instead (see CardDetailModal), so that old copy is
+    // never seen or edited again; no need for a second write to reset it.
     const newJob={
       customerId:savedCustomer.id,
       title:`${savedCustomer.name} — Installation`,
@@ -1692,9 +1766,14 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
       surveyDate:"",installDate:"",installers:"",
       windowcad:savedCustomer.windowcad||"",
       value:totalQuoteValue(savedCustomer)||"",
+      quoteValue:savedCustomer.quoteValue||"",
+      quoteCost:savedCustomer.quoteCost||"",
+      installationValue:savedCustomer.installationValue||"",
+      installationCost:savedCustomer.installationCost||"",
       notes:`Auto-created from Sales Pipeline deal won on ${new Date().toLocaleDateString("en-GB")}`,
       soldBy:savedCustomer.soldBy||"",
-      tabs:emptyTabs(),
+      wonAt:new Date().toISOString(),
+      tabs:{...savedCustomer.tabs,quote:{...savedCustomer.tabs.quote,leadTemp:"",expectedSaleDate:""}},
     };
     apiCreateJob(newJob).then(saved=>{
       setJobs(js=>[saved,...js]);
@@ -1730,6 +1809,17 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
     apiDeleteCustomer(id).then(()=>{
       setCustomers(cs=>cs.filter(c=>c.id!==id));
     }).catch(err=>window.alert("Failed to delete customer: "+err.message));
+  };
+
+  // Repeat business: a returning customer doesn't need to go through the lead stages again —
+  // this lets office staff record a new job for an existing customer directly from here,
+  // via JobForm's own customer picker, rather than only being able to add jobs from the
+  // Installation Pipeline or Customer Directory.
+  const saveJob=form=>{
+    apiCreateJob(form).then(saved=>{
+      setJobs(js=>[saved,...js]);
+      setModal(null);
+    }).catch(err=>window.alert("Failed to save job: "+err.message));
   };
 
   const renderCard=(c)=>{
@@ -1780,6 +1870,7 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
     <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
       <div style={{display:"flex",gap:10,marginBottom:16,alignItems:"center"}}>
         <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search pipeline…" style={{flex:1,maxWidth:300,border:`1px solid ${C.border}`,borderRadius:6,padding:"8px 12px",fontSize:14,outline:"none"}}/>
+        <Btn variant="secondary" onClick={()=>setModal("addJob")}>+ Job for Existing Customer</Btn>
         <Btn onClick={()=>setModal("add")}>+ New Enquiry</Btn>
       </div>
       <div style={{display:"flex",gap:10,overflowX:"auto",flex:1,paddingBottom:8,alignItems:"flex-start"}}>
@@ -1802,9 +1893,14 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
         })}
       </div>
       {modal==="add"&&<Modal title="New Customer" onClose={()=>setModal(null)}><CustomerForm initial={{stage:defaultStage}} onSave={saveCustomer} onCancel={()=>setModal(null)}/></Modal>}
-      {detailRecord&&<CardDetailModal record={customers.find(c=>c.id===detailRecord.id)||detailRecord} customers={customers} isJob={false} settings={settings}
+      {modal==="addJob"&&<Modal title="New Job for Existing Customer" onClose={()=>setModal(null)}><JobForm customers={customers} onSave={saveJob} onCancel={()=>setModal(null)}/></Modal>}
+      {detailRecord&&<CardDetailModal record={customers.find(c=>c.id===detailRecord.id)||detailRecord} customers={customers} jobs={jobs} isJob={false} settings={settings}
         onSave={handleCardSave}
-        onDelete={deleteCustomer} onClose={()=>setDetailRecord(null)}/>}
+        onDelete={deleteCustomer} onClose={()=>setDetailRecord(null)} onOpenJob={setViewingJob}/>}
+      {viewingJob&&<CardDetailModal record={jobs.find(j=>j.id===viewingJob.id)||viewingJob} customers={customers} jobs={jobs} isJob={true} settings={settings}
+        onSave={updated=>apiUpdateJob(updated).then(saved=>setJobs(js=>js.map(j=>j.id===saved.id?saved:j))).catch(err=>window.alert("Failed to save job: "+err.message))}
+        onDelete={id=>{if(!window.confirm("Delete this job?"))return;apiDeleteJob(id).then(()=>{setJobs(js=>js.filter(j=>j.id!==id));setViewingJob(null);}).catch(err=>window.alert("Failed to delete job: "+err.message));}}
+        onClose={()=>setViewingJob(null)}/>}
       {showConfetti&&<Confetti onDone={()=>setShowConfetti(false)}/>}
     </div>
   );
@@ -2668,6 +2764,42 @@ const Dashboard = ({customers,jobs}) => {
 
   const recent=[...customers].sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)).slice(0,5);
 
+  // ── Deals Won reporting ──
+  const [dwPeriod,setDwPeriod]=useState("month");
+  const [dwCustomerId,setDwCustomerId]=useState("all");
+  const [dwJobId,setDwJobId]=useState("all");
+
+  const periodRange=(period)=>{
+    const now=new Date();
+    let start;
+    if(period==="month") start=new Date(now.getFullYear(),now.getMonth(),1);
+    else if(period==="quarter") start=new Date(now.getFullYear(),Math.floor(now.getMonth()/3)*3,1);
+    else if(period==="ytd") start=new Date(now.getFullYear(),0,1);
+    else start=new Date(2000,0,1); // "all"
+    return {start:start.toISOString(),end:new Date(now.getTime()+1).toISOString()};
+  };
+
+  const customerName=cid=>customers.find(c=>c.id===cid)?.name||"Unknown";
+
+  // Only customers with at least one won job show up in the picker — no point listing
+  // every customer, most of whom won't have any deals-won data to show yet.
+  const customersWithWonJobs=useMemo(()=>{
+    const ids=[...new Set(jobs.filter(j=>j.wonAt).map(j=>j.customerId))];
+    return ids.map(id=>customers.find(c=>c.id===id)).filter(Boolean).sort((a,b)=>a.name.localeCompare(b.name));
+  },[jobs,customers]);
+
+  const {start:dwStart,end:dwEnd}=periodRange(dwPeriod);
+  const dwInRange=useMemo(()=>wonJobsInRange(jobs,dwStart,dwEnd),[jobs,dwStart,dwEnd]);
+  const dwCustomerJobs=dwCustomerId==="all"?[]:jobs.filter(j=>j.customerId===Number(dwCustomerId)&&j.wonAt);
+  const dwFiltered=dwCustomerId==="all"?dwInRange:dwInRange.filter(j=>j.customerId===Number(dwCustomerId));
+  const dwFinal=(dwCustomerId!=="all"&&dwJobId!=="all")?dwFiltered.filter(j=>j.id===Number(dwJobId)):dwFiltered;
+
+  const dwRevenue=dwFinal.reduce((s,j)=>s+wonJobRevenue(j),0);
+  const dwCost=dwFinal.reduce((s,j)=>s+wonJobCost(j),0);
+  const dwProfit=dwRevenue-dwCost;
+  const dwMargins=dwFinal.map(j=>calcMargin(wonJobRevenue(j),wonJobCost(j))).filter(Boolean);
+  const dwAvgMarginPct=dwMargins.length>0?(dwMargins.reduce((s,m)=>s+parseFloat(m.pct),0)/dwMargins.length).toFixed(1):null;
+
   // Gather all tasks due today or overdue from both customers and jobs
   const allTasks=useMemo(()=>{
     const tasks=[];
@@ -2917,6 +3049,60 @@ const Dashboard = ({customers,jobs}) => {
           </div>
         );
       })()}
+
+      {/* ── Deals Won ── */}
+      <div style={{background:C.white,borderRadius:10,padding:20,border:`1px solid ${C.border}`,marginBottom:20}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:10}}>
+          <h3 style={{margin:0,fontSize:15,color:C.navy,fontWeight:700}}>💰 Deals Won</h3>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+            {[["month","Month"],["quarter","Quarter"],["ytd","YTD"],["all","All Time"]].map(([val,label])=>(
+              <button key={val} onClick={()=>setDwPeriod(val)} style={{padding:"5px 12px",borderRadius:20,fontSize:12,fontWeight:600,cursor:"pointer",border:"none",background:dwPeriod===val?C.sky:C.slateLight,color:dwPeriod===val?"#fff":C.slate}}>{label}</button>
+            ))}
+            <select value={dwCustomerId} onChange={e=>{setDwCustomerId(e.target.value);setDwJobId("all");}} style={{border:`1px solid ${C.border}`,borderRadius:6,padding:"6px 10px",fontSize:12,outline:"none",color:C.text}}>
+              <option value="all">All Customers</option>
+              {customersWithWonJobs.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            {dwCustomerId!=="all"&&(
+              <select value={dwJobId} onChange={e=>setDwJobId(e.target.value)} style={{border:`1px solid ${C.border}`,borderRadius:6,padding:"6px 10px",fontSize:12,outline:"none",color:C.text}}>
+                <option value="all">All Jobs</option>
+                {dwCustomerJobs.map(j=><option key={j.id} value={j.id}>{j.title}</option>)}
+              </select>
+            )}
+          </div>
+        </div>
+        {dwFinal.length===0?(
+          <div style={{textAlign:"center",padding:"20px 0",color:C.muted,fontSize:13}}>No deals won in this selection.</div>
+        ):(
+          <>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:16}}>
+              {[["Revenue",`£${dwRevenue.toLocaleString()}`,C.navy],["Cost",`£${dwCost.toLocaleString()}`,C.navy],["Gross Profit",`£${dwProfit.toLocaleString()}`,dwProfit>=0?C.mint:C.red],["Margin",dwAvgMarginPct!=null?`${dwAvgMarginPct}%`:"—",dwProfit>=0?C.mint:C.red]].map(([l,v,col])=>(
+                <div key={l} style={{background:C.slateLight,borderRadius:8,padding:"12px 14px"}}>
+                  <div style={{fontSize:11,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:4}}>{l}</div>
+                  <div style={{fontSize:20,fontWeight:800,color:col}}>{v}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 90px 90px 90px 70px",gap:8,padding:"6px 0",borderBottom:`2px solid ${C.border}`,marginBottom:4}}>
+              {["Job","Customer","Won Date","Revenue","Cost","Margin"].map(h=>(
+                <div key={h} style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.05em"}}>{h}</div>
+              ))}
+            </div>
+            {dwFinal.map(j=>{
+              const m=calcMargin(wonJobRevenue(j),wonJobCost(j));
+              return (
+                <div key={j.id} style={{display:"grid",gridTemplateColumns:"1fr 1fr 90px 90px 90px 70px",gap:8,padding:"8px 0",borderBottom:`1px solid ${C.border}`,alignItems:"center"}}>
+                  <div style={{fontSize:13,fontWeight:700,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{j.title}</div>
+                  <div style={{fontSize:13,color:C.slate,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{customerName(j.customerId)}</div>
+                  <div style={{fontSize:12,color:C.muted}}>{new Date(j.wonAt).toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"})}</div>
+                  <div style={{fontSize:13,fontWeight:700,color:C.navy}}>£{wonJobRevenue(j).toLocaleString()}</div>
+                  <div style={{fontSize:13,color:C.slate}}>{wonJobCost(j)>0?`£${wonJobCost(j).toLocaleString()}`:"—"}</div>
+                  <div style={{fontSize:13,fontWeight:700,color:m?(m.profit>=0?C.mint:C.red):C.muted}}>{m?`${m.pct}%`:"—"}</div>
+                </div>
+              );
+            })}
+          </>
+        )}
+      </div>
 
       {/* ── Recent Enquiries ── */}
       <div style={{background:C.white,borderRadius:10,padding:20,border:`1px solid ${C.border}`}}>
