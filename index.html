@@ -2201,6 +2201,18 @@ const DEFAULT_SETTINGS = {
   fitterPasswords:{"Tom Bailey":"glazing1","Steve Marsh":"glazing2","Dan Rees":"glazing3","Chris Wood":"glazing4"},
 };
 
+// A plain {...s,...saved} shallow merge replaces emailTemplates wholesale rather than
+// merging it key-by-key — so a persisted Settings row missing a template key (e.g. saved
+// before installReminder existed) left settings.emailTemplates.installReminder undefined,
+// crashing the whole app (no error boundary) the moment the Email Templates section tried
+// to read .subject off it. Deep-merges emailTemplates specifically so any key missing from
+// what's saved always falls back to the current default.
+const mergeSettings=(base,saved)=>({
+  ...base,
+  ...saved,
+  emailTemplates:{...base.emailTemplates,...(saved.emailTemplates||{})},
+});
+
 // ── Customer Feedback Form (live form for customer to fill in) ─────────────────
 const FeedbackFormModal = ({job,customers,settings,onSubmit,onClose}) => {
   const customer=customers.find(c=>c.id===job.customerId);
@@ -2638,13 +2650,15 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
             </div>
 
             {/* Template cards */}
-            {Object.entries(templateKeys).map(([key,{label,icon}])=>(
+            {Object.entries(templateKeys).map(([key,{label,icon}])=>{
+              const tmpl=settings.emailTemplates?.[key]||DEFAULT_EMAIL_TEMPLATES[key];
+              return (
               <div key={key} style={{background:C.white,borderRadius:10,border:`1px solid ${C.border}`,padding:24}}>
                 <h3 style={{margin:"0 0 4px",fontSize:16,color:C.navy,fontWeight:800}}>{icon} {label} Email</h3>
                 <p style={{margin:"0 0 16px",fontSize:13,color:C.slate}}>Sent when a {label.toLowerCase()} is confirmed.</p>
                 <div style={{display:"flex",flexDirection:"column",gap:12}}>
-                  <Inp label="Subject Line" value={settings.emailTemplates[key].subject} onChange={e=>updateTemplate(key,"subject",e.target.value)}/>
-                  <TA label="Email Body" value={settings.emailTemplates[key].body} onChange={e=>updateTemplate(key,"body",e.target.value)} style={{minHeight:220,fontFamily:"monospace",fontSize:13,lineHeight:1.6}}/>
+                  <Inp label="Subject Line" value={tmpl.subject} onChange={e=>updateTemplate(key,"subject",e.target.value)}/>
+                  <TA label="Email Body" value={tmpl.body} onChange={e=>updateTemplate(key,"body",e.target.value)} style={{minHeight:220,fontFamily:"monospace",fontSize:13,lineHeight:1.6}}/>
                 </div>
                 <div style={{marginTop:16,paddingTop:16,borderTop:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                   <button onClick={()=>updateTemplate(key,"body",DEFAULT_EMAIL_TEMPLATES[key].body)||updateTemplate(key,"subject",DEFAULT_EMAIL_TEMPLATES[key].subject)}
@@ -2654,7 +2668,7 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
               </div>
                 </div>
               </div>
-            ))}
+              );})}
           </div>
         )}
 
@@ -4510,7 +4524,7 @@ function App() {
   // field added to DEFAULT_SETTINGS later still has a sane fallback for older saved rows.
   useEffect(()=>{
     apiGetSettings()
-      .then(saved=>{ if(saved) setSettings(s=>({...s,...saved})); })
+      .then(saved=>{ if(saved) setSettings(s=>mergeSettings(s,saved)); })
       .catch(err=>console.error("Failed to load settings",err))
       .finally(()=>setSettingsLoaded(true));
   },[]);
@@ -4521,7 +4535,7 @@ function App() {
   useEffect(()=>{
     if(!authToken) return;
     apiGetSettings()
-      .then(saved=>{ if(saved) setSettings(s=>({...s,...saved})); })
+      .then(saved=>{ if(saved) setSettings(s=>mergeSettings(s,saved)); })
       .catch(err=>console.error("Failed to refresh settings",err));
   },[authToken]);
 
