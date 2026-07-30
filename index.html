@@ -39,7 +39,7 @@ const C = {
 };
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-const LEAD_STAGES   = ["New Enquiry","Contacted","Quoted","Followed Up","Deal Won","Deal Lost"];
+const LEAD_STAGES   = ["Prospect List","New Enquiry","Contacted","Quoted","Followed Up","Deal Won","Deal Lost"];
 const INSTALL_STAGES= ["Book Survey","Survey Booked","Order Confirmation Sent","Order Confirmation Signed","Order Products","Book Installation","Send Product Balance","Install Started","Install Completed","Send Guarantees","Job Completed ✓"];
 const COMPLETED_STAGE = "Job Completed ✓";
 const SOURCES       = ["Website","Referral","Checkatrade","Google Ads","Facebook","Flyer","Other"];
@@ -130,6 +130,7 @@ Kind regards,
 };
 
 const STAGE_META = {
+  "Prospect List":{bg:"#F1F5F9",text:"#475569"},
   "New Enquiry":{bg:"#EEF2FF",text:"#4338CA"},"Contacted":{bg:"#EFF6FF",text:"#1D4ED8"},
   "Quoted":{bg:"#FEFCE8",text:"#854D0E"},"Followed Up":{bg:"#FFF7ED",text:"#C2410C"},
   "Deal Won":{bg:"#F0FDF4",text:"#15803D"},"Deal Lost":{bg:"#FEF2F2",text:"#DC2626"},
@@ -2817,6 +2818,7 @@ const Dashboard = ({customers,jobs}) => {
 
   const stats=useMemo(()=>({
     total:customers.length,
+    prospects:customers.filter(c=>c.stage==="Prospect List").length,
     leads:customers.filter(c=>["New Enquiry","Contacted"].includes(c.stage)).length,
     won:customers.filter(c=>c.stage==="Deal Won").length,
     activeJobs:jobs.filter(j=>j.status!=="Send Guarantees").length,
@@ -2978,7 +2980,7 @@ const Dashboard = ({customers,jobs}) => {
       )}
 
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:14,marginBottom:28}}>
-        {[["Total Customers",stats.total,C.navy],["Active Leads",stats.leads,C.amber],["Deals Won",stats.won,C.mint],["Active Jobs",stats.activeJobs,C.sky],["Quote Pipeline",`£${stats.pipeline.toLocaleString()}`,C.mint]].map(([label,value,color])=>(
+        {[["Total Customers",stats.total,C.navy],["Prospects",stats.prospects,C.slate],["Active Leads",stats.leads,C.amber],["Deals Won",stats.won,C.mint],["Active Jobs",stats.activeJobs,C.sky],["Quote Pipeline",`£${stats.pipeline.toLocaleString()}`,C.mint]].map(([label,value,color])=>(
           <div key={label} style={{background:C.white,borderRadius:10,padding:"18px 20px",border:`1px solid ${C.border}`,boxShadow:"0 1px 4px rgba(0,0,0,0.05)"}}>
             <div style={{fontSize:28,fontWeight:800,color}}>{value}</div>
             <div style={{fontSize:13,color:C.slate,marginTop:4}}>{label}</div>
