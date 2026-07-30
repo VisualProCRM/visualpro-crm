@@ -2826,6 +2826,7 @@ const Dashboard = ({customers,jobs}) => {
   }),[customers,jobs]);
 
   const recent=[...customers].sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)).slice(0,5);
+  const activeProspects=customers.filter(c=>c.stage==="Prospect List").sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
 
   // ── Deals Won reporting ──
   const [dwPeriod,setDwPeriod]=useState("month");
@@ -2980,7 +2981,7 @@ const Dashboard = ({customers,jobs}) => {
       )}
 
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:14,marginBottom:28}}>
-        {[["Total Customers",stats.total,C.navy],["Prospects",stats.prospects,C.slate],["Active Leads",stats.leads,C.amber],["Deals Won",stats.won,C.mint],["Active Jobs",stats.activeJobs,C.sky],["Quote Pipeline",`£${stats.pipeline.toLocaleString()}`,C.mint]].map(([label,value,color])=>(
+        {[["Total Customers",stats.total,C.navy],["Active Prospects",stats.prospects,C.slate],["Active Leads",stats.leads,C.amber],["Deals Won",stats.won,C.mint],["Active Jobs",stats.activeJobs,C.sky],["Quote Pipeline",`£${stats.pipeline.toLocaleString()}`,C.mint]].map(([label,value,color])=>(
           <div key={label} style={{background:C.white,borderRadius:10,padding:"18px 20px",border:`1px solid ${C.border}`,boxShadow:"0 1px 4px rgba(0,0,0,0.05)"}}>
             <div style={{fontSize:28,fontWeight:800,color}}>{value}</div>
             <div style={{fontSize:13,color:C.slate,marginTop:4}}>{label}</div>
@@ -3168,7 +3169,7 @@ const Dashboard = ({customers,jobs}) => {
       </div>
 
       {/* ── Recent Enquiries ── */}
-      <div style={{background:C.white,borderRadius:10,padding:20,border:`1px solid ${C.border}`}}>
+      <div style={{background:C.white,borderRadius:10,padding:20,border:`1px solid ${C.border}`,marginBottom:20}}>
         <h3 style={{margin:"0 0 14px",fontSize:15,color:C.navy,fontWeight:700}}>Recent Enquiries</h3>
         {recent.map(c=>(
           <div key={c.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:`1px solid ${C.border}`}}>
@@ -3180,6 +3181,22 @@ const Dashboard = ({customers,jobs}) => {
           </div>
         ))}
       </div>
+
+      {/* ── Active Prospects ── */}
+      {activeProspects.length>0&&(
+        <div style={{background:C.white,borderRadius:10,padding:20,border:`1px solid ${C.border}`}}>
+          <h3 style={{margin:"0 0 14px",fontSize:15,color:C.navy,fontWeight:700}}>Active Prospects</h3>
+          {activeProspects.map(c=>(
+            <div key={c.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:`1px solid ${C.border}`}}>
+              <div>
+                <div style={{fontWeight:600,fontSize:14,color:C.text}}>{c.name}</div>
+                <div style={{fontSize:12,color:C.slate}}>{c.address}</div>
+              </div>
+              <Badge label={c.stage}/>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
