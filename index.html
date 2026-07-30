@@ -1,4 +1,35 @@
-import { useState, useMemo } from "react";
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="theme-color" content="#1B2B4B"/>
+  <title>VisualPro CRM</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"/>
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:'Inter','Segoe UI',sans-serif;background:#1B2B4B;}
+    #root{height:100vh;}
+    #loading{position:fixed;inset:0;background:#1B2B4B;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;color:#fff;}
+    #loading h1{font-size:28px;font-weight:800;margin-bottom:8px;}
+    #loading p{font-size:14px;opacity:0.6;}
+    .spinner{width:40px;height:40px;border:3px solid rgba(255,255,255,0.2);border-top-color:#4A90D9;border-radius:50%;animation:spin 0.8s linear infinite;margin-bottom:20px;}
+    @keyframes spin{to{transform:rotate(360deg)}}
+  </style>
+</head>
+<body>
+  <div id="loading">
+    <div class="spinner"></div>
+    <h1>🪟 VisualPro CRM</h1>
+    <p>Loading, please wait...</p>
+  </div>
+  <div id="root"></div>
+  <script type="text/babel" data-presets="react">
+const { useState, useMemo } = React;
 
 // ── Palette ───────────────────────────────────────────────────────────────────
 const C = {
@@ -4055,7 +4086,7 @@ const CustomerDirectoryForm = ({initial={},onSave,onCancel}) => {
 };
 
 // ── App Shell ─────────────────────────────────────────────────────────────────
-export default function App() {
+function App() {
   const [customers,setCustomers]=useState(seedCustomers);
   const [jobs,setJobs]=useState(seedJobs);
   const [page,setPage]=useState("dashboard");
@@ -4306,3 +4337,12 @@ export default function App() {
     </div>
   );
 }
+
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(React.createElement(App));
+document.getElementById('loading').style.display = 'none';
+document.body.style.background = '#F1F5F9';
+  </script>
+</body>
+</html>
