@@ -1,35 +1,4 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <meta name="theme-color" content="#1B2B4B"/>
-  <title>VisualPro CRM</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com"/>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"/>
-  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
-  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
-  <style>
-    *{box-sizing:border-box;margin:0;padding:0;}
-    body{font-family:'Inter','Segoe UI',sans-serif;background:#1B2B4B;}
-    #root{height:100vh;}
-    #loading{position:fixed;inset:0;background:#1B2B4B;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;color:#fff;}
-    #loading h1{font-size:28px;font-weight:800;margin-bottom:8px;}
-    #loading p{font-size:14px;opacity:0.6;}
-    .spinner{width:40px;height:40px;border:3px solid rgba(255,255,255,0.2);border-top-color:#4A90D9;border-radius:50%;animation:spin 0.8s linear infinite;margin-bottom:20px;}
-    @keyframes spin{to{transform:rotate(360deg)}}
-  </style>
-</head>
-<body>
-  <div id="loading">
-    <div class="spinner"></div>
-    <h1>🪟 VisualPro CRM</h1>
-    <p>Loading, please wait...</p>
-  </div>
-  <div id="root"></div>
-  <script type="text/babel" data-presets="react" data-plugins="transform-modules-umd">
-const { useState, useMemo, useEffect, useRef } = React;
+import { useState, useMemo } from "react";
 
 // ── Palette ───────────────────────────────────────────────────────────────────
 const C = {
@@ -39,7 +8,7 @@ const C = {
 };
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-const LEAD_STAGES   = ["Prospect List","New Enquiry","Contacted","Quoted","Followed Up","Deal Won","Deal Lost"];
+const LEAD_STAGES   = ["New Enquiry","Contacted","Quoted","Followed Up","Deal Won","Deal Lost"];
 const INSTALL_STAGES= ["Book Survey","Survey Booked","Order Confirmation Sent","Order Confirmation Signed","Order Products","Book Installation","Send Product Balance","Install Started","Install Completed","Send Guarantees","Job Completed ✓"];
 const COMPLETED_STAGE = "Job Completed ✓";
 const SOURCES       = ["Website","Referral","Checkatrade","Google Ads","Facebook","Flyer","Other"];
@@ -85,28 +54,7 @@ Kind regards,
 {{companyName}}
 {{companyPhone}}`,
   },
-  installReminderWeek: {
-    subject: "Reminder: Your Installation is Coming Up – {{customerName}}",
-    body: `Dear {{customerName}},
-
-This is a friendly reminder that your installation is coming up in the next week:
-
-📅 Date: {{installDate}}
-👷 Installers: {{fitterNames}}
-📍 Address: {{address}}
-
-Please ensure:
-• Access to the property is available
-• Any furniture near the areas to be fitted is cleared
-• Pets are secured away from the work area
-
-We look forward to seeing you soon!
-
-Kind regards,
-{{companyName}}
-{{companyPhone}}`,
-  },
-  installReminderDay: {
+  installReminder: {
     subject: "Reminder: Your Installation is Tomorrow – {{customerName}}",
     body: `Dear {{customerName}},
 
@@ -130,7 +78,6 @@ Kind regards,
 };
 
 const STAGE_META = {
-  "Prospect List":{bg:"#F1F5F9",text:"#475569"},
   "New Enquiry":{bg:"#EEF2FF",text:"#4338CA"},"Contacted":{bg:"#EFF6FF",text:"#1D4ED8"},
   "Quoted":{bg:"#FEFCE8",text:"#854D0E"},"Followed Up":{bg:"#FFF7ED",text:"#C2410C"},
   "Deal Won":{bg:"#F0FDF4",text:"#15803D"},"Deal Lost":{bg:"#FEF2F2",text:"#DC2626"},
@@ -148,47 +95,6 @@ const STATUS_COLORS = {...STAGE_META,...INSTALL_META};
 // ── Seed data ─────────────────────────────────────────────────────────────────
 let nextId = 200;
 const uid = () => ++nextId;
-
-// ── API client ────────────────────────────────────────────────────────────────
-// Talks directly to the Function App (not proxied through the Static Web App), so CORS is
-// configured on the Function App side to allow this origin.
-const API_BASE = "https://visualpro-crm-func.azurewebsites.net/api";
-
-// Module-level (not React state) so the plain apiRequest() function below can read it
-// without every call site needing to pass it through explicitly. The React state that
-// drives this is kept in sync via setGlobalAuthToken(), called from a useEffect on the
-// actual authToken state — see the App component.
-let _authToken = null;
-const setGlobalAuthToken = (token) => { _authToken = token; };
-
-const apiRequest = async (path, options = {}) => {
-  const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
-  if (_authToken) headers["Authorization"] = `Bearer ${_authToken}`;
-  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
-  if (!res.ok) throw new Error(`${options.method || "GET"} ${path} failed: ${res.status}`);
-  if (res.status === 204) return null;
-  return res.json();
-};
-
-const apiListCustomers = () => apiRequest("/customers");
-const apiCreateCustomer = (data) => apiRequest("/customers", { method: "POST", body: JSON.stringify(data) });
-const apiUpdateCustomer = (data) => apiRequest(`/customers/${data.id}`, { method: "PUT", body: JSON.stringify(data) });
-const apiDeleteCustomer = (id) => apiRequest(`/customers/${id}`, { method: "DELETE" });
-
-const apiListJobs = () => apiRequest("/jobs");
-const apiCreateJob = (data) => apiRequest("/jobs", { method: "POST", body: JSON.stringify(data) });
-const apiUpdateJob = (data) => apiRequest(`/jobs/${data.id}`, { method: "PUT", body: JSON.stringify(data) });
-const apiDeleteJob = (id) => apiRequest(`/jobs/${id}`, { method: "DELETE" });
-
-const apiGetSettings = () => apiRequest("/settings");
-const apiUpdateSettings = (data) => apiRequest("/settings", { method: "PUT", body: JSON.stringify(data) });
-
-const apiGetOrders = () => apiRequest("/orders");
-const apiUpdateOrders = (data) => apiRequest("/orders", { method: "PUT", body: JSON.stringify(data) });
-
-const apiLogin = (role, password) => apiRequest("/login", { method: "POST", body: JSON.stringify({ role, password }) });
-const apiSendReminder = (jobId, reminderKey) =>
-  apiRequest("/send-reminder", { method: "POST", body: JSON.stringify({ jobId, reminderKey }) });
 
 const seedCustomers = [
   {id:1,name:"Sarah Mitchell",email:"sarah.mitchell@email.com",phone:"07712 345678",address:"14 Oak Lane, Camberley, GU15 2AB",source:"Website",stage:"Deal Won",notes:"Prefers morning calls",createdAt:"2025-06-01",windowcad:"WC-2025-001",quoteValue:4200,quoteCost:2650,tabs:{quote:{files:[],notes:""},invoices:{files:[],notes:""},notepad:{text:"Chase re: bay window size"},survey:{files:[],images:[],notes:"",date:"2025-06-05",fitter:"Tom Bailey"},orderConfirmation:{files:[],notes:"Signed and returned"},bills:{files:[],costs:"",notes:""},installation:{date:"",fitters:[],fittersNotes:""},guarantee:{files:[],notes:""}}},
@@ -220,37 +126,9 @@ const calcMargin = (value,cost) => {
   return {profit:v-c,pct:((v-c)/v*100).toFixed(1)};
 };
 
-// A customer's quote is split into Product (quoteValue/quoteCost — the original fields,
-// just relabeled in the UI) and Installation (installationValue/installationCost, added
-// alongside). Margin is calculated from the combined total of both, not either alone.
-const totalQuoteValue = (c) => (Number(c?.quoteValue)||0) + (Number(c?.installationValue)||0);
-const totalQuoteCost = (c) => (Number(c?.quoteCost)||0) + (Number(c?.installationCost)||0);
-
-// "Deals Won" reporting helpers — every Job represents a sold deal (there's no "unsold Job"
-// concept), stamped with wonAt at creation (see handleDealWon / JobForm). Revenue falls back
-// to the older flat `value` field for any Job created before Quote Financials existed on
-// JobForm; cost has no equivalent fallback, so margin is left uncomputed ("—") for those.
-const wonJobRevenue = (j) => totalQuoteValue(j) || Number(j?.value) || 0;
-const wonJobCost = (j) => totalQuoteCost(j);
-const wonJobsInRange = (jobs, start, end) => jobs.filter(j => j.wonAt && j.wonAt >= start && j.wonAt < end);
-
 const readFileAsDataURL = (file) => new Promise(res => {
   const r=new FileReader(); r.onload=e=>res({name:file.name,type:file.type,data:e.target.result}); r.readAsDataURL(file);
 });
-
-// Uploads to Blob Storage (via the Function App) instead of keeping the file as a giant
-// base64 string in the record itself. Returns the same {name,type,data} shape as
-// readFileAsDataURL — data is now a real (long-lived, read-only) URL instead of a data:
-// URI, but every existing <a href={f.data}>/<img src={f.data}> usage keeps working as-is.
-const uploadFile = async (file, container) => {
-  const dataUrl = await readFileAsDataURL(file);
-  const base64 = dataUrl.data.split(",")[1];
-  const saved = await apiRequest("/upload", {
-    method: "POST",
-    body: JSON.stringify({ container, filename: file.name, contentType: file.type, dataBase64: base64 }),
-  });
-  return saved;
-};
 
 // ── Primitives ────────────────────────────────────────────────────────────────
 const Badge = ({label}) => {
@@ -300,7 +178,7 @@ const Modal = ({title,onClose,children,wide}) => (
 const FileAttach = ({files,onAdd,onRemove,accept,label="Attach File"}) => {
   const handleChange = async (e) => {
     const f=e.target.files[0]; if(!f) return;
-    const data=await uploadFile(f,"documents");
+    const data=await readFileAsDataURL(f);
     onAdd(data);
     e.target.value="";
   };
@@ -315,7 +193,7 @@ const FileAttach = ({files,onAdd,onRemove,accept,label="Attach File"}) => {
           {files.map((f,i)=>(
             <div key={i} style={{display:"flex",alignItems:"center",gap:8,background:C.slateLight,borderRadius:6,padding:"6px 10px"}}>
               <span style={{fontSize:16}}>{f.type==="application/pdf"?"📄":f.type?.startsWith("image")?"🖼️":"📎"}</span>
-              <a href={f.data} target="_blank" rel="noreferrer" style={{fontSize:13,color:C.sky,fontWeight:500,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</a>
+              <a href={f.data} download={f.name} style={{fontSize:13,color:C.sky,fontWeight:500,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</a>
               <button onClick={()=>onRemove(i)} style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:16,lineHeight:1}}>×</button>
             </div>
           ))}
@@ -329,7 +207,7 @@ const FileAttach = ({files,onAdd,onRemove,accept,label="Attach File"}) => {
 const ImageGallery = ({images,onAdd,onRemove}) => {
   const handleChange = async (e) => {
     const files=Array.from(e.target.files);
-    const datas=await Promise.all(files.map(f=>uploadFile(f,"photos")));
+    const datas=await Promise.all(files.map(readFileAsDataURL));
     datas.forEach(onAdd);
     e.target.value="";
   };
@@ -354,31 +232,20 @@ const ImageGallery = ({images,onAdd,onRemove}) => {
 };
 
 // ── Card Detail Modal with Tabs ───────────────────────────────────────────────
-const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,settings,onOpenJob}) => {
+const CardDetailModal = ({record,customers,onSave,onDelete,onClose,isJob,settings}) => {
   const [activeTab,setActiveTab]=useState("Details");
   const [data,setData]=useState({...record,_settings:settings});
   const [showFeedbackForm,setShowFeedbackForm]=useState(false);
   const customer=isJob?customers.find(c=>c.id===data.customerId):null;
 
-  // Once a Customer has one or more linked Jobs, their own Quote/Notes/Survey/etc. tabs are
-  // retired (see handleDealWon) — content now lives on the Job(s) instead, so only "Details"
-  // is shown, plus a Jobs list to get to the real content. Not gated on stage==="Deal Won",
-  // since a repeat customer might have an old completed Job while back in an earlier stage
-  // for a brand new enquiry.
-  const linkedJobs=!isJob?(jobs||[]).filter(j=>j.customerId===data.id):[];
-
   const setTab=(key,val)=>setData(d=>({...d,tabs:{...d.tabs,[key]:{...d.tabs[key],...val}}}));
-
-  // data carries _settings for this modal's own internal use (dropdowns etc.) — strip it
-  // before persisting, or every customer/job record would carry a full copy of Settings.
-  const save=()=>{ const {_settings,...toSave}=data; onSave(toSave); onClose(); };
 
   const addFile=(tabKey,file)=>setData(d=>({...d,tabs:{...d.tabs,[tabKey]:{...d.tabs[tabKey],files:[...d.tabs[tabKey].files,file]}}}));
   const removeFile=(tabKey,i)=>setData(d=>({...d,tabs:{...d.tabs,[tabKey]:{...d.tabs[tabKey],files:d.tabs[tabKey].files.filter((_,idx)=>idx!==i)}}}));
   const addImage=(file)=>setData(d=>({...d,tabs:{...d.tabs,survey:{...d.tabs.survey,images:[...d.tabs.survey.images,file]}}}));
   const removeImage=(i)=>setData(d=>({...d,tabs:{...d.tabs,survey:{...d.tabs.survey,images:d.tabs.survey.images.filter((_,idx)=>idx!==i)}}}));
 
-  const margin=calcMargin(totalQuoteValue(data),totalQuoteCost(data));
+  const margin=calcMargin(data.quoteValue,data.quoteCost);
   const tabStyle=(t)=>({
     padding:"8px 14px",border:"none",cursor:"pointer",fontSize:13,fontWeight:activeTab===t?700:500,
     borderBottom:`2px solid ${activeTab===t?C.sky:"transparent"}`,
@@ -386,10 +253,10 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
   });
 
   return (
-    <Modal title={isJob?data.title:data.name} onClose={save} wide>
-      {/* Tab bar — collapses to just Details for a Customer once they have linked Jobs */}
+    <Modal title={isJob?data.title:data.name} onClose={()=>{onSave(data);onClose();}} wide>
+      {/* Tab bar */}
       <div style={{display:"flex",gap:0,borderBottom:`1px solid ${C.border}`,marginBottom:20,overflowX:"auto"}}>
-        {(!isJob&&linkedJobs.length>0?["Details"]:CARD_TABS).map(t=><button key={t} style={tabStyle(t)} onClick={()=>setActiveTab(t)}>{t}</button>)}
+        {CARD_TABS.map(t=><button key={t} style={tabStyle(t)} onClick={()=>setActiveTab(t)}>{t}</button>)}
       </div>
 
       {/* ── DETAILS TAB ── */}
@@ -404,7 +271,7 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
               {/* Full customer info panel */}
               <div style={{background:C.slateLight,borderRadius:8,padding:12}}>
                 <div style={{fontSize:12,fontWeight:600,color:C.slate,marginBottom:8}}>CUSTOMER INFO</div>
-                {customer&&[["📧",customer.email],["📞",customer.phone],["🔗 Source",customer.source],["💰 Quote",totalQuoteValue(customer)?`£${totalQuoteValue(customer).toLocaleString()}`:"—"],["📊 Margin",totalQuoteValue(customer)&&totalQuoteCost(customer)?(()=>{const m=calcMargin(totalQuoteValue(customer),totalQuoteCost(customer));return m?`${m.pct}% (£${m.profit.toLocaleString()})`:"—"})():"—"]].map(([icon,val])=>(
+                {customer&&[["📧",customer.email],["📞",customer.phone],["🔗 Source",customer.source],["💰 Quote",customer.quoteValue?`£${Number(customer.quoteValue).toLocaleString()}`:"—"],["📊 Margin",customer.quoteValue&&customer.quoteCost?(()=>{const m=calcMargin(customer.quoteValue,customer.quoteCost);return m?`${m.pct}% (£${m.profit.toLocaleString()})`:"—"})():"—"]].map(([icon,val])=>(
                   <div key={icon} style={{fontSize:13,color:C.text,padding:"5px 0",borderBottom:`1px solid ${C.border}`,display:"flex",gap:8}}>
                     <span style={{color:C.slate,minWidth:90,flexShrink:0}}>{icon}</span>
                     <span style={{fontWeight:500}}>{val||"—"}</span>
@@ -492,16 +359,12 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
                   })}
                 </div>
               </div>
-              {/* Dates — read-only, mirroring whatever's actually booked in the Survey/Installation
-                  tabs (falling back to the plain fields set at initial job creation, if those
-                  tabs haven't been booked yet) rather than being separately editable here, which
-                  is what let this go stale/out of sync with the real booking. */}
+              {/* Dates */}
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-                <Inp label="Survey Date" type="date" value={data.tabs?.survey?.date||data.surveyDate||""} readOnly style={{background:C.slateLight,color:C.slate}}/>
-                <Inp label="Install Date" type="date" value={data.tabs?.installation?.date||data.installDate||""} readOnly style={{background:C.slateLight,color:C.slate}}/>
+                <Inp label="Survey Date" type="date" value={data.surveyDate||""} onChange={e=>setData(d=>({...d,surveyDate:e.target.value}))}/>
+                <Inp label="Install Date" type="date" value={data.installDate||""} onChange={e=>setData(d=>({...d,installDate:e.target.value}))}/>
               </div>
-              <div style={{fontSize:11,color:C.muted,marginTop:-6}}>Set via the Survey / Installation tabs above</div>
-              <Inp label="Installers" value={(data.tabs?.installation?.fitters||[]).length?data.tabs.installation.fitters.join(", "):(data.installers||"")} readOnly placeholder="Set via the Installation tab" style={{background:C.slateLight,color:C.slate}}/>
+              <Inp label="Installers" value={data.installers||""} onChange={e=>setData(d=>({...d,installers:e.target.value}))} placeholder="e.g. Tom & Steve"/>
               <Sel label="Sold By" value={data.soldBy||""} onChange={e=>setData(d=>({...d,soldBy:e.target.value}))}>
                 <option value="">— Select staff member —</option>
                 {(settings?.staff||DEFAULT_STAFF).map(s=><option key={s}>{s}</option>)}
@@ -609,32 +472,9 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
               <TA label="Notes" value={data.notes||""} onChange={e=>setData(d=>({...d,notes:e.target.value}))}/>
             </>
           )}
-          {!isJob&&linkedJobs.length>0&&(
-            <div style={{background:C.slateLight,borderRadius:8,padding:14}}>
-              <div style={{fontSize:12,fontWeight:700,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:12}}>Jobs ({linkedJobs.length})</div>
-              {linkedJobs.map(job=>{
-                const isCompleted=job.status===COMPLETED_STAGE;
-                return (
-                  <div key={job.id} onClick={()=>onOpenJob&&onOpenJob(job)}
-                    style={{border:`1px solid ${isCompleted?"#86EFAC":C.border}`,borderRadius:8,padding:12,marginBottom:8,cursor:onOpenJob?"pointer":"default",
-                      background:isCompleted?"#F0FDF4":C.white}}>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:4}}>
-                      <div style={{fontWeight:700,fontSize:14,color:C.navy}}>{job.title}</div>
-                      <Badge label={job.status}/>
-                    </div>
-                    <div style={{display:"flex",gap:14,fontSize:12,color:C.muted,flexWrap:"wrap"}}>
-                      {wonJobRevenue(job)>0&&<span style={{color:C.mint,fontWeight:700}}>£{wonJobRevenue(job).toLocaleString()}</span>}
-                      {job.tabs?.installation?.date&&<span>🔨 {new Date(job.tabs.installation.date).toLocaleDateString("en-GB")}</span>}
-                      {isCompleted&&job.completedAt&&<span style={{color:"#15803D",fontWeight:600}}>✅ {job.completedAt}</span>}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
           <div style={{display:"flex",gap:10,justifyContent:"space-between",paddingTop:8,borderTop:`1px solid ${C.border}`}}>
             <Btn variant="danger" onClick={()=>{onDelete(data.id);onClose();}}>Delete</Btn>
-            <Btn onClick={save}>Save & Close</Btn>
+            <Btn onClick={()=>{onSave(data);onClose();}}>Save & Close</Btn>
           </div>
         </div>
       )}
@@ -696,18 +536,10 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
           <div style={{background:C.slateLight,borderRadius:8,padding:14}}>
             <div style={{fontSize:12,fontWeight:700,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:12}}>Quote Financials</div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
-              <Inp label="Product Value (£)" type="number" value={data.quoteValue||""} onChange={e=>setData(d=>({...d,quoteValue:e.target.value}))} placeholder="4200"/>
-              <Inp label="Product Cost (£)" type="number" value={data.quoteCost||""} onChange={e=>setData(d=>({...d,quoteCost:e.target.value}))} placeholder="2650"/>
+              <Inp label="Quote Value (£)" type="number" value={data.quoteValue||""} onChange={e=>setData(d=>({...d,quoteValue:e.target.value}))} placeholder="4200"/>
+              <Inp label="Total Cost (£)" type="number" value={data.quoteCost||""} onChange={e=>setData(d=>({...d,quoteCost:e.target.value}))} placeholder="2650"/>
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
-              <Inp label="Installation Value (£)" type="number" value={data.installationValue||""} onChange={e=>setData(d=>({...d,installationValue:e.target.value}))} placeholder="800"/>
-              <Inp label="Installation Cost (£)" type="number" value={data.installationCost||""} onChange={e=>setData(d=>({...d,installationCost:e.target.value}))} placeholder="400"/>
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
-              <Inp label="Total Quote Value (£)" type="number" value={totalQuoteValue(data)||""} readOnly style={{background:C.white,color:C.slate}}/>
-              <Inp label="Total Quote Cost (£)" type="number" value={totalQuoteCost(data)||""} readOnly style={{background:C.white,color:C.slate}}/>
-            </div>
-            {calcMargin(totalQuoteValue(data),totalQuoteCost(data))&&(()=>{const m=calcMargin(totalQuoteValue(data),totalQuoteCost(data));return(
+            {calcMargin(data.quoteValue,data.quoteCost)&&(()=>{const m=calcMargin(data.quoteValue,data.quoteCost);return(
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
                 {[["Gross Profit",`£${m.profit.toLocaleString()}`,m.profit>=0?C.mint:C.red],["Margin",`${m.pct}%`,m.profit>=0?C.mint:C.red]].map(([l,v,col])=>(
                   <div key={l} style={{background:C.white,borderRadius:6,padding:"10px 12px",border:`1px solid ${C.border}`}}>
@@ -720,7 +552,7 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
           </div>
           <TA label="Quote Notes" value={data.tabs.quote.notes} onChange={e=>setTab("quote",{notes:e.target.value})} placeholder="e.g. Prices valid for 30 days..."/>
           <div style={{display:"flex",justifyContent:"flex-end"}}>
-            <Btn onClick={save}>Save & Close</Btn>
+            <Btn onClick={()=>{onSave(data);onClose();}}>Save & Close</Btn>
           </div>
         </div>
       )}
@@ -732,7 +564,7 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
           {data.tabs.invoices.files.length===0&&<div style={{textAlign:"center",padding:24,color:C.muted,fontSize:13,background:C.slateLight,borderRadius:8}}>No invoices attached yet.</div>}
           <TA label="Invoice Notes" value={data.tabs.invoices.notes} onChange={e=>setTab("invoices",{notes:e.target.value})} placeholder="e.g. Invoice #INV-001 sent 12 June..."/>
           <div style={{display:"flex",justifyContent:"flex-end"}}>
-            <Btn onClick={save}>Save & Close</Btn>
+            <Btn onClick={()=>{onSave(data);onClose();}}>Save & Close</Btn>
           </div>
         </div>
       )}
@@ -742,7 +574,7 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
         <div style={{display:"flex",flexDirection:"column",gap:16}}>
           <TA label="Notes" value={data.tabs.notepad.text} onChange={e=>setTab("notepad",{text:e.target.value})} placeholder="Add any notes here..." style={{minHeight:220}}/>
           <div style={{display:"flex",justifyContent:"flex-end"}}>
-            <Btn onClick={save}>Save & Close</Btn>
+            <Btn onClick={()=>{onSave(data);onClose();}}>Save & Close</Btn>
           </div>
         </div>
       )}
@@ -776,22 +608,8 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
             <div style={{background:"#F0FDF4",border:"1px solid #86EFAC",borderRadius:8,padding:12,fontSize:13,color:"#15803D",fontWeight:600}}>
               ✅ Survey booked — {data.tabs.survey.fitter} on {new Date(data.tabs.survey.date).toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}
               {data.tabs.survey.time&&<span> {data.tabs.survey.time}{data.tabs.survey.endTime&&` – ${data.tabs.survey.endTime}`}</span>}
-              <div style={{marginTop:6,fontSize:12,fontWeight:600}}>
-                {data.tabs.survey.emailSent?.status==="sent"
-                  ?`📧 Survey booked email sent ${data.tabs.survey.emailSent.sentAt}`
-                  :data.tabs.survey.notifyEnabled===false
-                    ?"📧 Survey booked email disabled for this job"
-                    :"📧 Survey booked email will send automatically on save"}
-              </div>
             </div>
           )}
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:C.slateLight,borderRadius:8,padding:"10px 14px"}}>
-            <div style={{fontSize:13,fontWeight:600,color:C.text}}>Send survey booked email automatically</div>
-            <div onClick={()=>setTab("survey",{notifyEnabled:data.tabs.survey.notifyEnabled===false})}
-              style={{width:42,height:23,borderRadius:12,background:data.tabs.survey.notifyEnabled!==false?C.mint:C.border,position:"relative",cursor:"pointer",flexShrink:0}}>
-              <div style={{width:17,height:17,borderRadius:"50%",background:"#fff",position:"absolute",top:3,left:data.tabs.survey.notifyEnabled!==false?22:3,transition:"left 0.15s",boxShadow:"0 1px 3px rgba(0,0,0,0.3)"}}/>
-            </div>
-          </div>
           <div>
             <div style={{fontSize:12,fontWeight:600,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Survey Documents</div>
             <FileAttach files={data.tabs.survey.files} onAdd={f=>addFile("survey",f)} onRemove={i=>removeFile("survey",i)} accept=".pdf,.doc,.docx" label="Attach Survey Document"/>
@@ -802,7 +620,7 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
           </div>
           <TA label="Survey Notes" value={data.tabs.survey.notes} onChange={e=>setTab("survey",{notes:e.target.value})} placeholder="e.g. Access issues on left side, check lintel above bay..."/>
           <div style={{display:"flex",justifyContent:"flex-end"}}>
-            <Btn onClick={save}>Save & Close</Btn>
+            <Btn onClick={()=>{onSave(data);onClose();}}>Save & Close</Btn>
           </div>
         </div>
       )}
@@ -816,7 +634,7 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
           </div>
           <TA label="Notes" value={data.tabs.orderConfirmation.notes} onChange={e=>setTab("orderConfirmation",{notes:e.target.value})} placeholder="e.g. Signed by customer on 15 June, deposit received..."/>
           <div style={{display:"flex",justifyContent:"flex-end"}}>
-            <Btn onClick={save}>Save & Close</Btn>
+            <Btn onClick={()=>{onSave(data);onClose();}}>Save & Close</Btn>
           </div>
         </div>
       )}
@@ -831,7 +649,7 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
           </div>
           <TA label="Notes" value={data.tabs.bills.notes||""} onChange={e=>setTab("bills",{...data.tabs.bills,notes:e.target.value})} placeholder="e.g. All supplier invoices received, awaiting hardware delivery..."/>
           <div style={{display:"flex",justifyContent:"flex-end"}}>
-            <Btn onClick={save}>Save & Close</Btn>
+            <Btn onClick={()=>{onSave(data);onClose();}}>Save & Close</Btn>
           </div>
         </div>
       )}
@@ -1133,14 +951,25 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
             const weekDate=calcSendDate(7,instDate);
             const dayDate=calcSendDate(1,instDate);
 
+            const fillTemplate=(tmpl)=>{
+              if(!tmpl||!customerRec) return "";
+              return tmpl
+                .replace(/{{customerName}}/g,customerRec.name||"")
+                .replace(/{{address}}/g,customerRec.address||"")
+                .replace(/{{installDate}}/g,instDate?new Date(instDate).toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long",year:"numeric"}):"")
+                .replace(/{{fitterNames}}/g,(data.tabs.installation.fitters||[]).join(", ")||"")
+                .replace(/{{companyName}}/g,settings?.companyName||"VisualPro")
+                .replace(/{{companyPhone}}/g,settings?.companyPhone||"");
+            };
+
             const handleSendEmail=(reminderKey)=>{
               if(!instDate||!customerRec) return;
-              if(!window.confirm(`This will send a real email to ${customerRec.email}. Are you sure?`)) return;
-              apiSendReminder(data.id,reminderKey)
-                .then(()=>{
-                  setTab("installation",{emailReminders:{...emailReminders,[reminderKey]:{status:"sent",sentAt:new Date().toLocaleDateString("en-GB")}}});
-                })
-                .catch(err=>window.alert("Failed to send email: "+err.message));
+              const tmpl=settings?.emailTemplates?.installReminder;
+              const body=fillTemplate(tmpl?.body||"");
+              const subject=fillTemplate(tmpl?.subject||"Install Reminder");
+              const mailto=`mailto:${customerRec.email||""}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+              window.open(mailto,"_blank");
+              setTab("installation",{emailReminders:{...emailReminders,[reminderKey]:{status:"sent",sentAt:new Date().toLocaleDateString("en-GB")}}});
             };
 
             const ReminderRow=({label,icon,sendDate,reminderKey,daysLabel})=>{
@@ -1182,7 +1011,7 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
                   <div>
                     <div style={{color:"#fff",fontWeight:700,fontSize:14}}>Customer Email Reminders</div>
                     <div style={{color:"rgba(255,255,255,0.6)",fontSize:11,marginTop:1}}>
-                      Sends a real email automatically using your saved template in Settings.
+                      Emails open in your mail client. Automated sending will be active once Azure is connected.
                     </div>
                   </div>
                 </div>
@@ -1247,7 +1076,7 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
           </div>
 
           <div style={{display:"flex",justifyContent:"flex-end"}}>
-            <Btn onClick={save}>Save & Close</Btn>
+            <Btn onClick={()=>{onSave(data);onClose();}}>Save & Close</Btn>
           </div>
         </div>
       )}
@@ -1282,7 +1111,7 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
           <TA label="Notes" value={data.tabs.guarantee.notes||""} onChange={e=>setData(d=>({...d,tabs:{...d.tabs,guarantee:{...d.tabs.guarantee,notes:e.target.value}}}))}
             placeholder="e.g. 10-year frame guarantee issued, FENSA cert #12345 sent to customer on 20 June..."/>
           <div style={{display:"flex",justifyContent:"flex-end"}}>
-            <Btn onClick={save}>Save & Close</Btn>
+            <Btn onClick={()=>{onSave(data);onClose();}}>Save & Close</Btn>
           </div>
         </div>
       )}
@@ -1363,7 +1192,7 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
             )}
 
             <div style={{display:"flex",justifyContent:"flex-end",paddingTop:8,borderTop:`1px solid ${C.border}`}}>
-              <Btn onClick={save}>Save & Close</Btn>
+              <Btn onClick={()=>{onSave(data);onClose();}}>Save & Close</Btn>
             </div>
           </div>
         );
@@ -1375,21 +1204,21 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
         const updateSC=(field,val)=>setData(d=>({...d,tabs:{...d.tabs,serviceCall:{...d.tabs.serviceCall,[field]:val}}}));
         const addOfficePhoto=async(e)=>{
           const files=Array.from(e.target.files);
-          const datas=await Promise.all(files.map(f=>uploadFile(f,"photos")));
+          const datas=await Promise.all(files.map(readFileAsDataURL));
           updateSC("officePhotos",[...(sc.officePhotos||[]),...datas]);
           e.target.value="";
         };
         const removeOfficePhoto=(i)=>updateSC("officePhotos",(sc.officePhotos||[]).filter((_,idx)=>idx!==i));
         const addFitterPhoto=async(e)=>{
           const files=Array.from(e.target.files);
-          const datas=await Promise.all(files.map(f=>uploadFile(f,"photos")));
+          const datas=await Promise.all(files.map(readFileAsDataURL));
           updateSC("fitterPhotos",[...(sc.fitterPhotos||[]),...datas]);
           e.target.value="";
         };
         const removeFitterPhoto=(i)=>updateSC("fitterPhotos",(sc.fitterPhotos||[]).filter((_,idx)=>idx!==i));
         const addSupplierInvoice=async(e)=>{
           const file=e.target.files[0]; if(!file) return;
-          const data2=await uploadFile(file,"documents");
+          const data2=await readFileAsDataURL(file);
           updateSC("supplierInvoices",[...(sc.supplierInvoices||[]),data2]);
           e.target.value="";
         };
@@ -1456,7 +1285,7 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
                   {(sc.supplierInvoices||[]).map((f,i)=>(
                     <div key={i} style={{display:"flex",alignItems:"center",gap:8,background:C.slateLight,borderRadius:6,padding:"7px 12px"}}>
                       <span style={{fontSize:18}}>📄</span>
-                      <a href={f.data} target="_blank" rel="noreferrer" style={{fontSize:13,color:C.sky,fontWeight:500,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</a>
+                      <a href={f.data} download={f.name} style={{fontSize:13,color:C.sky,fontWeight:500,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</a>
                       <button onClick={()=>removeSupplierInvoice(i)} style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:16,lineHeight:1}}>×</button>
                     </div>
                   ))}
@@ -1550,7 +1379,7 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
             </div>
 
             <div style={{display:"flex",justifyContent:"flex-end"}}>
-              <Btn onClick={save}>Save & Close</Btn>
+              <Btn onClick={()=>{onSave(data);onClose();}}>Save & Close</Btn>
             </div>
           </div>
         );
@@ -1561,9 +1390,9 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
 
 // ── Customer / Lead Form (add new) ────────────────────────────────────────────
 const CustomerForm = ({initial={},onSave,onCancel}) => {
-  const [form,setForm]=useState({name:"",email:"",phone:"",address:"",source:"Website",stage:"New Enquiry",notes:"",windowcad:"",quoteValue:"",quoteCost:"",installationValue:"",installationCost:"",...initial});
+  const [form,setForm]=useState({name:"",email:"",phone:"",address:"",source:"Website",stage:"New Enquiry",notes:"",windowcad:"",quoteValue:"",quoteCost:"",...initial});
   const set=k=>e=>setForm(f=>({...f,[k]:e.target.value}));
-  const margin=calcMargin(totalQuoteValue(form),totalQuoteCost(form));
+  const margin=calcMargin(form.quoteValue,form.quoteCost);
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
       <Inp label="Full Name / Company" value={form.name} onChange={set("name")} placeholder="e.g. John Smith"/>
@@ -1579,17 +1408,9 @@ const CustomerForm = ({initial={},onSave,onCancel}) => {
       <Inp label="WindowCAD7 Reference" value={form.windowcad} onChange={set("windowcad")} placeholder="WC-2025-001"/>
       <div style={{background:C.slateLight,borderRadius:8,padding:14}}>
         <div style={{fontSize:12,fontWeight:700,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:12}}>Quote Financials</div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
-          <Inp label="Product Value (£)" type="number" value={form.quoteValue} onChange={set("quoteValue")} placeholder="4200"/>
-          <Inp label="Product Cost (£)" type="number" value={form.quoteCost} onChange={set("quoteCost")} placeholder="2650"/>
-        </div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
-          <Inp label="Installation Value (£)" type="number" value={form.installationValue} onChange={set("installationValue")} placeholder="800"/>
-          <Inp label="Installation Cost (£)" type="number" value={form.installationCost} onChange={set("installationCost")} placeholder="400"/>
-        </div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:margin?12:0}}>
-          <Inp label="Total Quote Value (£)" type="number" value={totalQuoteValue(form)||""} readOnly style={{background:C.white,color:C.slate}}/>
-          <Inp label="Total Quote Cost (£)" type="number" value={totalQuoteCost(form)||""} readOnly style={{background:C.white,color:C.slate}}/>
+          <Inp label="Quote Value (£)" type="number" value={form.quoteValue} onChange={set("quoteValue")} placeholder="4200"/>
+          <Inp label="Total Cost (£)" type="number" value={form.quoteCost} onChange={set("quoteCost")} placeholder="2650"/>
         </div>
         {margin&&(
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
@@ -1613,10 +1434,9 @@ const CustomerForm = ({initial={},onSave,onCancel}) => {
 
 // ── Job Form (add new) ────────────────────────────────────────────────────────
 const JobForm = ({initial={},customers,onSave,onCancel}) => {
-  const [form,setForm]=useState({customerId:customers[0]?.id||"",title:"",products:[],status:"Book Survey",surveyDate:"",installDate:"",installers:"",windowcad:"",value:"",quoteValue:"",quoteCost:"",installationValue:"",installationCost:"",notes:"",...initial,products:initial.products||[]});
+  const [form,setForm]=useState({customerId:customers[0]?.id||"",title:"",products:[],status:"Book Survey",surveyDate:"",installDate:"",installers:"",windowcad:"",value:"",notes:"",...initial,products:initial.products||[]});
   const set=k=>e=>setForm(f=>({...f,[k]:e.target.value}));
   const toggleProd=p=>setForm(f=>({...f,products:f.products.includes(p)?f.products.filter(x=>x!==p):[...f.products,p]}));
-  const margin=calcMargin(totalQuoteValue(form),totalQuoteCost(form));
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
       <Sel label="Customer" value={form.customerId} onChange={e=>setForm(f=>({...f,customerId:Number(e.target.value)}))}>
@@ -1633,31 +1453,6 @@ const JobForm = ({initial={},customers,onSave,onCancel}) => {
         <Sel label="Stage" value={form.status} onChange={set("status")}>{INSTALL_STAGES.map(s=><option key={s}>{s}</option>)}</Sel>
         <Inp label="Value (£)" type="number" value={form.value} onChange={set("value")}/>
       </div>
-      <div style={{background:C.slateLight,borderRadius:8,padding:14}}>
-        <div style={{fontSize:12,fontWeight:700,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:12}}>Quote Financials</div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
-          <Inp label="Product Value (£)" type="number" value={form.quoteValue} onChange={set("quoteValue")} placeholder="4200"/>
-          <Inp label="Product Cost (£)" type="number" value={form.quoteCost} onChange={set("quoteCost")} placeholder="2650"/>
-        </div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
-          <Inp label="Installation Value (£)" type="number" value={form.installationValue} onChange={set("installationValue")} placeholder="800"/>
-          <Inp label="Installation Cost (£)" type="number" value={form.installationCost} onChange={set("installationCost")} placeholder="400"/>
-        </div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:margin?12:0}}>
-          <Inp label="Total Quote Value (£)" type="number" value={totalQuoteValue(form)||""} readOnly style={{background:C.white,color:C.slate}}/>
-          <Inp label="Total Quote Cost (£)" type="number" value={totalQuoteCost(form)||""} readOnly style={{background:C.white,color:C.slate}}/>
-        </div>
-        {margin&&(
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-            {[["Gross Profit",`£${margin.profit.toLocaleString()}`,margin.profit>=0?C.mint:C.red],["Margin",`${margin.pct}%`,margin.profit>=0?C.mint:C.red]].map(([l,v,col])=>(
-              <div key={l} style={{background:C.white,borderRadius:6,padding:"10px 12px",border:`1px solid ${C.border}`}}>
-                <div style={{fontSize:11,color:C.slate,marginBottom:2}}>{l}</div>
-                <div style={{fontSize:18,fontWeight:800,color:col}}>{v}</div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
         <Inp label="Survey Date" type="date" value={form.surveyDate} onChange={set("surveyDate")}/>
         <Inp label="Install Date" type="date" value={form.installDate} onChange={set("installDate")}/>
@@ -1669,7 +1464,7 @@ const JobForm = ({initial={},customers,onSave,onCancel}) => {
       <TA label="Notes" value={form.notes} onChange={set("notes")}/>
       <div style={{display:"flex",gap:10,justifyContent:"flex-end",paddingTop:8}}>
         <Btn variant="secondary" onClick={onCancel}>Cancel</Btn>
-        <Btn onClick={()=>form.title&&onSave({...form,tabs:emptyTabs(),wonAt:new Date().toISOString()})}>Save Job</Btn>
+        <Btn onClick={()=>form.title&&onSave({...form,tabs:emptyTabs()})}>Save Job</Btn>
       </div>
     </div>
   );
@@ -1771,7 +1566,6 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
   const [modal,setModal]=useState(null);
   const [defaultStage,setDefaultStage]=useState("New Enquiry");
   const [detailRecord,setDetailRecord]=useState(null);
-  const [viewingJob,setViewingJob]=useState(null);
   const [showConfetti,setShowConfetti]=useState(false);
   const [wonCustomer,setWonCustomer]=useState(null);
 
@@ -1780,82 +1574,52 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
     return customers.filter(c=>!q||c.name.toLowerCase().includes(q)||c.phone.includes(q)||c.address.toLowerCase().includes(q));
   },[customers,search]);
 
-  const margin=c=>calcMargin(totalQuoteValue(c),totalQuoteCost(c));
+  const margin=c=>calcMargin(c.quoteValue,c.quoteCost);
 
-  // Takes the customer record AFTER it's been saved (so it has its real, server-assigned
-  // id) — the installation job's customerId always correctly points at the right customer.
-  const handleDealWon=(savedCustomer)=>{
-    // Carries the customer's whole tabs + quote financials across into the new job —
-    // previously this started completely blank, so office staff would enter survey/quote/
-    // notes info onto the job post-conversion while the original customer record silently
-    // kept its own separate (now stale) copy, causing exactly the "wrote it here, why isn't
-    // it showing there" confusion. leadTemp/expectedSaleDate are Sales-Pipeline-only
-    // concepts (nothing reads them off a Job) so those two are dropped, not carried over.
-    // The customer's own tabs are deliberately left untouched afterward — once linked jobs
-    // exist, its card shows a Jobs list instead (see CardDetailModal), so that old copy is
-    // never seen or edited again; no need for a second write to reset it.
+  const handleDealWon=(updated)=>{
+    // Create a new job in Installation Pipeline under "Book Survey"
     const newJob={
-      customerId:savedCustomer.id,
-      title:`${savedCustomer.name} — Installation`,
-      products:savedCustomer.productsOfInterest||[],
+      id:uid(),
+      customerId:updated.id,
+      title:`${updated.name} — Installation`,
+      products:updated.productsOfInterest||[],
       status:"Book Survey",
       surveyDate:"",installDate:"",installers:"",
-      windowcad:savedCustomer.windowcad||"",
-      value:totalQuoteValue(savedCustomer)||"",
-      quoteValue:savedCustomer.quoteValue||"",
-      quoteCost:savedCustomer.quoteCost||"",
-      installationValue:savedCustomer.installationValue||"",
-      installationCost:savedCustomer.installationCost||"",
+      windowcad:updated.windowcad||"",
+      value:updated.quoteValue||"",
       notes:`Auto-created from Sales Pipeline deal won on ${new Date().toLocaleDateString("en-GB")}`,
-      soldBy:savedCustomer.soldBy||"",
-      wonAt:new Date().toISOString(),
-      tabs:{...savedCustomer.tabs,quote:{...savedCustomer.tabs.quote,leadTemp:"",expectedSaleDate:""}},
+      soldBy:updated.soldBy||"",
+      tabs:emptyTabs(),
     };
-    apiCreateJob(newJob).then(saved=>{
-      setJobs(js=>[saved,...js]);
-      setWonCustomer(savedCustomer.name);
-      setShowConfetti(true);
-    }).catch(err=>window.alert("Failed to create the installation job: "+err.message));
+    setJobs(js=>[newJob,...js]);
+    setWonCustomer(updated.name);
+    setShowConfetti(true);
   };
 
   const saveCustomer=(updated)=>{
     const prev=customers.find(c=>c.id===updated.id);
-    const wasAlreadyWon=prev?.stage==="Deal Won";
-    const isAdd=modal==="add";
-    const persist=isAdd?apiCreateCustomer(updated):apiUpdateCustomer(updated);
-    persist.then(saved=>{
-      setCustomers(cs=>isAdd?[saved,...cs]:cs.map(c=>c.id===saved.id?saved:c));
-      if(saved.stage==="Deal Won"&&!wasAlreadyWon) handleDealWon(saved);
-      setModal(null);
-    }).catch(err=>window.alert("Failed to save customer: "+err.message));
+    const justWon=updated.stage==="Deal Won"&&prev?.stage!=="Deal Won";
+    if(modal==="add"){
+      setCustomers(cs=>[{...updated,id:uid(),createdAt:new Date().toISOString().slice(0,10)},...cs]);
+      if(updated.stage==="Deal Won") handleDealWon({...updated,id:uid()});
+    } else {
+      setCustomers(cs=>cs.map(c=>c.id===updated.id?updated:c));
+      if(justWon) handleDealWon(updated);
+    }
+    setModal(null);
   };
 
   // Also handle stage changes via kanban card detail inline save
   const handleCardSave=(updated)=>{
     const prev=customers.find(c=>c.id===updated.id);
     const justWon=updated.stage==="Deal Won"&&prev?.stage!=="Deal Won";
-    apiUpdateCustomer(updated).then(saved=>{
-      setCustomers(cs=>cs.map(c=>c.id===saved.id?saved:c));
-      if(justWon) handleDealWon(saved);
-    }).catch(err=>window.alert("Failed to save customer: "+err.message));
+    setCustomers(cs=>cs.map(c=>c.id===updated.id?updated:c));
+    if(justWon) handleDealWon(updated);
   };
 
   const deleteCustomer=(id)=>{
     if(!window.confirm("Delete this customer?")) return;
-    apiDeleteCustomer(id).then(()=>{
-      setCustomers(cs=>cs.filter(c=>c.id!==id));
-    }).catch(err=>window.alert("Failed to delete customer: "+err.message));
-  };
-
-  // Repeat business: a returning customer doesn't need to go through the lead stages again —
-  // this lets office staff record a new job for an existing customer directly from here,
-  // via JobForm's own customer picker, rather than only being able to add jobs from the
-  // Installation Pipeline or Customer Directory.
-  const saveJob=form=>{
-    apiCreateJob(form).then(saved=>{
-      setJobs(js=>[saved,...js]);
-      setModal(null);
-    }).catch(err=>window.alert("Failed to save job: "+err.message));
+    setCustomers(cs=>cs.filter(c=>c.id!==id));
   };
 
   const renderCard=(c)=>{
@@ -1877,12 +1641,12 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
           )}
         </div>
         <div style={{fontSize:12,color:C.slate,marginBottom:3}}>{c.phone}</div>
-        <div style={{fontSize:11,color:C.muted,marginBottom:totalQuoteValue(c)?7:0}}>{c.address}</div>
-        {totalQuoteValue(c)>0&&(
+        <div style={{fontSize:11,color:C.muted,marginBottom:c.quoteValue?7:0}}>{c.address}</div>
+        {c.quoteValue&&(
           <div style={{display:"flex",gap:5,marginBottom:5}}>
             <div style={{background:C.skyLight,borderRadius:5,padding:"3px 7px",flex:1}}>
               <div style={{fontSize:10,color:C.slate}}>Quote</div>
-              <div style={{fontSize:12,fontWeight:800,color:C.navy}}>£{totalQuoteValue(c).toLocaleString()}</div>
+              <div style={{fontSize:12,fontWeight:800,color:C.navy}}>£{Number(c.quoteValue).toLocaleString()}</div>
             </div>
             {m&&<div style={{background:m.profit>=0?"#F0FDF4":"#FEF2F2",borderRadius:5,padding:"3px 7px",flex:1}}>
               <div style={{fontSize:10,color:C.slate}}>Margin</div>
@@ -1906,14 +1670,13 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
     <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
       <div style={{display:"flex",gap:10,marginBottom:16,alignItems:"center"}}>
         <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search pipeline…" style={{flex:1,maxWidth:300,border:`1px solid ${C.border}`,borderRadius:6,padding:"8px 12px",fontSize:14,outline:"none"}}/>
-        <Btn variant="secondary" onClick={()=>setModal("addJob")}>+ Job for Existing Customer</Btn>
         <Btn onClick={()=>setModal("add")}>+ New Enquiry</Btn>
       </div>
       <div style={{display:"flex",gap:10,overflowX:"auto",flex:1,paddingBottom:8,alignItems:"flex-start"}}>
         {LEAD_STAGES.map(stage=>{
           const stageItems=filtered.filter(c=>c.stage===stage);
-          const stageRevenue=stageItems.reduce((sum,c)=>sum+totalQuoteValue(c),0);
-          const marginsWithData=stageItems.map(c=>calcMargin(totalQuoteValue(c),totalQuoteCost(c))).filter(Boolean);
+          const stageRevenue=stageItems.reduce((sum,c)=>sum+(Number(c.quoteValue)||0),0);
+          const marginsWithData=stageItems.map(c=>calcMargin(c.quoteValue,c.quoteCost)).filter(Boolean);
           const avgMargin=marginsWithData.length>0
             ?(marginsWithData.reduce((sum,m)=>sum+parseFloat(m.pct),0)/marginsWithData.length).toFixed(1)
             :null;
@@ -1929,14 +1692,9 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
         })}
       </div>
       {modal==="add"&&<Modal title="New Customer" onClose={()=>setModal(null)}><CustomerForm initial={{stage:defaultStage}} onSave={saveCustomer} onCancel={()=>setModal(null)}/></Modal>}
-      {modal==="addJob"&&<Modal title="New Job for Existing Customer" onClose={()=>setModal(null)}><JobForm customers={customers} onSave={saveJob} onCancel={()=>setModal(null)}/></Modal>}
-      {detailRecord&&<CardDetailModal record={customers.find(c=>c.id===detailRecord.id)||detailRecord} customers={customers} jobs={jobs} isJob={false} settings={settings}
+      {detailRecord&&<CardDetailModal record={customers.find(c=>c.id===detailRecord.id)||detailRecord} customers={customers} isJob={false} settings={settings}
         onSave={handleCardSave}
-        onDelete={deleteCustomer} onClose={()=>setDetailRecord(null)} onOpenJob={setViewingJob}/>}
-      {viewingJob&&<CardDetailModal record={jobs.find(j=>j.id===viewingJob.id)||viewingJob} customers={customers} jobs={jobs} isJob={true} settings={settings}
-        onSave={updated=>apiUpdateJob(updated).then(saved=>setJobs(js=>js.map(j=>j.id===saved.id?saved:j))).catch(err=>window.alert("Failed to save job: "+err.message))}
-        onDelete={id=>{if(!window.confirm("Delete this job?"))return;apiDeleteJob(id).then(()=>{setJobs(js=>js.filter(j=>j.id!==id));setViewingJob(null);}).catch(err=>window.alert("Failed to delete job: "+err.message));}}
-        onClose={()=>setViewingJob(null)}/>}
+        onDelete={deleteCustomer} onClose={()=>setDetailRecord(null)}/>}
       {showConfetti&&<Confetti onDone={()=>setShowConfetti(false)}/>}
     </div>
   );
@@ -1969,19 +1727,14 @@ const InstallPipelinePage = ({jobs,setJobs,customers,settings}) => {
   },[completedJobs,archiveSearch]);
 
   const saveJob=form=>{
-    const isAdd=modal==="add";
-    const persist=isAdd?apiCreateJob(form):apiUpdateJob(form);
-    persist.then(saved=>{
-      setJobs(js=>isAdd?[saved,...js]:js.map(j=>j.id===saved.id?saved:j));
-      setModal(null);
-    }).catch(err=>window.alert("Failed to save job: "+err.message));
+    if(modal==="add"){setJobs(js=>[{...form,id:uid()},...js]);}
+    else{setJobs(js=>js.map(j=>j.id===form.id?form:j));}
+    setModal(null);
   };
 
   const deleteJob=id=>{
     if(!window.confirm("Delete this job?")) return;
-    apiDeleteJob(id).then(()=>{
-      setJobs(js=>js.filter(j=>j.id!==id));
-    }).catch(err=>window.alert("Failed to delete job: "+err.message));
+    setJobs(js=>js.filter(j=>j.id!==id));
   };
 
   const renderCard=(job)=>(
@@ -1994,7 +1747,7 @@ const InstallPipelinePage = ({jobs,setJobs,customers,settings}) => {
       <div style={{fontSize:12,color:C.sky,fontWeight:600,marginBottom:3}}>{customerName(job.customerId)}</div>
       {job.value&&<div style={{fontSize:13,fontWeight:800,color:C.mint}}>£{Number(job.value).toLocaleString()}</div>}
       {job.products?.length>0&&<div style={{fontSize:11,color:C.muted,marginTop:3}}>{job.products.join(", ")}</div>}
-      {(job.tabs?.installation?.date||job.installDate)&&<div style={{fontSize:11,color:C.slate,marginTop:3}}>🔨 {job.tabs?.installation?.date||job.installDate}</div>}
+      {job.installDate&&<div style={{fontSize:11,color:C.slate,marginTop:3}}>🔨 {job.installDate}</div>}
     </div>
   );
 
@@ -2039,7 +1792,7 @@ const InstallPipelinePage = ({jobs,setJobs,customers,settings}) => {
           })}
         </div>
         {detailRecord&&<CardDetailModal record={jobs.find(j=>j.id===detailRecord.id)||detailRecord} customers={customers} isJob={true} settings={settings}
-          onSave={updated=>apiUpdateJob(updated).then(saved=>setJobs(js=>js.map(j=>j.id===saved.id?saved:j))).catch(err=>window.alert("Failed to save job: "+err.message))}
+          onSave={updated=>setJobs(js=>js.map(j=>j.id===updated.id?updated:j))}
           onDelete={deleteJob} onClose={()=>setDetailRecord(null)}/>}
       </div>
     );
@@ -2065,7 +1818,7 @@ const InstallPipelinePage = ({jobs,setJobs,customers,settings}) => {
       </div>
       {modal==="add"&&<Modal title="New Job" onClose={()=>setModal(null)}><JobForm customers={customers} initial={{status:defaultStage}} onSave={saveJob} onCancel={()=>setModal(null)}/></Modal>}
       {detailRecord&&<CardDetailModal record={jobs.find(j=>j.id===detailRecord.id)||detailRecord} customers={customers} isJob={true} settings={settings}
-        onSave={updated=>apiUpdateJob(updated).then(saved=>setJobs(js=>js.map(j=>j.id===saved.id?saved:j))).catch(err=>window.alert("Failed to save job: "+err.message))}
+        onSave={updated=>setJobs(js=>js.map(j=>j.id===updated.id?updated:j))}
         onDelete={deleteJob} onClose={()=>setDetailRecord(null)}/>}
     </div>
   );
@@ -2073,7 +1826,7 @@ const InstallPipelinePage = ({jobs,setJobs,customers,settings}) => {
 
 // ── Calendar Page ─────────────────────────────────────────────────────────────
 const CalendarPage = ({customers,jobs,settings}) => {
-  const [viewDate,setViewDate]=useState(new Date());
+  const [viewDate,setViewDate]=useState(new Date(2025,5,1));
   const [filterFitter,setFilterFitter]=useState("All");
 
   const year=viewDate.getFullYear(), month=viewDate.getMonth();
@@ -2081,26 +1834,12 @@ const CalendarPage = ({customers,jobs,settings}) => {
   const daysInMonth=new Date(year,month+1,0).getDate();
   const adjusted=(firstDay+6)%7; // Mon=0
 
-  // Survey bookings can live in two places: a Customer's own Survey tab (used pre-Deal Won,
-  // while there's no Job yet) or a Job's Survey tab (used once a deal converts — see
-  // handleDealWon, which creates a fresh Job with empty tabs, so from that point on the
-  // Job's own Survey tab is what office staff actually book/edit). Excluding Deal Won
-  // customers here avoids showing a stale customer-level booking alongside — or instead of —
-  // whatever's actually booked on the Job, which is what caused the calendar to show
-  // out-of-date survey info after a deal converted.
-  const surveyEvents=[
-    ...customers.filter(c=>c.stage!=="Deal Won").flatMap(c=>{
-      const s=c.tabs?.survey;
-      if(!s?.date||!s?.fitter) return [];
-      return [{date:s.date,fitter:s.fitter,label:c.name,type:"Survey",color:"#4A90D9",time:s.time||""}];
-    }),
-    ...jobs.flatMap(j=>{
-      const s=j.tabs?.survey;
-      if(!s?.date||!s?.fitter) return [];
-      const cust=customers.find(c=>c.id===j.customerId);
-      return [{date:s.date,fitter:s.fitter,label:cust?.name||j.title,type:"Survey",color:"#4A90D9",time:s.time||"",notes:s.notes||""}];
-    }),
-  ];
+  // Gather all survey bookings from customer tabs
+  const surveyEvents=customers.flatMap(c=>{
+    const s=c.tabs?.survey;
+    if(!s?.date||!s?.fitter) return [];
+    return [{date:s.date,fitter:s.fitter,label:c.name,type:"Survey",color:"#4A90D9",time:s.time||""}];
+  });
   // Installation bookings from job installation tab — expanded across working days
   const installTabEvents=jobs.flatMap(j=>{
     const inst=j.tabs?.installation;
@@ -2224,42 +1963,6 @@ const DEFAULT_FEEDBACK_QUESTIONS = [
   {question:"Any additional comments?",type:"text"},
 ];
 
-const DEFAULT_SETTINGS = {
-  fitters:[...DEFAULT_FITTERS],
-  staff:[...DEFAULT_STAFF],
-  suppliers:[...DEFAULT_SUPPLIERS],
-  companyName:"VisualPro",
-  companyPhone:"",
-  companyEmail:"",
-  companyWebsite:"",
-  emailTemplates:{...DEFAULT_EMAIL_TEMPLATES},
-  feedbackQuestions:[...DEFAULT_FEEDBACK_QUESTIONS],
-  fitterPasswords:{"Tom Bailey":"glazing1","Steve Marsh":"glazing2","Dan Rees":"glazing3","Chris Wood":"glazing4"},
-};
-
-// A plain {...s,...saved} shallow merge replaces emailTemplates wholesale rather than
-// merging it key-by-key — so a persisted Settings row missing a template key (e.g. saved
-// before installReminder existed) left settings.emailTemplates.installReminder undefined,
-// crashing the whole app (no error boundary) the moment the Email Templates section tried
-// to read .subject off it. Deep-merges emailTemplates specifically so any key missing from
-// what's saved always falls back to the current default.
-const mergeSettings=(base,saved)=>{
-  const savedTemplates=saved.emailTemplates||{};
-  // One-time migration: the old single installReminder template was split into separate
-  // Week/Day templates. If a saved row still only has the old key, copy its (possibly
-  // customized) content into both new templates as their starting point, rather than
-  // silently reverting to the generic defaults.
-  const legacy=savedTemplates.installReminder;
-  const migratedTemplates={...savedTemplates};
-  if(legacy&&!savedTemplates.installReminderWeek) migratedTemplates.installReminderWeek=legacy;
-  if(legacy&&!savedTemplates.installReminderDay) migratedTemplates.installReminderDay=legacy;
-  return {
-    ...base,
-    ...saved,
-    emailTemplates:{...base.emailTemplates,...migratedTemplates},
-  };
-};
-
 // ── Customer Feedback Form (live form for customer to fill in) ─────────────────
 const FeedbackFormModal = ({job,customers,settings,onSubmit,onClose}) => {
   const customer=customers.find(c=>c.id===job.customerId);
@@ -2370,7 +2073,7 @@ const WebsiteEnquiryForm = ({companyName,onSubmit}) => {
       id:uid(),
       stage:"New Enquiry",
       createdAt:new Date().toISOString().slice(0,10),
-      windowcad:"",quoteValue:"",quoteCost:"",installationValue:"",installationCost:"",soldBy:"",notes:form.message,
+      windowcad:"",quoteValue:"",quoteCost:"",soldBy:"",notes:form.message,
       tabs:{
         quote:{files:[],notes:""},invoices:{files:[],notes:""},notepad:{text:""},
         survey:{files:[],images:[],notes:"",date:"",fitter:""},
@@ -2518,9 +2221,7 @@ const FitterRow = ({fitter,index,pw,settings,setSettings}) => {
 };
 const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
   const [activeSection,setActiveSection]=useState("fitters");
-  // idle | saving | saved | error
-  const [saveStatus,setSaveStatus]=useState("idle");
-  const skipNextSave=useRef(true); // don't fire a save for the initial load from the API
+  const [saved,setSaved]=useState(false);
 
   const update=(key,val)=>setSettings(s=>({...s,[key]:val}));
   const updateTemplate=(key,field,val)=>setSettings(s=>({...s,emailTemplates:{...s.emailTemplates,[key]:{...s.emailTemplates[key],[field]:val}}}));
@@ -2529,19 +2230,7 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
   const updatePerson=(key,i,val)=>setSettings(s=>({...s,[key]:s[key].map((p,idx)=>idx===i?val:p)}));
   const removePerson=(key,i)=>setSettings(s=>({...s,[key]:s[key].filter((_,idx)=>idx!==i)}));
 
-  // Auto-saves ~800ms after the last change, rather than requiring an explicit click —
-  // that was a real trap (edit a bunch of settings, navigate away, lose it all silently).
-  useEffect(()=>{
-    if(skipNextSave.current){skipNextSave.current=false;return;}
-    setSaveStatus("saving");
-    const timer=setTimeout(()=>{
-      apiUpdateSettings(settings)
-        .then(()=>{setSaveStatus("saved");setTimeout(()=>setSaveStatus(s=>s==="saved"?"idle":s),2000);})
-        .catch(err=>{setSaveStatus("error");window.alert("Failed to save settings: "+err.message);});
-    },800);
-    return ()=>clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[settings]);
+  const handleSave=()=>{setSaved(true);setTimeout(()=>setSaved(false),2000);};
 
   const sectionBtn=(id,label,icon)=>(
     <button onClick={()=>setActiveSection(id)} style={{
@@ -2554,8 +2243,7 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
   const templateKeys={
     surveyBooked:{label:"Survey Booked",icon:"📅"},
     installBooked:{label:"Install Booked",icon:"🔨"},
-    installReminderWeek:{label:"Install Reminder (7-Day)",icon:"⏰"},
-    installReminderDay:{label:"Install Reminder (1-Day)",icon:"⏰"},
+    installReminder:{label:"Install Reminder",icon:"⏰"},
   };
 
   const placeholders=[
@@ -2603,9 +2291,7 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
               + Add Fitter
             </button>
             <div style={{marginTop:20,paddingTop:20,borderTop:`1px solid ${C.border}`,display:"flex",justifyContent:"flex-end",gap:10}}>
-              <div style={{background:saveStatus==="saving"?C.slateLight:saveStatus==="error"?"#FEF2F2":"#F0FDF4",color:saveStatus==="saving"?C.slate:saveStatus==="error"?C.red:C.mint,fontSize:12,fontWeight:700,padding:"7px 14px",borderRadius:8,border:`1px solid ${saveStatus==="saving"?C.border:saveStatus==="error"?"#FECACA":"#86EFAC"}`,whiteSpace:"nowrap"}}>
-                {saveStatus==="saving"?"Saving…":saveStatus==="error"?"⚠ Save failed":"✓ Saved"}
-              </div>
+              <Btn onClick={handleSave}>{saved?"✓ Saved!":"Save Changes"}</Btn>
             </div>
           </div>
         )}
@@ -2629,9 +2315,7 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
               + Add Staff Member
             </button>
             <div style={{marginTop:20,paddingTop:20,borderTop:`1px solid ${C.border}`,display:"flex",justifyContent:"flex-end"}}>
-              <div style={{background:saveStatus==="saving"?C.slateLight:saveStatus==="error"?"#FEF2F2":"#F0FDF4",color:saveStatus==="saving"?C.slate:saveStatus==="error"?C.red:C.mint,fontSize:12,fontWeight:700,padding:"7px 14px",borderRadius:8,border:`1px solid ${saveStatus==="saving"?C.border:saveStatus==="error"?"#FECACA":"#86EFAC"}`,whiteSpace:"nowrap"}}>
-                {saveStatus==="saving"?"Saving…":saveStatus==="error"?"⚠ Save failed":"✓ Saved"}
-              </div>
+              <Btn onClick={handleSave}>{saved?"✓ Saved!":"Save Changes"}</Btn>
             </div>
           </div>
         )}
@@ -2655,9 +2339,7 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
               + Add Supplier
             </button>
             <div style={{marginTop:20,paddingTop:20,borderTop:`1px solid ${C.border}`,display:"flex",justifyContent:"flex-end"}}>
-              <div style={{background:saveStatus==="saving"?C.slateLight:saveStatus==="error"?"#FEF2F2":"#F0FDF4",color:saveStatus==="saving"?C.slate:saveStatus==="error"?C.red:C.mint,fontSize:12,fontWeight:700,padding:"7px 14px",borderRadius:8,border:`1px solid ${saveStatus==="saving"?C.border:saveStatus==="error"?"#FECACA":"#86EFAC"}`,whiteSpace:"nowrap"}}>
-                {saveStatus==="saving"?"Saving…":saveStatus==="error"?"⚠ Save failed":"✓ Saved"}
-              </div>
+              <Btn onClick={handleSave}>{saved?"✓ Saved!":"Save Changes"}</Btn>
             </div>
           </div>
         )}
@@ -2674,9 +2356,7 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
               <Inp label="Company Website" value={settings.companyWebsite} onChange={e=>update("companyWebsite",e.target.value)} placeholder="e.g. www.abcglazing.co.uk"/>
             </div>
             <div style={{marginTop:20,paddingTop:20,borderTop:`1px solid ${C.border}`,display:"flex",justifyContent:"flex-end"}}>
-              <div style={{background:saveStatus==="saving"?C.slateLight:saveStatus==="error"?"#FEF2F2":"#F0FDF4",color:saveStatus==="saving"?C.slate:saveStatus==="error"?C.red:C.mint,fontSize:12,fontWeight:700,padding:"7px 14px",borderRadius:8,border:`1px solid ${saveStatus==="saving"?C.border:saveStatus==="error"?"#FECACA":"#86EFAC"}`,whiteSpace:"nowrap"}}>
-                {saveStatus==="saving"?"Saving…":saveStatus==="error"?"⚠ Save failed":"✓ Saved"}
-              </div>
+              <Btn onClick={handleSave}>{saved?"✓ Saved!":"Save Changes"}</Btn>
             </div>
           </div>
         )}
@@ -2698,25 +2378,21 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
             </div>
 
             {/* Template cards */}
-            {Object.entries(templateKeys).map(([key,{label,icon}])=>{
-              const tmpl=settings.emailTemplates?.[key]||DEFAULT_EMAIL_TEMPLATES[key];
-              return (
+            {Object.entries(templateKeys).map(([key,{label,icon}])=>(
               <div key={key} style={{background:C.white,borderRadius:10,border:`1px solid ${C.border}`,padding:24}}>
                 <h3 style={{margin:"0 0 4px",fontSize:16,color:C.navy,fontWeight:800}}>{icon} {label} Email</h3>
                 <p style={{margin:"0 0 16px",fontSize:13,color:C.slate}}>Sent when a {label.toLowerCase()} is confirmed.</p>
                 <div style={{display:"flex",flexDirection:"column",gap:12}}>
-                  <Inp label="Subject Line" value={tmpl.subject} onChange={e=>updateTemplate(key,"subject",e.target.value)}/>
-                  <TA label="Email Body" value={tmpl.body} onChange={e=>updateTemplate(key,"body",e.target.value)} style={{minHeight:220,fontFamily:"monospace",fontSize:13,lineHeight:1.6}}/>
+                  <Inp label="Subject Line" value={settings.emailTemplates[key].subject} onChange={e=>updateTemplate(key,"subject",e.target.value)}/>
+                  <TA label="Email Body" value={settings.emailTemplates[key].body} onChange={e=>updateTemplate(key,"body",e.target.value)} style={{minHeight:220,fontFamily:"monospace",fontSize:13,lineHeight:1.6}}/>
                 </div>
                 <div style={{marginTop:16,paddingTop:16,borderTop:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                   <button onClick={()=>updateTemplate(key,"body",DEFAULT_EMAIL_TEMPLATES[key].body)||updateTemplate(key,"subject",DEFAULT_EMAIL_TEMPLATES[key].subject)}
                     style={{background:"none",border:"none",color:C.muted,fontSize:13,cursor:"pointer"}}>↩ Reset to default</button>
-                  <div style={{background:saveStatus==="saving"?C.slateLight:saveStatus==="error"?"#FEF2F2":"#F0FDF4",color:saveStatus==="saving"?C.slate:saveStatus==="error"?C.red:C.mint,fontSize:12,fontWeight:700,padding:"7px 14px",borderRadius:8,border:`1px solid ${saveStatus==="saving"?C.border:saveStatus==="error"?"#FECACA":"#86EFAC"}`,whiteSpace:"nowrap"}}>
-                {saveStatus==="saving"?"Saving…":saveStatus==="error"?"⚠ Save failed":"✓ Saved"}
-              </div>
+                  <Btn onClick={handleSave}>{saved?"✓ Saved!":"Save Changes"}</Btn>
                 </div>
               </div>
-              );})}
+            ))}
           </div>
         )}
 
@@ -2752,9 +2428,7 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
                 + Add Question
               </button>
               <div style={{paddingTop:16,borderTop:`1px solid ${C.border}`,display:"flex",justifyContent:"flex-end"}}>
-                <div style={{background:saveStatus==="saving"?C.slateLight:saveStatus==="error"?"#FEF2F2":"#F0FDF4",color:saveStatus==="saving"?C.slate:saveStatus==="error"?C.red:C.mint,fontSize:12,fontWeight:700,padding:"7px 14px",borderRadius:8,border:`1px solid ${saveStatus==="saving"?C.border:saveStatus==="error"?"#FECACA":"#86EFAC"}`,whiteSpace:"nowrap"}}>
-                {saveStatus==="saving"?"Saving…":saveStatus==="error"?"⚠ Save failed":"✓ Saved"}
-              </div>
+                <Btn onClick={handleSave}>{saved?"✓ Saved!":"Save Changes"}</Btn>
               </div>
             </div>
           </div>
@@ -2818,51 +2492,13 @@ const Dashboard = ({customers,jobs}) => {
 
   const stats=useMemo(()=>({
     total:customers.length,
-    prospects:customers.filter(c=>c.stage==="Prospect List").length,
     leads:customers.filter(c=>["New Enquiry","Contacted"].includes(c.stage)).length,
     won:customers.filter(c=>c.stage==="Deal Won").length,
     activeJobs:jobs.filter(j=>j.status!=="Send Guarantees").length,
-    pipeline:customers.reduce((s,c)=>s+totalQuoteValue(c),0),
+    pipeline:customers.reduce((s,c)=>s+(Number(c.quoteValue)||0),0),
   }),[customers,jobs]);
 
   const recent=[...customers].sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)).slice(0,5);
-  const activeProspects=customers.filter(c=>c.stage==="Prospect List").sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
-
-  // ── Deals Won reporting ──
-  const [dwPeriod,setDwPeriod]=useState("month");
-  const [dwCustomerId,setDwCustomerId]=useState("all");
-  const [dwJobId,setDwJobId]=useState("all");
-
-  const periodRange=(period)=>{
-    const now=new Date();
-    let start;
-    if(period==="month") start=new Date(now.getFullYear(),now.getMonth(),1);
-    else if(period==="quarter") start=new Date(now.getFullYear(),Math.floor(now.getMonth()/3)*3,1);
-    else if(period==="ytd") start=new Date(now.getFullYear(),0,1);
-    else start=new Date(2000,0,1); // "all"
-    return {start:start.toISOString(),end:new Date(now.getTime()+1).toISOString()};
-  };
-
-  const customerName=cid=>customers.find(c=>c.id===cid)?.name||"Unknown";
-
-  // Only customers with at least one won job show up in the picker — no point listing
-  // every customer, most of whom won't have any deals-won data to show yet.
-  const customersWithWonJobs=useMemo(()=>{
-    const ids=[...new Set(jobs.filter(j=>j.wonAt).map(j=>j.customerId))];
-    return ids.map(id=>customers.find(c=>c.id===id)).filter(Boolean).sort((a,b)=>a.name.localeCompare(b.name));
-  },[jobs,customers]);
-
-  const {start:dwStart,end:dwEnd}=periodRange(dwPeriod);
-  const dwInRange=useMemo(()=>wonJobsInRange(jobs,dwStart,dwEnd),[jobs,dwStart,dwEnd]);
-  const dwCustomerJobs=dwCustomerId==="all"?[]:jobs.filter(j=>j.customerId===Number(dwCustomerId)&&j.wonAt);
-  const dwFiltered=dwCustomerId==="all"?dwInRange:dwInRange.filter(j=>j.customerId===Number(dwCustomerId));
-  const dwFinal=(dwCustomerId!=="all"&&dwJobId!=="all")?dwFiltered.filter(j=>j.id===Number(dwJobId)):dwFiltered;
-
-  const dwRevenue=dwFinal.reduce((s,j)=>s+wonJobRevenue(j),0);
-  const dwCost=dwFinal.reduce((s,j)=>s+wonJobCost(j),0);
-  const dwProfit=dwRevenue-dwCost;
-  const dwMargins=dwFinal.map(j=>calcMargin(wonJobRevenue(j),wonJobCost(j))).filter(Boolean);
-  const dwAvgMarginPct=dwMargins.length>0?(dwMargins.reduce((s,m)=>s+parseFloat(m.pct),0)/dwMargins.length).toFixed(1):null;
 
   // Gather all tasks due today or overdue from both customers and jobs
   const allTasks=useMemo(()=>{
@@ -2981,7 +2617,7 @@ const Dashboard = ({customers,jobs}) => {
       )}
 
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:14,marginBottom:28}}>
-        {[["Total Customers",stats.total,C.navy],["Active Prospects",stats.prospects,C.slate],["Active Leads",stats.leads,C.amber],["Deals Won",stats.won,C.mint],["Active Jobs",stats.activeJobs,C.sky],["Quote Pipeline",`£${stats.pipeline.toLocaleString()}`,C.mint]].map(([label,value,color])=>(
+        {[["Total Customers",stats.total,C.navy],["Active Leads",stats.leads,C.amber],["Deals Won",stats.won,C.mint],["Active Jobs",stats.activeJobs,C.sky],["Quote Pipeline",`£${stats.pipeline.toLocaleString()}`,C.mint]].map(([label,value,color])=>(
           <div key={label} style={{background:C.white,borderRadius:10,padding:"18px 20px",border:`1px solid ${C.border}`,boxShadow:"0 1px 4px rgba(0,0,0,0.05)"}}>
             <div style={{fontSize:28,fontWeight:800,color}}>{value}</div>
             <div style={{fontSize:13,color:C.slate,marginTop:4}}>{label}</div>
@@ -3018,7 +2654,7 @@ const Dashboard = ({customers,jobs}) => {
         const tempValue={hot:0,warm:0,cold:0};
         customers.filter(c=>!["Deal Won","Deal Lost"].includes(c.stage)).forEach(c=>{
           const t=c.tabs?.quote?.leadTemp;
-          if(t&&tempCounts[t]!==undefined){tempCounts[t]++;tempValue[t]+=totalQuoteValue(c);}
+          if(t&&tempCounts[t]!==undefined){tempCounts[t]++;tempValue[t]+=(Number(c.quoteValue)||0);}
         });
         if(tempCounts.hot===0&&tempCounts.warm===0&&tempCounts.cold===0) return null;
         return (
@@ -3056,7 +2692,7 @@ const Dashboard = ({customers,jobs}) => {
                           </div>
                         </div>
                         <div style={{textAlign:"right",flexShrink:0}}>
-                          {totalQuoteValue(c)>0&&<div style={{fontSize:13,fontWeight:800,color:C.navy}}>£{totalQuoteValue(c).toLocaleString()}</div>}
+                          {c.quoteValue&&<div style={{fontSize:13,fontWeight:800,color:C.navy}}>£{Number(c.quoteValue).toLocaleString()}</div>}
                           {daysLeft!==null&&<div style={{fontSize:11,fontWeight:600,color:daysLeft<=0?C.red:daysLeft<=7?"#92400E":C.mint,marginTop:2}}>{daysLeft<=0?"Overdue":daysLeft===0?"Today":`${daysLeft}d to close`}</div>}
                         </div>
                       </div>
@@ -3080,7 +2716,7 @@ const Dashboard = ({customers,jobs}) => {
           <div style={{background:C.white,borderRadius:10,padding:20,border:`1px solid ${C.border}`,marginBottom:20}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
               <h3 style={{margin:0,fontSize:15,color:C.navy,fontWeight:700}}>📅 Quotes Forecast</h3>
-              <div style={{fontSize:12,color:C.slate,fontWeight:600}}>£{quotesWithDates.reduce((s,c)=>s+totalQuoteValue(c),0).toLocaleString()} total</div>
+              <div style={{fontSize:12,color:C.slate,fontWeight:600}}>£{quotesWithDates.reduce((s,c)=>s+(Number(c.quoteValue)||0),0).toLocaleString()} total</div>
             </div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 100px 70px 90px 80px",gap:8,padding:"6px 0",borderBottom:`2px solid ${C.border}`,marginBottom:4}}>
               {["Customer","Expected Sale","Temp","Value","Sold By"].map(h=>(
@@ -3105,7 +2741,7 @@ const Dashboard = ({customers,jobs}) => {
                     <div style={{fontSize:10,fontWeight:600,color:isPast?C.red:isClose?"#92400E":C.muted}}>{isPast?`${Math.abs(diff)}d overdue`:diff===0?"Today":`in ${diff}d`}</div>
                   </div>
                   <div style={{fontSize:13,fontWeight:700,color:ts?ts.color:C.muted}}>{ts?`${ts.icon} ${temp.charAt(0).toUpperCase()+temp.slice(1)}`:"—"}</div>
-                  <div style={{fontSize:13,fontWeight:800,color:C.navy}}>{totalQuoteValue(c)>0?`£${totalQuoteValue(c).toLocaleString()}`:"—"}</div>
+                  <div style={{fontSize:13,fontWeight:800,color:C.navy}}>{c.quoteValue?`£${Number(c.quoteValue).toLocaleString()}`:"—"}</div>
                   <div style={{fontSize:12,color:C.slate,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.soldBy||"—"}</div>
                 </div>
               );
@@ -3114,62 +2750,8 @@ const Dashboard = ({customers,jobs}) => {
         );
       })()}
 
-      {/* ── Deals Won ── */}
-      <div style={{background:C.white,borderRadius:10,padding:20,border:`1px solid ${C.border}`,marginBottom:20}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:10}}>
-          <h3 style={{margin:0,fontSize:15,color:C.navy,fontWeight:700}}>💰 Deals Won</h3>
-          <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
-            {[["month","Month"],["quarter","Quarter"],["ytd","YTD"],["all","All Time"]].map(([val,label])=>(
-              <button key={val} onClick={()=>setDwPeriod(val)} style={{padding:"5px 12px",borderRadius:20,fontSize:12,fontWeight:600,cursor:"pointer",border:"none",background:dwPeriod===val?C.sky:C.slateLight,color:dwPeriod===val?"#fff":C.slate}}>{label}</button>
-            ))}
-            <select value={dwCustomerId} onChange={e=>{setDwCustomerId(e.target.value);setDwJobId("all");}} style={{border:`1px solid ${C.border}`,borderRadius:6,padding:"6px 10px",fontSize:12,outline:"none",color:C.text}}>
-              <option value="all">All Customers</option>
-              {customersWithWonJobs.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-            {dwCustomerId!=="all"&&(
-              <select value={dwJobId} onChange={e=>setDwJobId(e.target.value)} style={{border:`1px solid ${C.border}`,borderRadius:6,padding:"6px 10px",fontSize:12,outline:"none",color:C.text}}>
-                <option value="all">All Jobs</option>
-                {dwCustomerJobs.map(j=><option key={j.id} value={j.id}>{j.title}</option>)}
-              </select>
-            )}
-          </div>
-        </div>
-        {dwFinal.length===0?(
-          <div style={{textAlign:"center",padding:"20px 0",color:C.muted,fontSize:13}}>No deals won in this selection.</div>
-        ):(
-          <>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:16}}>
-              {[["Revenue",`£${dwRevenue.toLocaleString()}`,C.navy],["Cost",`£${dwCost.toLocaleString()}`,C.navy],["Gross Profit",`£${dwProfit.toLocaleString()}`,dwProfit>=0?C.mint:C.red],["Margin",dwAvgMarginPct!=null?`${dwAvgMarginPct}%`:"—",dwProfit>=0?C.mint:C.red]].map(([l,v,col])=>(
-                <div key={l} style={{background:C.slateLight,borderRadius:8,padding:"12px 14px"}}>
-                  <div style={{fontSize:11,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:4}}>{l}</div>
-                  <div style={{fontSize:20,fontWeight:800,color:col}}>{v}</div>
-                </div>
-              ))}
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 90px 90px 90px 70px",gap:8,padding:"6px 0",borderBottom:`2px solid ${C.border}`,marginBottom:4}}>
-              {["Job","Customer","Won Date","Revenue","Cost","Margin"].map(h=>(
-                <div key={h} style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.05em"}}>{h}</div>
-              ))}
-            </div>
-            {dwFinal.map(j=>{
-              const m=calcMargin(wonJobRevenue(j),wonJobCost(j));
-              return (
-                <div key={j.id} style={{display:"grid",gridTemplateColumns:"1fr 1fr 90px 90px 90px 70px",gap:8,padding:"8px 0",borderBottom:`1px solid ${C.border}`,alignItems:"center"}}>
-                  <div style={{fontSize:13,fontWeight:700,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{j.title}</div>
-                  <div style={{fontSize:13,color:C.slate,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{customerName(j.customerId)}</div>
-                  <div style={{fontSize:12,color:C.muted}}>{new Date(j.wonAt).toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"})}</div>
-                  <div style={{fontSize:13,fontWeight:700,color:C.navy}}>£{wonJobRevenue(j).toLocaleString()}</div>
-                  <div style={{fontSize:13,color:C.slate}}>{wonJobCost(j)>0?`£${wonJobCost(j).toLocaleString()}`:"—"}</div>
-                  <div style={{fontSize:13,fontWeight:700,color:m?(m.profit>=0?C.mint:C.red):C.muted}}>{m?`${m.pct}%`:"—"}</div>
-                </div>
-              );
-            })}
-          </>
-        )}
-      </div>
-
       {/* ── Recent Enquiries ── */}
-      <div style={{background:C.white,borderRadius:10,padding:20,border:`1px solid ${C.border}`,marginBottom:20}}>
+      <div style={{background:C.white,borderRadius:10,padding:20,border:`1px solid ${C.border}`}}>
         <h3 style={{margin:"0 0 14px",fontSize:15,color:C.navy,fontWeight:700}}>Recent Enquiries</h3>
         {recent.map(c=>(
           <div key={c.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:`1px solid ${C.border}`}}>
@@ -3181,22 +2763,6 @@ const Dashboard = ({customers,jobs}) => {
           </div>
         ))}
       </div>
-
-      {/* ── Active Prospects ── */}
-      {activeProspects.length>0&&(
-        <div style={{background:C.white,borderRadius:10,padding:20,border:`1px solid ${C.border}`}}>
-          <h3 style={{margin:"0 0 14px",fontSize:15,color:C.navy,fontWeight:700}}>Active Prospects</h3>
-          {activeProspects.map(c=>(
-            <div key={c.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:`1px solid ${C.border}`}}>
-              <div>
-                <div style={{fontWeight:600,fontSize:14,color:C.text}}>{c.name}</div>
-                <div style={{fontSize:12,color:C.slate}}>{c.address}</div>
-              </div>
-              <Badge label={c.stage}/>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 };
@@ -3209,25 +2775,6 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
   const [showFeedback,setShowFeedback]=useState(false);
   const [viewDate,setViewDate]=useState(new Date());
   const today=new Date().toISOString().slice(0,10);
-
-  // idle | saving | saved | error — for the note fields below, which used to call
-  // apiUpdateJob on every keystroke (a real network request per character typed, which is
-  // what caused the reported input lag on mobile). Debounced the same way as Settings/Track
-  // Orders: update local state instantly for smooth typing, only hit the API ~800ms after
-  // the last keystroke.
-  const [noteSaveStatus,setNoteSaveStatus]=useState("idle");
-  const noteSaveTimer=useRef(null);
-  const updateJobDebounced=(updated)=>{
-    setJobs(js=>js.map(j=>j.id===updated.id?updated:j));
-    setSelectedJob(updated);
-    setNoteSaveStatus("saving");
-    clearTimeout(noteSaveTimer.current);
-    noteSaveTimer.current=setTimeout(()=>{
-      apiUpdateJob(updated)
-        .then(()=>{setNoteSaveStatus("saved");setTimeout(()=>setNoteSaveStatus(s=>s==="saved"?"idle":s),2000);})
-        .catch(err=>{setNoteSaveStatus("error");window.alert("Failed to save notes: "+err.message);});
-    },800);
-  };
 
   // All jobs assigned to this fitter via installation tab
   const myEvents=useMemo(()=>{
@@ -3261,18 +2808,21 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
         }
       });
     });
-    return evts.sort((a,b)=>a.date.localeCompare(b.date));
+    return evts.sort((a,b)=>{
+      // Sort by date first, then by time within the same day
+      const dateCmp=a.date.localeCompare(b.date);
+      if(dateCmp!==0) return dateCmp;
+      const aTime=a.time||"23:59";
+      const bTime=b.time||"23:59";
+      return aTime.localeCompare(bTime);
+    });
   },[jobs,fitterName]);
 
-  const updateJob=(updated)=>{
-    apiUpdateJob(updated).then(saved=>{
-      setJobs(js=>js.map(j=>j.id===saved.id?saved:j));
-    }).catch(err=>window.alert("Failed to save job: "+err.message));
-  };
+  const updateJob=(updated)=>setJobs(js=>js.map(j=>j.id===updated.id?updated:j));
 
   const addSurveyImage=async(e,job)=>{
     const files=Array.from(e.target.files);
-    const datas=await Promise.all(files.map(f=>uploadFile(f,"photos")));
+    const datas=await Promise.all(files.map(readFileAsDataURL));
     const updated={...job,tabs:{...job.tabs,survey:{...job.tabs.survey,images:[...(job.tabs.survey.images||[]),...datas]}}};
     updateJob(updated);
     setSelectedJob(updated);
@@ -3281,7 +2831,7 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
 
   const addInstallImage=async(e,job)=>{
     const files=Array.from(e.target.files);
-    const datas=await Promise.all(files.map(f=>uploadFile(f,"photos")));
+    const datas=await Promise.all(files.map(readFileAsDataURL));
     const updated={...job,tabs:{...job.tabs,installation:{...job.tabs.installation,installImages:[...(job.tabs.installation.installImages||[]),...datas]}}};
     updateJob(updated);
     setSelectedJob(updated);
@@ -3297,7 +2847,8 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
 
   const updateSurveyNotes=(val,job)=>{
     const updated={...job,tabs:{...job.tabs,survey:{...job.tabs.survey,notes:val}}};
-    updateJobDebounced(updated);
+    updateJob(updated);
+    setSelectedJob(updated);
   };
 
   const updateInstallNotes=(val,job)=>{
@@ -3320,7 +2871,7 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
     return myEvents.filter(e=>e.date===ds);
   };
 
-  const upcoming=myEvents.filter(e=>e.date>=today).slice(0,5);
+  const upcoming=myEvents.filter(e=>e.date>=today).slice(0,10);
   const customer=selectedJob?customers.find(c=>c.id===selectedJob.customerId):null;
 
   const tabBtn=(id,label,icon)=>(
@@ -3365,11 +2916,7 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
                 {cust&&[["👤",cust.name],["📞",cust.phone],["📧",cust.email]].map(([icon,val])=>(
                   <div key={icon} style={{display:"flex",gap:10,padding:"8px 0",borderBottom:`1px solid ${C.border}`,fontSize:14}}>
                     <span style={{fontSize:16,flexShrink:0}}>{icon}</span>
-                    {icon==="📞"&&val?(
-                      <a href={`tel:${val}`} style={{color:C.sky,fontWeight:600,textDecoration:"none"}}>{val}</a>
-                    ):(
-                      <span style={{color:C.text}}>{val||"—"}</span>
-                    )}
+                    <span style={{color:C.text}}>{val||"—"}</span>
                   </div>
                 ))}
                 {cust?.address&&(
@@ -3447,7 +2994,7 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
                   <div style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:10}}>📄 Survey Documents</div>
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
                     {(job.tabs?.survey?.files||[]).map((f,i)=>(
-                      <a key={i} href={f.data} target="_blank" rel="noreferrer"
+                      <a key={i} href={f.data} download={f.name}
                         style={{display:"flex",alignItems:"center",gap:10,background:C.slateLight,borderRadius:8,padding:"10px 14px",textDecoration:"none"}}>
                         <span style={{fontSize:22,flexShrink:0}}>{f.type==="application/pdf"?"📄":f.type?.startsWith("image")?"🖼️":"📎"}</span>
                         <div style={{flex:1,minWidth:0}}>
@@ -3462,10 +3009,7 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
               )}
               {/* Survey notes */}
               <div style={{background:C.white,borderRadius:12,padding:16,border:`1px solid ${C.border}`}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-                  <div style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em"}}>Survey Notes</div>
-                  {noteSaveStatus!=="idle"&&<div style={{fontSize:10,fontWeight:700,color:noteSaveStatus==="saving"?C.slate:noteSaveStatus==="error"?C.red:C.mint}}>{noteSaveStatus==="saving"?"Saving…":noteSaveStatus==="error"?"⚠ Save failed":"✓ Saved"}</div>}
-                </div>
+                <div style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>Survey Notes</div>
                 <textarea value={job.tabs?.survey?.notes||""} onChange={e=>updateSurveyNotes(e.target.value,job)}
                   placeholder="Add survey notes here..." style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14,outline:"none",resize:"none",minHeight:120,boxSizing:"border-box",fontFamily:"inherit",lineHeight:1.6}}/>
               </div>
@@ -3524,13 +3068,10 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
               )}
               {/* Fitter's own install notes */}
               <div style={{background:C.white,borderRadius:12,padding:16,border:`1px solid ${C.border}`}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-                  <div style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em"}}>My Install Notes</div>
-                  {noteSaveStatus!=="idle"&&<div style={{fontSize:10,fontWeight:700,color:noteSaveStatus==="saving"?C.slate:noteSaveStatus==="error"?C.red:C.mint}}>{noteSaveStatus==="saving"?"Saving…":noteSaveStatus==="error"?"⚠ Save failed":"✓ Saved"}</div>}
-                </div>
+                <div style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>My Install Notes</div>
                 <textarea value={job.tabs?.installation?.fitterInstallNotes||""} onChange={e=>{
                   const updated={...job,tabs:{...job.tabs,installation:{...job.tabs.installation,fitterInstallNotes:e.target.value}}};
-                  updateJobDebounced(updated);
+                  updateJob(updated);setSelectedJob(updated);
                 }} placeholder="Add your installation notes here..." style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14,outline:"none",resize:"none",minHeight:120,boxSizing:"border-box",fontFamily:"inherit",lineHeight:1.6}}/>
               </div>
               {/* Install photos */}
@@ -3571,13 +3112,10 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
                 </div>
               )}
               <div style={{background:C.white,borderRadius:12,padding:16,border:`1px solid ${C.border}`}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-                  <div style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em"}}>General Notes</div>
-                  {noteSaveStatus!=="idle"&&<div style={{fontSize:10,fontWeight:700,color:noteSaveStatus==="saving"?C.slate:noteSaveStatus==="error"?C.red:C.mint}}>{noteSaveStatus==="saving"?"Saving…":noteSaveStatus==="error"?"⚠ Save failed":"✓ Saved"}</div>}
-                </div>
+                <div style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>General Notes</div>
                 <textarea value={job.tabs?.notepad?.text||""} onChange={e=>{
                   const updated={...job,tabs:{...job.tabs,notepad:{text:e.target.value}}};
-                  updateJobDebounced(updated);
+                  updateJob(updated);setSelectedJob(updated);
                 }} placeholder="Add general notes..." style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14,outline:"none",resize:"none",minHeight:160,boxSizing:"border-box",fontFamily:"inherit",lineHeight:1.6}}/>
               </div>
               {job.tabs?.survey?.notes&&(
@@ -3624,7 +3162,7 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
                     📷 Fitter Photos
                     <input type="file" accept="image/*" multiple capture="environment" onChange={async(e)=>{
                       const files=Array.from(e.target.files);
-                      const datas=await Promise.all(files.map(f=>uploadFile(f,"photos")));
+                      const datas=await Promise.all(files.map(readFileAsDataURL));
                       const updated={...job,tabs:{...job.tabs,serviceCall:{...job.tabs.serviceCall,fitterPhotos:[...(job.tabs.serviceCall?.fitterPhotos||[]),...datas]}}};
                       updateJob(updated);setSelectedJob(updated);
                       e.target.value="";
@@ -3702,12 +3240,24 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
             <div style={{background:C.white,borderRadius:12,padding:24,textAlign:"center",color:C.muted,border:`1px solid ${C.border}`}}>No upcoming jobs assigned to you.</div>
           )}
           {(()=>{
-            // Deduplicate — one card per unique job, keeping the earliest date
+            // Deduplicate multi-day installs (show once per install job, not once per day)
+            // BUT allow multiple DIFFERENT events on the same day (e.g. install + survey)
             const seen=new Set();
             const deduped=upcoming.filter(ev=>{
-              const key=`${ev.type}-${ev.job.id}`;
-              if(seen.has(key)) return false;
-              seen.add(key); return true;
+              // For installs, deduplicate by job id (multi-day installs show once)
+              if(ev.type==="Install"){
+                const key=`Install-${ev.job.id}`;
+                if(seen.has(key)) return false;
+                seen.add(key); return true;
+              }
+              // For surveys and service calls, show every unique booking
+              return true;
+            });
+            // Group by date so we can show a date header when multiple events fall on same day
+            const byDate={};
+            deduped.forEach(ev=>{
+              if(!byDate[ev.date]) byDate[ev.date]=[];
+              byDate[ev.date].push(ev);
             });
             return deduped.map((ev,i)=>{
               const cust=customers.find(c=>c.id===ev.job.customerId);
@@ -3716,6 +3266,8 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
               const duration=inst?.duration?Number(inst.duration):2;
               const totalDays=ev.type==="Install"?Math.ceil(duration/2):null;
               const isHalfDay=duration===1;
+              const sameDayEvents=byDate[ev.date]||[];
+              const hasMultipleToday=sameDayEvents.length>1;
               // Calculate end date (skipping weekends)
               let endDate="";
               if(ev.type==="Install"&&totalDays>1){
@@ -3744,7 +3296,10 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
                       background:ev.type==="Survey"?"#15803D":ev.type==="Service Call"?"#DC2626":"#92400E",
                       color:"#fff",fontSize:12,fontWeight:700,padding:"3px 10px",borderRadius:12
                     }}>{ev.type}</span>
-                    {isToday&&<span style={{fontSize:12,fontWeight:700,color:ev.type==="Survey"?"#15803D":ev.type==="Service Call"?"#DC2626":"#92400E"}}>📌 Today</span>}
+                    <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                      {isToday&&<span style={{fontSize:12,fontWeight:700,color:ev.type==="Survey"?"#15803D":ev.type==="Service Call"?"#DC2626":"#92400E"}}>📌 Today</span>}
+                      {hasMultipleToday&&<span style={{fontSize:11,fontWeight:700,background:"#EFF6FF",color:C.sky,padding:"2px 8px",borderRadius:10}}>{sameDayEvents.length} bookings this day</span>}
+                    </div>
                   </div>
                   <div style={{fontWeight:700,fontSize:15,color:C.navy,marginBottom:4}}>{ev.job.title}</div>
                   <div style={{fontSize:13,color:C.slate}}>{cust?.name}</div>
@@ -3826,36 +3381,9 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
 const TrackOrdersPage = ({jobs,customers}) => {
   const [viewDate,setViewDate]=useState(new Date());
   const [orders,setOrders]=useState([]);
-  const [ordersLoaded,setOrdersLoaded]=useState(false);
-  // idle | saving | saved | error
-  const [saveStatus,setSaveStatus]=useState("idle");
-  const skipNextSave=useRef(true); // don't fire a save for the initial load from the API
   const [showModal,setShowModal]=useState(false);
   const [editOrder,setEditOrder]=useState(null);
   const [form,setForm]=useState({jobId:"",supplier:"",description:"",deliveryDate:"",status:"Ordered",notes:""});
-
-  // Load the manually-added orders list from the API once on mount — separate from the job
-  // card deliveries below, which arrive via the jobs prop instead.
-  useEffect(()=>{
-    apiGetOrders()
-      .then(saved=>setOrders(saved||[]))
-      .catch(err=>console.error("Failed to load orders",err))
-      .finally(()=>setOrdersLoaded(true));
-  },[]);
-
-  // Auto-saves ~800ms after the last change, same pattern as Settings — no explicit
-  // "Save" button to forget to click.
-  useEffect(()=>{
-    if(skipNextSave.current){skipNextSave.current=false;return;}
-    setSaveStatus("saving");
-    const timer=setTimeout(()=>{
-      apiUpdateOrders(orders)
-        .then(()=>{setSaveStatus("saved");setTimeout(()=>setSaveStatus(s=>s==="saved"?"idle":s),2000);})
-        .catch(err=>{setSaveStatus("error");window.alert("Failed to save orders: "+err.message);});
-    },800);
-    return ()=>clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[orders]);
 
   const ORDER_STATUSES=["Ordered","In Transit","Out for Delivery","Delivered","Delayed"];
   const STATUS_STYLE={
@@ -3950,9 +3478,6 @@ const TrackOrdersPage = ({jobs,customers}) => {
           <div style={{fontSize:12,color:C.slate}}>
             <span style={{background:C.skyLight,color:C.sky,padding:"2px 8px",borderRadius:8,fontWeight:600,marginRight:6}}>📋 {jobDeliveries.length} from job cards</span>
             <span style={{background:C.slateLight,color:C.slate,padding:"2px 8px",borderRadius:8,fontWeight:600}}>➕ {orders.length} manual</span>
-          </div>
-          <div style={{background:saveStatus==="saving"?C.slateLight:saveStatus==="error"?"#FEF2F2":"#F0FDF4",color:saveStatus==="saving"?C.slate:saveStatus==="error"?C.red:C.mint,fontSize:12,fontWeight:700,padding:"7px 14px",borderRadius:8,border:`1px solid ${saveStatus==="saving"?C.border:saveStatus==="error"?"#FECACA":"#86EFAC"}`,whiteSpace:"nowrap"}}>
-            {saveStatus==="saving"?"Saving…":saveStatus==="error"?"⚠ Save failed":"✓ Saved"}
           </div>
           <Btn onClick={openAdd}>+ Add Delivery</Btn>
         </div>
@@ -4153,33 +3678,25 @@ const CustomerDirectoryPage = ({customers,setCustomers,jobs,setJobs,settings,onN
 
   const saveCustomer=(form)=>{
     if(editModal){
-      apiUpdateCustomer(form).then(saved=>{
-        setCustomers(cs=>cs.map(c=>c.id===saved.id?saved:c));
-        setSelectedCustomer(saved);
-      }).catch(err=>window.alert("Failed to save customer: "+err.message));
+      setCustomers(cs=>cs.map(c=>c.id===form.id?form:c));
+      setSelectedCustomer(form);
     } else {
-      const nc={...form,stage:"New Enquiry",tabs:{quote:{files:[],notes:""},invoices:{files:[],notes:""},notepad:{text:""},survey:{files:[],images:[],notes:"",date:"",fitter:"",time:"",endTime:""},orderConfirmation:{files:[],notes:""},bills:{files:[],costs:"",notes:""},installation:{date:"",fitters:[],fittersNotes:"",startTime:"",duration:"2",emailReminders:{week:{status:"pending",sentAt:""},day:{status:"pending",sentAt:""}},deliveries:[]},guarantee:{files:[],notes:""},tasks:[],serviceCall:{notes:"",officePhotos:[],fitterPhotos:[],supplierInvoices:[],bookings:[]}}};
-      apiCreateCustomer(nc).then(saved=>{
-        setCustomers(cs=>[saved,...cs]);
-        setSelectedCustomer(saved);
-      }).catch(err=>window.alert("Failed to save customer: "+err.message));
+      const nc={...form,id:uid(),createdAt:new Date().toISOString().slice(0,10),stage:"New Enquiry",tabs:{quote:{files:[],notes:""},invoices:{files:[],notes:""},notepad:{text:""},survey:{files:[],images:[],notes:"",date:"",fitter:"",time:"",endTime:""},orderConfirmation:{files:[],notes:""},bills:{files:[],costs:"",notes:""},installation:{date:"",fitters:[],fittersNotes:"",startTime:"",duration:"2",emailReminders:{week:{status:"pending",sentAt:""},day:{status:"pending",sentAt:""}},deliveries:[]},guarantee:{files:[],notes:""},tasks:[],serviceCall:{notes:"",officePhotos:[],fitterPhotos:[],supplierInvoices:[],bookings:[]}}};
+      setCustomers(cs=>[nc,...cs]);
+      setSelectedCustomer(nc);
     }
     setShowAddModal(false);setEditModal(false);
   };
 
   const deleteCustomer=(id)=>{
     if(!window.confirm("Delete this customer and all their data?")) return;
-    apiDeleteCustomer(id).then(()=>{
-      setCustomers(cs=>cs.filter(c=>c.id!==id));
-      setSelectedCustomer(null);
-    }).catch(err=>window.alert("Failed to delete customer: "+err.message));
+    setCustomers(cs=>cs.filter(c=>c.id!==id));
+    setSelectedCustomer(null);
   };
 
   const saveJob=(form)=>{
-    apiCreateJob(form).then(saved=>{
-      setJobs(js=>[saved,...js]);
-      setAddJobModal(false);
-    }).catch(err=>window.alert("Failed to save job: "+err.message));
+    setJobs(js=>[{...form,id:uid()},...js]);
+    setAddJobModal(false);
   };
 
   const cust=selectedCustomer?customers.find(c=>c.id===selectedCustomer.id)||selectedCustomer:null;
@@ -4387,8 +3904,8 @@ const CustomerDirectoryPage = ({customers,setCustomers,jobs,setJobs,settings,onN
       {selectedJob&&<CardDetailModal
         record={jobs.find(j=>j.id===selectedJob.id)||selectedJob}
         customers={customers} isJob={true} settings={settings}
-        onSave={updated=>apiUpdateJob(updated).then(saved=>setJobs(js=>js.map(j=>j.id===saved.id?saved:j))).catch(err=>window.alert("Failed to save job: "+err.message))}
-        onDelete={id=>{if(!window.confirm("Delete this job?"))return;apiDeleteJob(id).then(()=>{setJobs(js=>js.filter(j=>j.id!==id));setSelectedJob(null);}).catch(err=>window.alert("Failed to delete job: "+err.message));}}
+        onSave={updated=>setJobs(js=>js.map(j=>j.id===updated.id?updated:j))}
+        onDelete={id=>{setJobs(js=>js.filter(j=>j.id!==id));setSelectedJob(null);}}
         onClose={()=>setSelectedJob(null)}
       />}
     </div>
@@ -4538,93 +4055,37 @@ const CustomerDirectoryForm = ({initial={},onSave,onCancel}) => {
 };
 
 // ── App Shell ─────────────────────────────────────────────────────────────────
-function App() {
-  const [customers,setCustomers]=useState([]);
-  const [jobs,setJobs]=useState([]);
-  const [dataLoaded,setDataLoaded]=useState(false);
-  const [dataLoadError,setDataLoadError]=useState(null);
+export default function App() {
+  const [customers,setCustomers]=useState(seedCustomers);
+  const [jobs,setJobs]=useState(seedJobs);
   const [page,setPage]=useState("dashboard");
   const [userRole,setUserRole]=useState(null);
-  const [officeAuthChecked,setOfficeAuthChecked]=useState(false);
   const [selectedFitter,setSelectedFitter]=useState(null);
-  const [authToken,setAuthToken]=useState(null);
-
-  // Keeps the module-level apiRequest() in sync with React state — see setGlobalAuthToken.
-  useEffect(()=>{ setGlobalAuthToken(authToken); },[authToken]);
-
-  // Office Admin now goes through real Microsoft/Entra ID login (see the button below)
-  // rather than being a single unprotected click. On load/redirect-back, check whether
-  // the browser already has an authenticated Entra ID session and, if so, exchange it for
-  // an API session token (apiLogin) and go straight to the office view. The API trusts this
-  // call because it only ever fires after /.auth/me — a same-origin, cookie-gated endpoint
-  // an outside caller can't satisfy — confirms a real Entra session. Fitters are unaffected.
-  useEffect(()=>{
-    fetch('/.auth/me')
-      .then(r=>r.json())
-      .then(data=>{
-        if(data && data.clientPrincipal){
-          return apiLogin('office').then(({token})=>{ setAuthToken(token); setUserRole('office'); });
-        }
-      })
-      .catch(()=>{})
-      .finally(()=>setOfficeAuthChecked(true));
-  },[]);
-
-  // Load real customers/jobs from the API once someone's actually logged in (office or
-  // fitter) — no point fetching before then, and the API is what replaced the old
-  // seedCustomers/seedJobs in-memory-only data.
-  useEffect(()=>{
-    if(!userRole) return;
-    Promise.all([apiListCustomers(),apiListJobs()])
-      .then(([cs,js])=>{ setCustomers(cs); setJobs(js); })
-      .catch(err=>{ console.error("Failed to load data",err); setDataLoadError(err.message); })
-      .finally(()=>setDataLoaded(true));
-  },[userRole]);
   const [pwInput,setPwInput]=useState("");
   const [pwError,setPwError]=useState(false);
   const [showPw,setShowPw]=useState(false);
   const [gs,setGs]=useState("");
   const [gsOpen,setGsOpen]=useState(false);
-  const [settings,setSettings]=useState({...DEFAULT_SETTINGS});
-  const [settingsLoaded,setSettingsLoaded]=useState(false);
-
-  // Settings (fitters/passwords/templates/company details) are needed on the login screen
-  // itself, before anyone's authenticated — so this fetches independently of userRole,
-  // unlike customers/jobs below. Merges fetched values over the local defaults, so any
-  // field added to DEFAULT_SETTINGS later still has a sane fallback for older saved rows.
-  useEffect(()=>{
-    apiGetSettings()
-      .then(saved=>{ if(saved) setSettings(s=>mergeSettings(s,saved)); })
-      .catch(err=>console.error("Failed to load settings",err))
-      .finally(()=>setSettingsLoaded(true));
-  },[]);
-
-  // Re-fetch Settings once logged in — the initial load above ran pre-login and got
-  // fitter passwords redacted to booleans (see api/src/functions/settings.js); office
-  // sessions need the real values to view/edit them on the Settings page.
-  useEffect(()=>{
-    if(!authToken) return;
-    apiGetSettings()
-      .then(saved=>{ if(saved) setSettings(s=>mergeSettings(s,saved)); })
-      .catch(err=>console.error("Failed to refresh settings",err));
-  },[authToken]);
+  const [settings,setSettings]=useState({
+    fitters:[...DEFAULT_FITTERS],
+    staff:[...DEFAULT_STAFF],
+    suppliers:[...DEFAULT_SUPPLIERS],
+    companyName:"VisualPro",
+    companyPhone:"",
+    companyEmail:"",
+    companyWebsite:"",
+    emailTemplates:{...DEFAULT_EMAIL_TEMPLATES},
+    feedbackQuestions:[...DEFAULT_FEEDBACK_QUESTIONS],
+    fitterPasswords:{"Tom Bailey":"glazing1","Steve Marsh":"glazing2","Dan Rees":"glazing3","Chris Wood":"glazing4"},
+  });
 
   const handleFitterLogin=()=>{
-    apiLogin(selectedFitter,pwInput)
-      .then(({token})=>{ setAuthToken(token); setUserRole(selectedFitter); })
-      .catch(()=>{ setPwError(true); setTimeout(()=>setPwError(false),2000); });
+    const storedPw=settings.fitterPasswords?.[selectedFitter]||"";
+    if(!storedPw||pwInput===storedPw){setUserRole(selectedFitter);}
+    else{setPwError(true);setTimeout(()=>setPwError(false),2000);}
   };
 
   const resetLogin=()=>{setSelectedFitter(null);setPwInput("");setPwError(false);setShowPw(false);};
-
-  // ── Login: waiting on the /.auth/me check and real Settings (fitters/passwords), before showing anything ──
-  if(!userRole&&(!officeAuthChecked||!settingsLoaded)){
-    return (
-      <div style={{minHeight:"100vh",background:C.navy,display:"flex",alignItems:"center",justifyContent:"center"}}>
-        <div className="spinner"/>
-      </div>
-    );
-  }
 
   // ── Login: password screen ──
   if(!userRole&&selectedFitter){
@@ -4655,7 +4116,7 @@ function App() {
             ):(
               <>
                 <div style={{background:"#FFFBEB",border:`1px solid ${C.amber}`,borderRadius:8,padding:"12px 14px",fontSize:13,color:"#92400E",marginBottom:16}}>⚠️ No password set. Contact your admin to set one up in Settings.</div>
-                <button onClick={()=>{apiLogin(selectedFitter,"").then(({token})=>{setAuthToken(token);setUserRole(selectedFitter);}).catch(()=>setPwError(true));}} style={{width:"100%",background:C.mint,color:"#fff",border:"none",borderRadius:10,padding:"14px",fontSize:16,fontWeight:700,cursor:"pointer",marginBottom:10}}>Continue Without Password →</button>
+                <button onClick={()=>setUserRole(selectedFitter)} style={{width:"100%",background:C.mint,color:"#fff",border:"none",borderRadius:10,padding:"14px",fontSize:16,fontWeight:700,cursor:"pointer",marginBottom:10}}>Continue Without Password →</button>
               </>
             )}
             <button onClick={resetLogin} style={{width:"100%",background:"none",border:"none",color:C.slate,fontSize:14,cursor:"pointer",padding:"8px"}}>← Back to login</button>
@@ -4676,14 +4137,14 @@ function App() {
             <div style={{color:"rgba(255,255,255,0.5)",fontSize:13,marginTop:4}}>Select your name to continue</div>
           </div>
           <div style={{padding:20,display:"flex",flexDirection:"column",gap:8}}>
-            <button onClick={()=>{window.location.href="/.auth/login/aad?post_login_redirect_uri=/";}}
+            <button onClick={()=>setUserRole("office")}
               style={{display:"flex",alignItems:"center",gap:14,padding:"14px 16px",borderRadius:10,border:`1px solid ${C.border}`,background:C.white,cursor:"pointer",textAlign:"left"}}
               onMouseEnter={e=>e.currentTarget.style.background=C.slateLight}
               onMouseLeave={e=>e.currentTarget.style.background=C.white}>
               <div style={{width:40,height:40,borderRadius:"50%",background:C.navy,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>🏢</div>
               <div style={{flex:1}}>
                 <div style={{fontWeight:700,fontSize:15,color:C.navy}}>Office Admin</div>
-                <div style={{fontSize:12,color:C.slate,marginTop:1}}>Full CRM access · Microsoft sign-in</div>
+                <div style={{fontSize:12,color:C.slate,marginTop:1}}>Full CRM access</div>
               </div>
               <div style={{color:C.muted,fontSize:20}}>›</div>
             </button>
@@ -4714,29 +4175,9 @@ function App() {
     );
   }
 
-  // ── Waiting on customers/jobs to load from the API ──
-  if(!dataLoaded){
-    return (
-      <div style={{minHeight:"100vh",background:C.navy,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}>
-        <div className="spinner"/>
-        <div style={{color:"rgba(255,255,255,0.6)",fontSize:14}}>Loading customers and jobs…</div>
-      </div>
-    );
-  }
-  if(dataLoadError){
-    return (
-      <div style={{minHeight:"100vh",background:C.navy,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,padding:20,textAlign:"center"}}>
-        <div style={{fontSize:40}}>⚠️</div>
-        <div style={{color:"#fff",fontSize:16,fontWeight:700}}>Couldn't load data from the server</div>
-        <div style={{color:"rgba(255,255,255,0.6)",fontSize:13,maxWidth:400}}>{dataLoadError}</div>
-        <button onClick={()=>window.location.reload()} style={{background:C.sky,color:"#fff",border:"none",borderRadius:8,padding:"10px 20px",fontSize:14,fontWeight:700,cursor:"pointer"}}>Retry</button>
-      </div>
-    );
-  }
-
   // ── Fitter view ──
   if(userRole!=="office"){
-    return <FitterApp fitterName={userRole} jobs={jobs} customers={customers} setJobs={setJobs} settings={settings} onLogout={()=>{setUserRole(null);setAuthToken(null);resetLogin();}}/>;
+    return <FitterApp fitterName={userRole} jobs={jobs} customers={customers} setJobs={setJobs} settings={settings} onLogout={()=>{setUserRole(null);resetLogin();}}/>;
   }
 
   // ── Office CRM ──
@@ -4770,7 +4211,7 @@ function App() {
             </button>
           ))}
         </nav>
-        <div onClick={()=>{window.location.href="/.auth/logout?post_logout_redirect_uri=/";}} style={{padding:"16px 20px",borderTop:"1px solid rgba(255,255,255,0.1)",cursor:"pointer"}}>
+        <div onClick={()=>{setUserRole(null);resetLogin();}} style={{padding:"16px 20px",borderTop:"1px solid rgba(255,255,255,0.1)",cursor:"pointer"}}>
           <div style={{fontSize:12,color:"rgba(255,255,255,0.4)"}}>🏢 Office Admin · <span style={{textDecoration:"underline"}}>Switch user</span></div>
         </div>
       </div>
@@ -4859,17 +4300,9 @@ function App() {
           {page==="calendar"&&<CalendarPage customers={customers} jobs={jobs} settings={settings}/>}
           {page==="orders"&&<TrackOrdersPage jobs={jobs} customers={customers}/>}
           {page==="customers"&&<CustomerDirectoryPage customers={customers} setCustomers={setCustomers} jobs={jobs} setJobs={setJobs} settings={settings} onNavigate={setPage}/>}
-          {page==="settings"&&<SettingsPage settings={settings} setSettings={setSettings} onNewEnquiry={lead=>apiCreateCustomer(lead).then(saved=>setCustomers(cs=>[saved,...cs])).catch(err=>window.alert("Failed to save enquiry: "+err.message))}/>}
+          {page==="settings"&&<SettingsPage settings={settings} setSettings={setSettings} onNewEnquiry={lead=>setCustomers(cs=>[lead,...cs])}/>}
         </div>
       </div>
     </div>
   );
 }
-
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(React.createElement(App));
-document.getElementById('loading').style.display = 'none';
-document.body.style.background = '#F1F5F9';
-  </script>
-</body>
-</html>
