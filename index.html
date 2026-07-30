@@ -85,7 +85,28 @@ Kind regards,
 {{companyName}}
 {{companyPhone}}`,
   },
-  installReminder: {
+  installReminderWeek: {
+    subject: "Reminder: Your Installation is Coming Up – {{customerName}}",
+    body: `Dear {{customerName}},
+
+This is a friendly reminder that your installation is coming up in the next week:
+
+📅 Date: {{installDate}}
+👷 Installers: {{fitterNames}}
+📍 Address: {{address}}
+
+Please ensure:
+• Access to the property is available
+• Any furniture near the areas to be fitted is cleared
+• Pets are secured away from the work area
+
+We look forward to seeing you soon!
+
+Kind regards,
+{{companyName}}
+{{companyPhone}}`,
+  },
+  installReminderDay: {
     subject: "Reminder: Your Installation is Tomorrow – {{customerName}}",
     body: `Dear {{customerName}},
 
@@ -293,7 +314,7 @@ const FileAttach = ({files,onAdd,onRemove,accept,label="Attach File"}) => {
           {files.map((f,i)=>(
             <div key={i} style={{display:"flex",alignItems:"center",gap:8,background:C.slateLight,borderRadius:6,padding:"6px 10px"}}>
               <span style={{fontSize:16}}>{f.type==="application/pdf"?"📄":f.type?.startsWith("image")?"🖼️":"📎"}</span>
-              <a href={f.data} download={f.name} style={{fontSize:13,color:C.sky,fontWeight:500,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</a>
+              <a href={f.data} target="_blank" rel="noreferrer" style={{fontSize:13,color:C.sky,fontWeight:500,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</a>
               <button onClick={()=>onRemove(i)} style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:16,lineHeight:1}}>×</button>
             </div>
           ))}
@@ -754,8 +775,22 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
             <div style={{background:"#F0FDF4",border:"1px solid #86EFAC",borderRadius:8,padding:12,fontSize:13,color:"#15803D",fontWeight:600}}>
               ✅ Survey booked — {data.tabs.survey.fitter} on {new Date(data.tabs.survey.date).toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}
               {data.tabs.survey.time&&<span> {data.tabs.survey.time}{data.tabs.survey.endTime&&` – ${data.tabs.survey.endTime}`}</span>}
+              <div style={{marginTop:6,fontSize:12,fontWeight:600}}>
+                {data.tabs.survey.emailSent?.status==="sent"
+                  ?`📧 Survey booked email sent ${data.tabs.survey.emailSent.sentAt}`
+                  :data.tabs.survey.notifyEnabled===false
+                    ?"📧 Survey booked email disabled for this job"
+                    :"📧 Survey booked email will send automatically on save"}
+              </div>
             </div>
           )}
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:C.slateLight,borderRadius:8,padding:"10px 14px"}}>
+            <div style={{fontSize:13,fontWeight:600,color:C.text}}>Send survey booked email automatically</div>
+            <div onClick={()=>setTab("survey",{notifyEnabled:data.tabs.survey.notifyEnabled===false})}
+              style={{width:42,height:23,borderRadius:12,background:data.tabs.survey.notifyEnabled!==false?C.mint:C.border,position:"relative",cursor:"pointer",flexShrink:0}}>
+              <div style={{width:17,height:17,borderRadius:"50%",background:"#fff",position:"absolute",top:3,left:data.tabs.survey.notifyEnabled!==false?22:3,transition:"left 0.15s",boxShadow:"0 1px 3px rgba(0,0,0,0.3)"}}/>
+            </div>
+          </div>
           <div>
             <div style={{fontSize:12,fontWeight:600,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Survey Documents</div>
             <FileAttach files={data.tabs.survey.files} onAdd={f=>addFile("survey",f)} onRemove={i=>removeFile("survey",i)} accept=".pdf,.doc,.docx" label="Attach Survey Document"/>
@@ -1420,7 +1455,7 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
                   {(sc.supplierInvoices||[]).map((f,i)=>(
                     <div key={i} style={{display:"flex",alignItems:"center",gap:8,background:C.slateLight,borderRadius:6,padding:"7px 12px"}}>
                       <span style={{fontSize:18}}>📄</span>
-                      <a href={f.data} download={f.name} style={{fontSize:13,color:C.sky,fontWeight:500,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</a>
+                      <a href={f.data} target="_blank" rel="noreferrer" style={{fontSize:13,color:C.sky,fontWeight:500,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</a>
                       <button onClick={()=>removeSupplierInvoice(i)} style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:16,lineHeight:1}}>×</button>
                     </div>
                   ))}
@@ -2207,11 +2242,22 @@ const DEFAULT_SETTINGS = {
 // crashing the whole app (no error boundary) the moment the Email Templates section tried
 // to read .subject off it. Deep-merges emailTemplates specifically so any key missing from
 // what's saved always falls back to the current default.
-const mergeSettings=(base,saved)=>({
-  ...base,
-  ...saved,
-  emailTemplates:{...base.emailTemplates,...(saved.emailTemplates||{})},
-});
+const mergeSettings=(base,saved)=>{
+  const savedTemplates=saved.emailTemplates||{};
+  // One-time migration: the old single installReminder template was split into separate
+  // Week/Day templates. If a saved row still only has the old key, copy its (possibly
+  // customized) content into both new templates as their starting point, rather than
+  // silently reverting to the generic defaults.
+  const legacy=savedTemplates.installReminder;
+  const migratedTemplates={...savedTemplates};
+  if(legacy&&!savedTemplates.installReminderWeek) migratedTemplates.installReminderWeek=legacy;
+  if(legacy&&!savedTemplates.installReminderDay) migratedTemplates.installReminderDay=legacy;
+  return {
+    ...base,
+    ...saved,
+    emailTemplates:{...base.emailTemplates,...migratedTemplates},
+  };
+};
 
 // ── Customer Feedback Form (live form for customer to fill in) ─────────────────
 const FeedbackFormModal = ({job,customers,settings,onSubmit,onClose}) => {
@@ -2507,7 +2553,8 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
   const templateKeys={
     surveyBooked:{label:"Survey Booked",icon:"📅"},
     installBooked:{label:"Install Booked",icon:"🔨"},
-    installReminder:{label:"Install Reminder",icon:"⏰"},
+    installReminderWeek:{label:"Install Reminder (7-Day)",icon:"⏰"},
+    installReminderDay:{label:"Install Reminder (1-Day)",icon:"⏰"},
   };
 
   const placeholders=[
@@ -3299,7 +3346,11 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
                 {cust&&[["👤",cust.name],["📞",cust.phone],["📧",cust.email]].map(([icon,val])=>(
                   <div key={icon} style={{display:"flex",gap:10,padding:"8px 0",borderBottom:`1px solid ${C.border}`,fontSize:14}}>
                     <span style={{fontSize:16,flexShrink:0}}>{icon}</span>
-                    <span style={{color:C.text}}>{val||"—"}</span>
+                    {icon==="📞"&&val?(
+                      <a href={`tel:${val}`} style={{color:C.sky,fontWeight:600,textDecoration:"none"}}>{val}</a>
+                    ):(
+                      <span style={{color:C.text}}>{val||"—"}</span>
+                    )}
                   </div>
                 ))}
                 {cust?.address&&(
@@ -3377,7 +3428,7 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
                   <div style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:10}}>📄 Survey Documents</div>
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
                     {(job.tabs?.survey?.files||[]).map((f,i)=>(
-                      <a key={i} href={f.data} download={f.name}
+                      <a key={i} href={f.data} target="_blank" rel="noreferrer"
                         style={{display:"flex",alignItems:"center",gap:10,background:C.slateLight,borderRadius:8,padding:"10px 14px",textDecoration:"none"}}>
                         <span style={{fontSize:22,flexShrink:0}}>{f.type==="application/pdf"?"📄":f.type?.startsWith("image")?"🖼️":"📎"}</span>
                         <div style={{flex:1,minWidth:0}}>

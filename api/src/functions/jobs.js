@@ -2,6 +2,7 @@ const { app } = require('@azure/functions');
 const { getPool, sql } = require('../db');
 const { mapJobRow } = require('../mapRow');
 const { requireAuth } = require('../auth');
+const { sendSurveyBookedEmail } = require('../reminderCore');
 
 app.http('jobsList', {
   methods: ['GET'],
@@ -82,6 +83,13 @@ app.http('jobsUpdate', {
       const id = Number(request.params.id);
       const body = await request.json();
       const pool = await getPool();
+
+      // Fetch the current row first so we can detect a survey being booked for the first
+      // time (date+fitter newly set) — that's a genuine event, not something the daily
+      // reminder timer can catch, so it's triggered here as a side effect of the save.
+      const beforeResult = await pool.request().input('Id', sql.Int, id).query('SELECT DataJson FROM dbo.Jobs WHERE Id = @Id AND TenantId = 1');
+      const before = beforeResult.recordset.length ? JSON.parse(beforeResult.recordset[0].DataJson) : null;
+
       const result = await pool
         .request()
         .input('Id', sql.Int, id)
@@ -95,6 +103,22 @@ app.http('jobsUpdate', {
            WHERE Id=@Id AND TenantId = 1`
         );
       if (!result.recordset.length) return { status: 404, jsonBody: { error: 'Not found' } };
+
+      const wasBooked = !!(before?.tabs?.survey?.date && before?.tabs?.survey?.fitter);
+      const isNowBooked = !!(body.tabs?.survey?.date && body.tabs?.survey?.fitter);
+      const notifyEnabled = body.tabs?.survey?.notifyEnabled !== false; // default on
+      const alreadySent = !!body.tabs?.survey?.emailSent;
+
+      if (!wasBooked && isNowBooked && notifyEnabled && !alreadySent) {
+        try {
+          await sendSurveyBookedEmail({ pool, jobId: id });
+          const refreshed = await pool.request().input('Id', sql.Int, id).query('SELECT * FROM dbo.Jobs WHERE Id = @Id');
+          return { jsonBody: mapJobRow(refreshed.recordset[0]) };
+        } catch (err) {
+          context.error('sendSurveyBookedEmail failed', err);
+        }
+      }
+
       return { jsonBody: mapJobRow(result.recordset[0]) };
     } catch (err) {
       context.error('jobsUpdate failed', err);

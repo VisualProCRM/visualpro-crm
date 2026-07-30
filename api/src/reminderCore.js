@@ -43,9 +43,31 @@ function fillTemplate(tmpl, vars) {
   );
 }
 
-// Matches DEFAULT_EMAIL_TEMPLATES.installReminder in index.html — used only if Settings has
-// never been saved (no row yet).
-const DEFAULT_INSTALL_REMINDER = {
+// Matches DEFAULT_EMAIL_TEMPLATES in index.html — used only if Settings has never been
+// saved (no row yet) or is missing that particular template key.
+const DEFAULT_INSTALL_REMINDER_WEEK = {
+  subject: 'Reminder: Your Installation is Coming Up – {{customerName}}',
+  body: `Dear {{customerName}},
+
+This is a friendly reminder that your installation is coming up in the next week:
+
+Date: {{installDate}}
+Installers: {{fitterNames}}
+Address: {{address}}
+
+Please ensure:
+- Access to the property is available
+- Any furniture near the areas to be fitted is cleared
+- Pets are secured away from the work area
+
+We look forward to seeing you soon!
+
+Kind regards,
+{{companyName}}
+{{companyPhone}}`,
+};
+
+const DEFAULT_INSTALL_REMINDER_DAY = {
   subject: 'Reminder: Your Installation is Tomorrow – {{customerName}}',
   body: `Dear {{customerName}},
 
@@ -61,6 +83,23 @@ Please ensure:
 - Pets are secured away from the work area
 
 We look forward to seeing you tomorrow!
+
+Kind regards,
+{{companyName}}
+{{companyPhone}}`,
+};
+
+const DEFAULT_SURVEY_BOOKED = {
+  subject: 'Your Survey has been Booked – {{customerName}}',
+  body: `Dear {{customerName}},
+
+Thank you for choosing us! We're pleased to confirm that your survey has been booked for:
+
+Date: {{surveyDate}}
+Surveyor: {{fitterName}}
+Address: {{address}}
+
+If you need to rearrange or have any questions, please don't hesitate to get in touch.
 
 Kind regards,
 {{companyName}}
@@ -88,7 +127,9 @@ async function sendJobReminder({ pool, jobId, reminderKey, testEmailOverride }) 
 
   const settingsResult = await pool.request().query('SELECT * FROM dbo.Settings WHERE TenantId = 1');
   const settings = settingsResult.recordset.length ? JSON.parse(settingsResult.recordset[0].DataJson) : {};
-  const tmpl = settings.emailTemplates?.installReminder || DEFAULT_INSTALL_REMINDER;
+  const templateKey = reminderKey === 'week' ? 'installReminderWeek' : 'installReminderDay';
+  const defaultTmpl = reminderKey === 'week' ? DEFAULT_INSTALL_REMINDER_WEEK : DEFAULT_INSTALL_REMINDER_DAY;
+  const tmpl = settings.emailTemplates?.[templateKey] || defaultTmpl;
 
   const installDate = job.tabs?.installation?.date;
   const vars = {
@@ -134,4 +175,68 @@ async function sendJobReminder({ pool, jobId, reminderKey, testEmailOverride }) 
   return { sent: true, to: recipient, senderAddress, messageId: result.id };
 }
 
-module.exports = { sendJobReminder, getSenderDomain, getDomainProperties };
+// Sends the "survey booked" email for a job. Called from jobs.js's update handler the
+// moment a survey's date+fitter are first set (see there for the actual trigger/toggle
+// check) — this function itself just sends and marks the job's tabs.survey.emailSent
+// status, mirroring the emailReminders.week/day pattern used for install reminders.
+async function sendSurveyBookedEmail({ pool, jobId, testEmailOverride }) {
+  const jobResult = await pool.request().input('Id', sql.Int, jobId).query('SELECT * FROM dbo.Jobs WHERE Id = @Id');
+  if (!jobResult.recordset.length) throw new Error('Job not found');
+  const jobRow = jobResult.recordset[0];
+  const job = JSON.parse(jobRow.DataJson);
+
+  const customerResult = await pool
+    .request()
+    .input('Id', sql.Int, jobRow.CustomerId)
+    .query('SELECT * FROM dbo.Customers WHERE Id = @Id');
+  if (!customerResult.recordset.length) throw new Error('Customer not found');
+  const customer = JSON.parse(customerResult.recordset[0].DataJson);
+
+  const recipient = testEmailOverride || customer.email;
+  if (!recipient) throw new Error('No recipient email available');
+
+  const settingsResult = await pool.request().query('SELECT * FROM dbo.Settings WHERE TenantId = 1');
+  const settings = settingsResult.recordset.length ? JSON.parse(settingsResult.recordset[0].DataJson) : {};
+  const tmpl = settings.emailTemplates?.surveyBooked || DEFAULT_SURVEY_BOOKED;
+
+  const surveyDate = job.tabs?.survey?.date;
+  const vars = {
+    customerName: customer.name || '',
+    address: customer.address || '',
+    surveyDate: surveyDate
+      ? new Date(surveyDate).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+      : '',
+    fitterName: job.tabs?.survey?.fitter || '',
+    companyName: settings.companyName || 'VisualPro',
+    companyPhone: settings.companyPhone || '',
+  };
+
+  const subject = fillTemplate(tmpl.subject, vars);
+  const plainText = fillTemplate(tmpl.body, vars);
+
+  const { hostname } = await getSenderDomain();
+  const senderUsername = process.env.EMAIL_SENDER_USERNAME || 'donotreply';
+  const senderAddress = `${senderUsername}@${hostname}`;
+
+  const poller = await emailClient.beginSend({
+    senderAddress,
+    content: { subject, plainText },
+    recipients: { to: [{ address: recipient }] },
+  });
+  const result = await poller.pollUntilDone();
+
+  if (!testEmailOverride) {
+    job.tabs = job.tabs || {};
+    job.tabs.survey = job.tabs.survey || {};
+    job.tabs.survey.emailSent = { status: 'sent', sentAt: new Date().toLocaleDateString('en-GB') };
+    await pool
+      .request()
+      .input('Id', sql.Int, jobId)
+      .input('DataJson', sql.NVarChar, JSON.stringify(job))
+      .query('UPDATE dbo.Jobs SET DataJson = @DataJson, UpdatedAt = SYSUTCDATETIME() WHERE Id = @Id');
+  }
+
+  return { sent: true, to: recipient, senderAddress, messageId: result.id };
+}
+
+module.exports = { sendJobReminder, sendSurveyBookedEmail, getSenderDomain, getDomainProperties };
