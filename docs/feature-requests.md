@@ -20,6 +20,11 @@ A shared place for feature ideas, wherever they come from — the office, a fitt
 - Requested by: office — 2026-07-30
 - Connect the existing "WindowCAD7 Reference" field to a real API instead of it just being a free-text label.
 
+### Multiple installation dates per job (phased installs)
+- Requested by: Dan — 2026-08-07
+- "Please can we add an option to add another installation date so we have the option to book more than one install date per job card. As we will get it a lot where we will do installations in phases."
+- Bigger than it first looks: a Job's install date is currently a single field, read from directly by the automatic email reminder timer, the Fitter Calendar, Kanban card badges, and Dashboard delivery tracking — all of these would need to handle multiple dates/phases, not just the Installation tab's own booking UI. Needs a proper design pass before building, not a quick add.
+
 ---
 
 ## Resolved / not needed
