@@ -31,6 +31,11 @@ A shared place for feature ideas, wherever they come from — the office, a fitt
 - "On the job card can we add a reference section so we can include the reference in to the main name of the job card. ... we will get a multiple of different jobs from the same trade customer and let's say we have 2 jobs on at the same time, we should be able to see the reference for that job so we know it's that job card for that job. For example, AJ Sellwood may have 2 jobs on, one at 4 Morres Grove and another at 48 Parkway. We would reference these jobs by the first line of address and we should be able to see that so we know which one is which."
 - Smaller/separate from the phased-installs request above — a new editable "reference" field on a Job, shown as part of its title/card (Kanban card, job detail header) so two jobs for the same customer are distinguishable at a glance. Auto-generated job titles today are just "{CustomerName} — Installation", which is ambiguous for concurrent jobs. Good candidate for a quick, contained fix next session.
 
+### Service Call Booked email template + automatic send
+- Requested by: office — 2026-08-07
+- "Please can you create an email template for a service call booked as we have one for install and survey but nothing for service call" — should include the automatic send like Survey Booked/Install Booked already have, not just a template sitting unused in Settings.
+- More involved than Survey Booked was: Service Call supports **multiple bookings per job** (`job.tabs.serviceCall.bookings`, an array, each with its own `id`), not a single date field. The automatic-send trigger needs to detect a *specific new booking* being added (matching by `id` against the previous saved state), not just a field transitioning from unset to set, and track sent-status per booking rather than per job. Estimated 25-35 min — comparable in scope to the original Survey Booked build (`api/src/functions/jobs.js` + `api/src/reminderCore.js` + a new default template + toggle + status indicator).
+
 ---
 
 ## Resolved / not needed
