@@ -43,6 +43,7 @@ const LEAD_STAGES   = ["Prospect List","New Enquiry","Contacted","Quoted","Follo
 const INSTALL_STAGES= ["Book Survey","Survey Booked","Order Confirmation Sent","Order Confirmation Signed","Order Products","Book Installation","Send Product Balance","Install Started","Install Completed","Send Guarantees","Job Completed ✓"];
 const COMPLETED_STAGE = "Job Completed ✓";
 const SOURCES       = ["Website","Referral","Checkatrade","Google Ads","Facebook","Flyer","Other"];
+const SECTORS       = ["Retail","Trade","Commercial"];
 const PRODUCT_TYPES = ["Casement Windows","Sash Windows","French Doors","Bi-fold Doors","Patio Doors","Composite Door","Roof Lantern","Conservatory","Other"];
 const DEFAULT_FITTERS = ["Tom Bailey","Steve Marsh","Dan Rees","Chris Wood"];
 const DEFAULT_STAFF   = ["James Owen","Rachel Kent"];
@@ -386,7 +387,7 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
   });
 
   return (
-    <Modal title={isJob?data.title:data.name} onClose={save} wide>
+    <Modal title={isJob?(data.reference?`${data.title} — ${data.reference}`:data.title):data.name} onClose={save} wide>
       {/* Tab bar — collapses to just Details for a Customer once they have linked Jobs */}
       <div style={{display:"flex",gap:0,borderBottom:`1px solid ${C.border}`,marginBottom:20,overflowX:"auto"}}>
         {(!isJob&&linkedJobs.length>0?["Details"]:CARD_TABS).map(t=><button key={t} style={tabStyle(t)} onClick={()=>setActiveTab(t)}>{t}</button>)}
@@ -398,6 +399,7 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
           {isJob?(
             <>
               <Inp label="Job Title" value={data.title} onChange={e=>setData(d=>({...d,title:e.target.value}))}/>
+              <Inp label="Reference (e.g. site address — for distinguishing concurrent jobs)" value={data.reference||""} onChange={e=>setData(d=>({...d,reference:e.target.value}))} placeholder="e.g. 4 Morres Grove"/>
               <Sel label="Customer" value={data.customerId} onChange={e=>setData(d=>({...d,customerId:Number(e.target.value)}))}>
                 {customers.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
               </Sel>
@@ -565,6 +567,10 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
                   {SOURCES.map(s=><option key={s}>{s}</option>)}
                 </Sel>
               </div>
+              <Sel label="Sector" value={data.sector||""} onChange={e=>setData(d=>({...d,sector:e.target.value}))}>
+                <option value="">— Not set —</option>
+                {SECTORS.map(s=><option key={s}>{s}</option>)}
+              </Sel>
               <Inp label="WindowCAD7 Reference" value={data.windowcad||""} onChange={e=>setData(d=>({...d,windowcad:e.target.value}))} placeholder="WC-2025-001"/>
               <div>
                 <label style={{fontSize:12,fontWeight:600,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",display:"block",marginBottom:8}}>Products of Interest</label>
@@ -1561,7 +1567,7 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
 
 // ── Customer / Lead Form (add new) ────────────────────────────────────────────
 const CustomerForm = ({initial={},onSave,onCancel}) => {
-  const [form,setForm]=useState({name:"",email:"",phone:"",address:"",source:"Website",stage:"New Enquiry",notes:"",windowcad:"",quoteValue:"",quoteCost:"",installationValue:"",installationCost:"",...initial});
+  const [form,setForm]=useState({name:"",email:"",phone:"",address:"",source:"Website",sector:"",stage:"New Enquiry",notes:"",windowcad:"",quoteValue:"",quoteCost:"",installationValue:"",installationCost:"",...initial});
   const set=k=>e=>setForm(f=>({...f,[k]:e.target.value}));
   const margin=calcMargin(totalQuoteValue(form),totalQuoteCost(form));
   return (
@@ -1576,6 +1582,10 @@ const CustomerForm = ({initial={},onSave,onCancel}) => {
         <Sel label="Pipeline Stage" value={form.stage} onChange={set("stage")}>{LEAD_STAGES.map(s=><option key={s}>{s}</option>)}</Sel>
         <Sel label="Lead Source" value={form.source} onChange={set("source")}>{SOURCES.map(s=><option key={s}>{s}</option>)}</Sel>
       </div>
+      <Sel label="Sector" value={form.sector} onChange={set("sector")}>
+        <option value="">— Not set —</option>
+        {SECTORS.map(s=><option key={s}>{s}</option>)}
+      </Sel>
       <Inp label="WindowCAD7 Reference" value={form.windowcad} onChange={set("windowcad")} placeholder="WC-2025-001"/>
       <div style={{background:C.slateLight,borderRadius:8,padding:14}}>
         <div style={{fontSize:12,fontWeight:700,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:12}}>Quote Financials</div>
@@ -1613,7 +1623,7 @@ const CustomerForm = ({initial={},onSave,onCancel}) => {
 
 // ── Job Form (add new) ────────────────────────────────────────────────────────
 const JobForm = ({initial={},customers,onSave,onCancel}) => {
-  const [form,setForm]=useState({customerId:customers[0]?.id||"",title:"",products:[],status:"Book Survey",surveyDate:"",installDate:"",installers:"",windowcad:"",value:"",quoteValue:"",quoteCost:"",installationValue:"",installationCost:"",notes:"",...initial,products:initial.products||[]});
+  const [form,setForm]=useState({customerId:customers[0]?.id||"",title:"",reference:"",products:[],status:"Book Survey",surveyDate:"",installDate:"",installers:"",windowcad:"",value:"",quoteValue:"",quoteCost:"",installationValue:"",installationCost:"",notes:"",...initial,products:initial.products||[]});
   const set=k=>e=>setForm(f=>({...f,[k]:e.target.value}));
   const toggleProd=p=>setForm(f=>({...f,products:f.products.includes(p)?f.products.filter(x=>x!==p):[...f.products,p]}));
   const margin=calcMargin(totalQuoteValue(form),totalQuoteCost(form));
@@ -1623,6 +1633,7 @@ const JobForm = ({initial={},customers,onSave,onCancel}) => {
         {customers.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
       </Sel>
       <Inp label="Job Title" value={form.title} onChange={set("title")} placeholder="e.g. Front elevation windows"/>
+      <Inp label="Reference (e.g. site address — for distinguishing concurrent jobs)" value={form.reference} onChange={set("reference")} placeholder="e.g. 4 Morres Grove"/>
       <div>
         <label style={{fontSize:12,fontWeight:600,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",display:"block",marginBottom:8}}>Products</label>
         <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
@@ -1991,6 +2002,7 @@ const InstallPipelinePage = ({jobs,setJobs,customers,settings}) => {
       onMouseLeave={e=>e.currentTarget.style.boxShadow="0 1px 3px rgba(0,0,0,0.06)"}
     >
       <div style={{fontWeight:700,fontSize:13,color:C.text,marginBottom:3,lineHeight:1.3}}>{job.title}</div>
+      {job.reference&&<div style={{fontSize:11,color:C.navy,fontWeight:700,marginBottom:3,background:C.skyLight,display:"inline-block",padding:"1px 7px",borderRadius:6}}>📍 {job.reference}</div>}
       <div style={{fontSize:12,color:C.sky,fontWeight:600,marginBottom:3}}>{customerName(job.customerId)}</div>
       {job.value&&<div style={{fontSize:13,fontWeight:800,color:C.mint}}>£{Number(job.value).toLocaleString()}</div>}
       {job.products?.length>0&&<div style={{fontSize:11,color:C.muted,marginTop:3}}>{job.products.join(", ")}</div>}
@@ -2961,6 +2973,19 @@ const Dashboard = ({customers,jobs}) => {
     return ids.map(id=>customers.find(c=>c.id===id)).filter(Boolean).sort((a,b)=>a.name.localeCompare(b.name));
   },[jobs,customers]);
 
+  // ── By Sector reporting ── customer counts + avg margin across all won jobs, grouped by
+  // the customer's sector (Retail/Trade/Commercial) — sector lives on the Customer, not the
+  // Job, so each won Job is attributed back to its customer's sector.
+  const sectorStats=useMemo(()=>SECTORS.map(sector=>{
+    const sectorCustomers=customers.filter(c=>c.sector===sector);
+    const sectorCustomerIds=new Set(sectorCustomers.map(c=>c.id));
+    const sectorJobs=jobs.filter(j=>j.wonAt&&sectorCustomerIds.has(j.customerId));
+    const revenue=sectorJobs.reduce((s,j)=>s+wonJobRevenue(j),0);
+    const cost=sectorJobs.reduce((s,j)=>s+wonJobCost(j),0);
+    const m=calcMargin(revenue,cost);
+    return {sector,customers:sectorCustomers.length,jobs:sectorJobs.length,revenue,avgMargin:m?m.pct:null};
+  }),[customers,jobs]);
+
   const {start:dwStart,end:dwEnd}=periodRange(dwPeriod);
   const dwInRange=useMemo(()=>wonJobsInRange(jobs,dwStart,dwEnd),[jobs,dwStart,dwEnd]);
   const dwCustomerJobs=dwCustomerId==="all"?[]:jobs.filter(j=>j.customerId===Number(dwCustomerId)&&j.wonAt);
@@ -3275,6 +3300,25 @@ const Dashboard = ({customers,jobs}) => {
             })}
           </>
         )}
+      </div>
+
+      {/* ── By Sector ── */}
+      <div style={{background:C.white,borderRadius:10,padding:20,border:`1px solid ${C.border}`,marginBottom:20}}>
+        <h3 style={{margin:"0 0 14px",fontSize:15,color:C.navy,fontWeight:700}}>🏷️ By Sector</h3>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 90px 90px 90px 90px",gap:8,padding:"6px 0",borderBottom:`2px solid ${C.border}`,marginBottom:4}}>
+          {["Sector","Customers","Won Jobs","Revenue","Avg Margin"].map(h=>(
+            <div key={h} style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.05em"}}>{h}</div>
+          ))}
+        </div>
+        {sectorStats.map(s=>(
+          <div key={s.sector} style={{display:"grid",gridTemplateColumns:"1fr 90px 90px 90px 90px",gap:8,padding:"8px 0",borderBottom:`1px solid ${C.border}`,alignItems:"center"}}>
+            <div style={{fontSize:13,fontWeight:700,color:C.text}}>{s.sector}</div>
+            <div style={{fontSize:13,color:C.slate}}>{s.customers}</div>
+            <div style={{fontSize:13,color:C.slate}}>{s.jobs}</div>
+            <div style={{fontSize:13,fontWeight:700,color:C.navy}}>{s.revenue>0?`£${s.revenue.toLocaleString()}`:"—"}</div>
+            <div style={{fontSize:13,fontWeight:700,color:s.avgMargin!=null?C.mint:C.muted}}>{s.avgMargin!=null?`${s.avgMargin}%`:"—"}</div>
+          </div>
+        ))}
       </div>
 
       {/* ── Recent Enquiries ── */}
@@ -4484,6 +4528,7 @@ const CustomerDirectoryPage = ({customers,setCustomers,jobs,setJobs,settings,onN
                     <div style={{fontWeight:700,fontSize:15,color:C.navy}}>{job.title}</div>
                     <Badge label={job.status}/>
                   </div>
+                  {job.reference&&<div style={{fontSize:11,color:C.navy,fontWeight:700,marginBottom:4,background:C.skyLight,display:"inline-block",padding:"1px 7px",borderRadius:6}}>📍 {job.reference}</div>}
                   {job.products?.length>0&&<div style={{fontSize:12,color:C.slate,marginBottom:4}}>{job.products.join(", ")}</div>}
                   <div style={{display:"flex",gap:16,fontSize:12,color:C.muted,flexWrap:"wrap"}}>
                     {job.value&&<span style={{color:C.mint,fontWeight:700}}>£{Number(job.value).toLocaleString()}</span>}
@@ -4580,6 +4625,10 @@ const CustomerDirectoryForm = ({initial={},onSave,onCancel}) => {
           <Sel label="Lead Source" value={form.source||"Website"} onChange={set("source")}>
             {SOURCES.map(s=><option key={s}>{s}</option>)}
           </Sel>
+          <Sel label="Sector" value={form.sector||""} onChange={set("sector")}>
+            <option value="">— Not set —</option>
+            {SECTORS.map(s=><option key={s}>{s}</option>)}
+          </Sel>
           <TA label="Notes" value={form.notes||""} onChange={set("notes")} placeholder="Any additional notes..."/>
         </>
       )}
@@ -4604,6 +4653,10 @@ const CustomerDirectoryForm = ({initial={},onSave,onCancel}) => {
               <Inp label="Company Reg Number" value={form.companyReg||""} onChange={set("companyReg")} placeholder="12345678"/>
               <Sel label="Lead Source" value={form.source||"Referral"} onChange={set("source")}>
                 {SOURCES.map(s=><option key={s}>{s}</option>)}
+              </Sel>
+              <Sel label="Sector" value={form.sector||""} onChange={set("sector")}>
+                <option value="">— Not set —</option>
+                {SECTORS.map(s=><option key={s}>{s}</option>)}
               </Sel>
               <TA label="Notes" value={form.notes||""} onChange={set("notes")} placeholder="e.g. Builder working on multiple residential sites in Surrey..."/>
             </div>
