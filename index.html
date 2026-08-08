@@ -387,7 +387,7 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
   });
 
   return (
-    <Modal title={isJob?(data.reference?`${data.title} — ${data.reference}`:data.title):data.name} onClose={save} wide>
+    <Modal title={isJob?data.title:data.name} onClose={save} wide>
       {/* Tab bar — collapses to just Details for a Customer once they have linked Jobs */}
       <div style={{display:"flex",gap:0,borderBottom:`1px solid ${C.border}`,marginBottom:20,overflowX:"auto"}}>
         {(!isJob&&linkedJobs.length>0?["Details"]:CARD_TABS).map(t=><button key={t} style={tabStyle(t)} onClick={()=>setActiveTab(t)}>{t}</button>)}
@@ -399,7 +399,12 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
           {isJob?(
             <>
               <Inp label="Job Title" value={data.title} onChange={e=>setData(d=>({...d,title:e.target.value}))}/>
-              <Inp label="Reference (e.g. site address — for distinguishing concurrent jobs)" value={data.reference||""} onChange={e=>setData(d=>({...d,reference:e.target.value}))} placeholder="e.g. 4 Morres Grove"/>
+              {data.reference&&(
+                <div style={{background:C.skyLight,border:`1px solid ${C.sky}`,borderRadius:8,padding:"10px 14px",fontSize:14,color:C.navy}}>
+                  <strong>Reference:</strong> {data.reference}
+                </div>
+              )}
+              <Inp label="Reference" value={data.reference||""} onChange={e=>setData(d=>({...d,reference:e.target.value}))} placeholder="e.g. 4 Morres Grove — used to tell concurrent jobs for the same customer apart"/>
               <Sel label="Customer" value={data.customerId} onChange={e=>setData(d=>({...d,customerId:Number(e.target.value)}))}>
                 {customers.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
               </Sel>
@@ -2953,6 +2958,7 @@ const Dashboard = ({customers,jobs}) => {
   const [dwPeriod,setDwPeriod]=useState("month");
   const [dwCustomerId,setDwCustomerId]=useState("all");
   const [dwJobId,setDwJobId]=useState("all");
+  const [dwSector,setDwSector]=useState("all");
 
   const periodRange=(period)=>{
     const now=new Date();
@@ -2988,8 +2994,9 @@ const Dashboard = ({customers,jobs}) => {
 
   const {start:dwStart,end:dwEnd}=periodRange(dwPeriod);
   const dwInRange=useMemo(()=>wonJobsInRange(jobs,dwStart,dwEnd),[jobs,dwStart,dwEnd]);
+  const dwSectorFiltered=dwSector==="all"?dwInRange:dwInRange.filter(j=>customers.find(c=>c.id===j.customerId)?.sector===dwSector);
   const dwCustomerJobs=dwCustomerId==="all"?[]:jobs.filter(j=>j.customerId===Number(dwCustomerId)&&j.wonAt);
-  const dwFiltered=dwCustomerId==="all"?dwInRange:dwInRange.filter(j=>j.customerId===Number(dwCustomerId));
+  const dwFiltered=dwCustomerId==="all"?dwSectorFiltered:dwSectorFiltered.filter(j=>j.customerId===Number(dwCustomerId));
   const dwFinal=(dwCustomerId!=="all"&&dwJobId!=="all")?dwFiltered.filter(j=>j.id===Number(dwJobId)):dwFiltered;
 
   const dwRevenue=dwFinal.reduce((s,j)=>s+wonJobRevenue(j),0);
@@ -3256,6 +3263,10 @@ const Dashboard = ({customers,jobs}) => {
             {[["month","Month"],["quarter","Quarter"],["ytd","YTD"],["all","All Time"]].map(([val,label])=>(
               <button key={val} onClick={()=>setDwPeriod(val)} style={{padding:"5px 12px",borderRadius:20,fontSize:12,fontWeight:600,cursor:"pointer",border:"none",background:dwPeriod===val?C.sky:C.slateLight,color:dwPeriod===val?"#fff":C.slate}}>{label}</button>
             ))}
+            <select value={dwSector} onChange={e=>setDwSector(e.target.value)} style={{border:`1px solid ${C.border}`,borderRadius:6,padding:"6px 10px",fontSize:12,outline:"none",color:C.text}}>
+              <option value="all">All Sectors</option>
+              {SECTORS.map(s=><option key={s} value={s}>{s}</option>)}
+            </select>
             <select value={dwCustomerId} onChange={e=>{setDwCustomerId(e.target.value);setDwJobId("all");}} style={{border:`1px solid ${C.border}`,borderRadius:6,padding:"6px 10px",fontSize:12,outline:"none",color:C.text}}>
               <option value="all">All Customers</option>
               {customersWithWonJobs.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
