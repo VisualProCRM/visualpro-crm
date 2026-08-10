@@ -43,6 +43,16 @@ function fillTemplate(tmpl, vars) {
   );
 }
 
+// BCCs every automated customer email to settings.bccEmail (if set), so the office can see
+// when sends actually go out, without needing to check the job's own sent-status indicator.
+function buildRecipients(recipient, settings) {
+  const recipients = { to: [{ address: recipient }] };
+  if (settings.bccEmail && settings.bccEmail.trim()) {
+    recipients.bcc = [{ address: settings.bccEmail.trim() }];
+  }
+  return recipients;
+}
+
 // Matches DEFAULT_EMAIL_TEMPLATES in index.html — used only if Settings has never been
 // saved (no row yet) or is missing that particular template key.
 const DEFAULT_INSTALL_REMINDER_WEEK = {
@@ -170,7 +180,7 @@ async function sendJobReminder({ pool, jobId, reminderKey, testEmailOverride }) 
   const poller = await emailClient.beginSend({
     senderAddress,
     content: { subject, plainText },
-    recipients: { to: [{ address: recipient }] },
+    recipients: buildRecipients(recipient, settings),
   });
   const result = await poller.pollUntilDone();
 
@@ -238,7 +248,7 @@ async function sendSurveyBookedEmail({ pool, jobId, testEmailOverride }) {
   const poller = await emailClient.beginSend({
     senderAddress,
     content: { subject, plainText },
-    recipients: { to: [{ address: recipient }] },
+    recipients: buildRecipients(recipient, settings),
   });
   const result = await poller.pollUntilDone();
 
@@ -306,7 +316,7 @@ async function sendServiceCallBookedEmail({ pool, jobId, bookingId, testEmailOve
   const poller = await emailClient.beginSend({
     senderAddress,
     content: { subject, plainText },
-    recipients: { to: [{ address: recipient }] },
+    recipients: buildRecipients(recipient, settings),
   });
   const result = await poller.pollUntilDone();
 

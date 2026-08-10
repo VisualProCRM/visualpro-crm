@@ -2324,6 +2324,7 @@ const DEFAULT_SETTINGS = {
   companyPhone:"",
   companyEmail:"",
   companyWebsite:"",
+  bccEmail:"",
   emailTemplates:{...DEFAULT_EMAIL_TEMPLATES},
   feedbackQuestions:[...DEFAULT_FEEDBACK_QUESTIONS],
   checklistItems:[...DEFAULT_CHECKLIST_ITEMS],
@@ -2840,6 +2841,10 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
               <Inp label="Company Phone" value={settings.companyPhone} onChange={e=>update("companyPhone",e.target.value)} placeholder="e.g. 01252 123456"/>
               <Inp label="Company Email" value={settings.companyEmail} onChange={e=>update("companyEmail",e.target.value)} placeholder="e.g. info@abcglazing.co.uk"/>
               <Inp label="Company Website" value={settings.companyWebsite} onChange={e=>update("companyWebsite",e.target.value)} placeholder="e.g. www.abcglazing.co.uk"/>
+              <div>
+                <Inp label="BCC Email (optional)" value={settings.bccEmail||""} onChange={e=>update("bccEmail",e.target.value)} placeholder="e.g. enquiries@visualglazing.co.uk"/>
+                <p style={{margin:"6px 0 0",fontSize:12,color:C.muted}}>Every automated email sent to a customer (install reminders, survey/service call booked) is also BCC'd here, so you can see when they've gone out.</p>
+              </div>
             </div>
             <div style={{marginTop:20,paddingTop:20,borderTop:`1px solid ${C.border}`,display:"flex",justifyContent:"flex-end"}}>
               <div style={{background:saveStatus==="saving"?C.slateLight:saveStatus==="error"?"#FEF2F2":"#F0FDF4",color:saveStatus==="saving"?C.slate:saveStatus==="error"?C.red:C.mint,fontSize:12,fontWeight:700,padding:"7px 14px",borderRadius:8,border:`1px solid ${saveStatus==="saving"?C.border:saveStatus==="error"?"#FECACA":"#86EFAC"}`,whiteSpace:"nowrap"}}>
