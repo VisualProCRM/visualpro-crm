@@ -53,6 +53,7 @@ const CARD_TABS     = ["Details","Tasks","Quote","Invoices","Notes","Survey","Or
 
 const DEFAULT_EMAIL_TEMPLATES = {
   surveyBooked: {
+    bcc: "",
     subject: "Your Survey has been Booked – {{customerName}}",
     body: `Dear {{customerName}},
 
@@ -69,6 +70,7 @@ Kind regards,
 {{companyPhone}}`,
   },
   installBooked: {
+    bcc: "",
     subject: "Your Installation has been Booked – {{customerName}}",
     body: `Dear {{customerName}},
 
@@ -87,6 +89,7 @@ Kind regards,
 {{companyPhone}}`,
   },
   serviceCallBooked: {
+    bcc: "",
     subject: "Your Service Call has been Booked – {{customerName}}",
     body: `Dear {{customerName}},
 
@@ -103,6 +106,7 @@ Kind regards,
 {{companyPhone}}`,
   },
   installReminderWeek: {
+    bcc: "",
     subject: "Reminder: Your Installation is Coming Up – {{customerName}}",
     body: `Dear {{customerName}},
 
@@ -124,6 +128,7 @@ Kind regards,
 {{companyPhone}}`,
   },
   installReminderDay: {
+    bcc: "",
     subject: "Reminder: Your Installation is Tomorrow – {{customerName}}",
     body: `Dear {{customerName}},
 
@@ -2324,7 +2329,6 @@ const DEFAULT_SETTINGS = {
   companyPhone:"",
   companyEmail:"",
   companyWebsite:"",
-  bccEmail:"",
   emailTemplates:{...DEFAULT_EMAIL_TEMPLATES},
   feedbackQuestions:[...DEFAULT_FEEDBACK_QUESTIONS],
   checklistItems:[...DEFAULT_CHECKLIST_ITEMS],
@@ -2841,10 +2845,6 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
               <Inp label="Company Phone" value={settings.companyPhone} onChange={e=>update("companyPhone",e.target.value)} placeholder="e.g. 01252 123456"/>
               <Inp label="Company Email" value={settings.companyEmail} onChange={e=>update("companyEmail",e.target.value)} placeholder="e.g. info@abcglazing.co.uk"/>
               <Inp label="Company Website" value={settings.companyWebsite} onChange={e=>update("companyWebsite",e.target.value)} placeholder="e.g. www.abcglazing.co.uk"/>
-              <div>
-                <Inp label="BCC Email (optional)" value={settings.bccEmail||""} onChange={e=>update("bccEmail",e.target.value)} placeholder="e.g. enquiries@visualglazing.co.uk"/>
-                <p style={{margin:"6px 0 0",fontSize:12,color:C.muted}}>Every automated email sent to a customer (install reminders, survey/service call booked) is also BCC'd here, so you can see when they've gone out.</p>
-              </div>
             </div>
             <div style={{marginTop:20,paddingTop:20,borderTop:`1px solid ${C.border}`,display:"flex",justifyContent:"flex-end"}}>
               <div style={{background:saveStatus==="saving"?C.slateLight:saveStatus==="error"?"#FEF2F2":"#F0FDF4",color:saveStatus==="saving"?C.slate:saveStatus==="error"?C.red:C.mint,fontSize:12,fontWeight:700,padding:"7px 14px",borderRadius:8,border:`1px solid ${saveStatus==="saving"?C.border:saveStatus==="error"?"#FECACA":"#86EFAC"}`,whiteSpace:"nowrap"}}>
@@ -2878,6 +2878,10 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
                 <h3 style={{margin:"0 0 4px",fontSize:16,color:C.navy,fontWeight:800}}>{icon} {label} Email</h3>
                 <p style={{margin:"0 0 16px",fontSize:13,color:C.slate}}>Sent when a {label.toLowerCase()} is confirmed.</p>
                 <div style={{display:"flex",flexDirection:"column",gap:12}}>
+                  <div>
+                    <Inp label="BCC Email (optional)" value={tmpl.bcc||""} onChange={e=>updateTemplate(key,"bcc",e.target.value)} placeholder="e.g. enquiries@visualglazing.co.uk"/>
+                    <p style={{margin:"6px 0 0",fontSize:12,color:C.muted}}>Every email this template sends is also BCC'd here, so you can see when it's gone out.</p>
+                  </div>
                   <Inp label="Subject Line" value={tmpl.subject} onChange={e=>updateTemplate(key,"subject",e.target.value)}/>
                   <TA label="Email Body" value={tmpl.body} onChange={e=>updateTemplate(key,"body",e.target.value)} style={{minHeight:220,fontFamily:"monospace",fontSize:13,lineHeight:1.6}}/>
                 </div>

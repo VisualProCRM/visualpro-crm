@@ -43,12 +43,13 @@ function fillTemplate(tmpl, vars) {
   );
 }
 
-// BCCs every automated customer email to settings.bccEmail (if set), so the office can see
-// when sends actually go out, without needing to check the job's own sent-status indicator.
-function buildRecipients(recipient, settings) {
+// BCCs to the sending template's own bcc field (if set) — configured per-template in
+// Settings, not a single global address, so different templates can go to different
+// inboxes if needed. Lets the office see when a send actually went out.
+function buildRecipients(recipient, tmpl) {
   const recipients = { to: [{ address: recipient }] };
-  if (settings.bccEmail && settings.bccEmail.trim()) {
-    recipients.bcc = [{ address: settings.bccEmail.trim() }];
+  if (tmpl.bcc && tmpl.bcc.trim()) {
+    recipients.bcc = [{ address: tmpl.bcc.trim() }];
   }
   return recipients;
 }
@@ -180,7 +181,7 @@ async function sendJobReminder({ pool, jobId, reminderKey, testEmailOverride }) 
   const poller = await emailClient.beginSend({
     senderAddress,
     content: { subject, plainText },
-    recipients: buildRecipients(recipient, settings),
+    recipients: buildRecipients(recipient, tmpl),
   });
   const result = await poller.pollUntilDone();
 
@@ -248,7 +249,7 @@ async function sendSurveyBookedEmail({ pool, jobId, testEmailOverride }) {
   const poller = await emailClient.beginSend({
     senderAddress,
     content: { subject, plainText },
-    recipients: buildRecipients(recipient, settings),
+    recipients: buildRecipients(recipient, tmpl),
   });
   const result = await poller.pollUntilDone();
 
@@ -316,7 +317,7 @@ async function sendServiceCallBookedEmail({ pool, jobId, bookingId, testEmailOve
   const poller = await emailClient.beginSend({
     senderAddress,
     content: { subject, plainText },
-    recipients: buildRecipients(recipient, settings),
+    recipients: buildRecipients(recipient, tmpl),
   });
   const result = await poller.pollUntilDone();
 

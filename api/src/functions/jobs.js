@@ -120,14 +120,22 @@ app.http('jobsUpdate', {
       }
 
       // Service Call supports multiple bookings (unlike Survey's single date+fitter), so
-      // detect newly-added bookings by id rather than a single field transitioning to set —
-      // a booking present in the new list but not the old one (with a date+fitter already
-      // filled in) is a genuine new booking just made.
-      const beforeBookingIds = new Set((before?.tabs?.serviceCall?.bookings || []).map((b) => b.id));
+      // detect per-booking (by id) transitions from "not fully booked" to "fully booked" —
+      // matching on id alone isn't enough, since the real UI flow is often: click "+ Book
+      // Service Call" (creates an empty booking), fill in date/fitter, then save — sometimes
+      // across two separate saves. If we only checked "is this id new", a booking created
+      // blank in one save and filled in on a later save would never be detected, since its
+      // id already existed. Instead: a booking counts as newly-booked if it now has a
+      // date+fitter but didn't in the *prior* saved state (whether or not that id existed
+      // before).
+      const beforeBookingsById = new Map((before?.tabs?.serviceCall?.bookings || []).map((b) => [b.id, b]));
       const scNotifyEnabled = body.tabs?.serviceCall?.notifyEnabled !== false; // default on
-      const newBookings = (body.tabs?.serviceCall?.bookings || []).filter(
-        (b) => !beforeBookingIds.has(b.id) && b.date && b.fitter && !b.emailSent
-      );
+      const newBookings = (body.tabs?.serviceCall?.bookings || []).filter((b) => {
+        if (!b.date || !b.fitter || b.emailSent) return false;
+        const prior = beforeBookingsById.get(b.id);
+        const wasFullyBooked = !!(prior && prior.date && prior.fitter);
+        return !wasFullyBooked;
+      });
       if (scNotifyEnabled && newBookings.length) {
         for (const booking of newBookings) {
           try {
