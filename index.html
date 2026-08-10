@@ -86,6 +86,22 @@ Kind regards,
 {{companyName}}
 {{companyPhone}}`,
   },
+  serviceCallBooked: {
+    subject: "Your Service Call has been Booked – {{customerName}}",
+    body: `Dear {{customerName}},
+
+Thank you for contacting us. We're pleased to confirm your service call has been booked for:
+
+📅 Date: {{serviceCallDate}}
+👷 Fitter: {{fitterName}}
+📍 Address: {{address}}
+
+If you need to rearrange or have any questions, please don't hesitate to get in touch.
+
+Kind regards,
+{{companyName}}
+{{companyPhone}}`,
+  },
   installReminderWeek: {
     subject: "Reminder: Your Installation is Coming Up – {{customerName}}",
     body: `Dear {{customerName}},
@@ -1531,6 +1547,13 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
                 </div>
                 <button onClick={addBooking} style={{background:"rgba(255,255,255,0.15)",border:"1px solid rgba(255,255,255,0.3)",color:"#fff",borderRadius:8,padding:"6px 14px",fontSize:13,fontWeight:600,cursor:"pointer"}}>+ Book Service Call</button>
               </div>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:C.slateLight,borderBottom:`1px solid ${C.border}`}}>
+                <div style={{fontSize:13,fontWeight:600,color:C.text}}>Send service call booked email automatically</div>
+                <div onClick={()=>updateSC("notifyEnabled",sc.notifyEnabled===false)}
+                  style={{width:42,height:23,borderRadius:12,background:sc.notifyEnabled!==false?C.mint:C.border,position:"relative",cursor:"pointer",flexShrink:0}}>
+                  <div style={{width:17,height:17,borderRadius:"50%",background:"#fff",position:"absolute",top:3,left:sc.notifyEnabled!==false?22:3,transition:"left 0.15s",boxShadow:"0 1px 3px rgba(0,0,0,0.3)"}}/>
+                </div>
+              </div>
               {(sc.bookings||[]).length===0&&(
                 <div style={{padding:"18px 16px",textAlign:"center",color:C.muted,fontSize:13,background:C.slateLight}}>No service calls booked yet.</div>
               )}
@@ -1574,6 +1597,13 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
                         ✅ {b.fitter} · {new Date(b.date).toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short",year:"numeric"})}
                         {b.startTime&&` · ${b.startTime}${b.endTime?` – ${b.endTime}`:""}`}
                         {dur&&<span style={{fontWeight:400,color:"#166534"}}> ({dur})</span>}
+                        <div style={{marginTop:4,fontWeight:600}}>
+                          {b.emailSent?.status==="sent"
+                            ?`📧 Service call booked email sent ${b.emailSent.sentAt}`
+                            :sc.notifyEnabled===false
+                              ?"📧 Service call booked email disabled for this job"
+                              :"📧 Service call booked email will send automatically on save"}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -2692,6 +2722,7 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
     installBooked:{label:"Install Booked",icon:"🔨"},
     installReminderWeek:{label:"Install Reminder (7-Day)",icon:"⏰"},
     installReminderDay:{label:"Install Reminder (1-Day)",icon:"⏰"},
+    serviceCallBooked:{label:"Service Call Booked",icon:"🔧"},
   };
 
   const placeholders=[

@@ -106,6 +106,23 @@ Kind regards,
 {{companyPhone}}`,
 };
 
+const DEFAULT_SERVICE_CALL_BOOKED = {
+  subject: 'Your Service Call has been Booked – {{customerName}}',
+  body: `Dear {{customerName}},
+
+Thank you for contacting us. We're pleased to confirm your service call has been booked for:
+
+Date: {{serviceCallDate}}
+Fitter: {{fitterName}}
+Address: {{address}}
+
+If you need to rearrange or have any questions, please don't hesitate to get in touch.
+
+Kind regards,
+{{companyName}}
+{{companyPhone}}`,
+};
+
 // Sends a reminder for one job. Pass testEmailOverride to send a real test without
 // emailing the actual customer or marking their reminder "sent" (used by the manual
 // endpoint's test path — the timer never passes this).
@@ -239,4 +256,72 @@ async function sendSurveyBookedEmail({ pool, jobId, testEmailOverride }) {
   return { sent: true, to: recipient, senderAddress, messageId: result.id };
 }
 
-module.exports = { sendJobReminder, sendSurveyBookedEmail, getSenderDomain, getDomainProperties };
+// Sends the "service call booked" email for one specific booking on a job. Unlike Survey
+// (a single date+fitter on the job), Service Call supports multiple bookings
+// (job.tabs.serviceCall.bookings, each with its own id) — so this targets one booking by
+// id, and marks sent-status on that booking specifically, not the job as a whole. Called
+// from jobs.js's update handler the moment a *new* booking (by id) is detected.
+async function sendServiceCallBookedEmail({ pool, jobId, bookingId, testEmailOverride }) {
+  const jobResult = await pool.request().input('Id', sql.Int, jobId).query('SELECT * FROM dbo.Jobs WHERE Id = @Id');
+  if (!jobResult.recordset.length) throw new Error('Job not found');
+  const jobRow = jobResult.recordset[0];
+  const job = JSON.parse(jobRow.DataJson);
+
+  const bookings = job.tabs?.serviceCall?.bookings || [];
+  const booking = bookings.find((b) => b.id === bookingId);
+  if (!booking) throw new Error('Service call booking not found');
+
+  const customerResult = await pool
+    .request()
+    .input('Id', sql.Int, jobRow.CustomerId)
+    .query('SELECT * FROM dbo.Customers WHERE Id = @Id');
+  if (!customerResult.recordset.length) throw new Error('Customer not found');
+  const customer = JSON.parse(customerResult.recordset[0].DataJson);
+
+  const recipient = testEmailOverride || customer.email;
+  if (!recipient) throw new Error('No recipient email available');
+
+  const settingsResult = await pool.request().query('SELECT * FROM dbo.Settings WHERE TenantId = 1');
+  const settings = settingsResult.recordset.length ? JSON.parse(settingsResult.recordset[0].DataJson) : {};
+  const tmpl = settings.emailTemplates?.serviceCallBooked || DEFAULT_SERVICE_CALL_BOOKED;
+
+  const vars = {
+    customerName: customer.name || '',
+    address: customer.address || '',
+    serviceCallDate: booking.date
+      ? new Date(booking.date).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+      : '',
+    fitterName: booking.fitter || '',
+    companyName: settings.companyName || 'VisualPro',
+    companyPhone: settings.companyPhone || '',
+  };
+
+  const subject = fillTemplate(tmpl.subject, vars);
+  const plainText = fillTemplate(tmpl.body, vars);
+
+  const { hostname } = await getSenderDomain();
+  const senderUsername = process.env.EMAIL_SENDER_USERNAME || 'donotreply';
+  const senderAddress = `${senderUsername}@${hostname}`;
+
+  const poller = await emailClient.beginSend({
+    senderAddress,
+    content: { subject, plainText },
+    recipients: { to: [{ address: recipient }] },
+  });
+  const result = await poller.pollUntilDone();
+
+  if (!testEmailOverride) {
+    job.tabs.serviceCall.bookings = bookings.map((b) =>
+      b.id === bookingId ? { ...b, emailSent: { status: 'sent', sentAt: new Date().toLocaleDateString('en-GB') } } : b
+    );
+    await pool
+      .request()
+      .input('Id', sql.Int, jobId)
+      .input('DataJson', sql.NVarChar, JSON.stringify(job))
+      .query('UPDATE dbo.Jobs SET DataJson = @DataJson, UpdatedAt = SYSUTCDATETIME() WHERE Id = @Id');
+  }
+
+  return { sent: true, to: recipient, senderAddress, messageId: result.id };
+}
+
+module.exports = { sendJobReminder, sendSurveyBookedEmail, sendServiceCallBookedEmail, getSenderDomain, getDomainProperties };

@@ -2,7 +2,7 @@ const { app } = require('@azure/functions');
 const { getPool, sql } = require('../db');
 const { mapJobRow } = require('../mapRow');
 const { requireAuth } = require('../auth');
-const { sendSurveyBookedEmail } = require('../reminderCore');
+const { sendSurveyBookedEmail, sendServiceCallBookedEmail } = require('../reminderCore');
 
 app.http('jobsList', {
   methods: ['GET'],
@@ -106,17 +106,42 @@ app.http('jobsUpdate', {
 
       const wasBooked = !!(before?.tabs?.survey?.date && before?.tabs?.survey?.fitter);
       const isNowBooked = !!(body.tabs?.survey?.date && body.tabs?.survey?.fitter);
-      const notifyEnabled = body.tabs?.survey?.notifyEnabled !== false; // default on
-      const alreadySent = !!body.tabs?.survey?.emailSent;
+      const surveyNotifyEnabled = body.tabs?.survey?.notifyEnabled !== false; // default on
+      const surveyAlreadySent = !!body.tabs?.survey?.emailSent;
+      let sentAny = false;
 
-      if (!wasBooked && isNowBooked && notifyEnabled && !alreadySent) {
+      if (!wasBooked && isNowBooked && surveyNotifyEnabled && !surveyAlreadySent) {
         try {
           await sendSurveyBookedEmail({ pool, jobId: id });
-          const refreshed = await pool.request().input('Id', sql.Int, id).query('SELECT * FROM dbo.Jobs WHERE Id = @Id');
-          return { jsonBody: mapJobRow(refreshed.recordset[0]) };
+          sentAny = true;
         } catch (err) {
           context.error('sendSurveyBookedEmail failed', err);
         }
+      }
+
+      // Service Call supports multiple bookings (unlike Survey's single date+fitter), so
+      // detect newly-added bookings by id rather than a single field transitioning to set —
+      // a booking present in the new list but not the old one (with a date+fitter already
+      // filled in) is a genuine new booking just made.
+      const beforeBookingIds = new Set((before?.tabs?.serviceCall?.bookings || []).map((b) => b.id));
+      const scNotifyEnabled = body.tabs?.serviceCall?.notifyEnabled !== false; // default on
+      const newBookings = (body.tabs?.serviceCall?.bookings || []).filter(
+        (b) => !beforeBookingIds.has(b.id) && b.date && b.fitter && !b.emailSent
+      );
+      if (scNotifyEnabled && newBookings.length) {
+        for (const booking of newBookings) {
+          try {
+            await sendServiceCallBookedEmail({ pool, jobId: id, bookingId: booking.id });
+            sentAny = true;
+          } catch (err) {
+            context.error('sendServiceCallBookedEmail failed', err);
+          }
+        }
+      }
+
+      if (sentAny) {
+        const refreshed = await pool.request().input('Id', sql.Int, id).query('SELECT * FROM dbo.Jobs WHERE Id = @Id');
+        return { jsonBody: mapJobRow(refreshed.recordset[0]) };
       }
 
       return { jsonBody: mapJobRow(result.recordset[0]) };
