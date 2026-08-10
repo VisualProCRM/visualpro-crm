@@ -545,6 +545,27 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
           ):(
             <>
               <Inp label="Full Name / Company" value={data.name} onChange={e=>setData(d=>({...d,name:e.target.value}))}/>
+              {/* Customer info panel — mirrors the read-only summary shown on a Job's Details tab, for visual consistency between the Sales and Installation Pipeline cards */}
+              <div style={{background:C.slateLight,borderRadius:8,padding:12}}>
+                <div style={{fontSize:12,fontWeight:600,color:C.slate,marginBottom:8}}>CUSTOMER INFO</div>
+                {[["📧",data.email],["📞",data.phone],["🔗 Source",data.source],["💰 Quote",totalQuoteValue(data)?`£${totalQuoteValue(data).toLocaleString()}`:"—"],["📊 Margin",totalQuoteValue(data)&&totalQuoteCost(data)?(()=>{const m=calcMargin(totalQuoteValue(data),totalQuoteCost(data));return m?`${m.pct}% (£${m.profit.toLocaleString()})`:"—"})():"—"]].map(([icon,val])=>(
+                  <div key={icon} style={{fontSize:13,color:C.text,padding:"5px 0",borderBottom:`1px solid ${C.border}`,display:"flex",gap:8}}>
+                    <span style={{color:C.slate,minWidth:90,flexShrink:0}}>{icon}</span>
+                    <span style={{fontWeight:500}}>{val||"—"}</span>
+                  </div>
+                ))}
+                {data.address&&(
+                  <div style={{padding:"5px 0",display:"flex",gap:8,alignItems:"flex-start"}}>
+                    <span style={{color:C.slate,minWidth:90,flexShrink:0,fontSize:13}}>📍 Address</span>
+                    <div style={{flex:1}}>
+                      <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(data.address)}`} target="_blank" rel="noreferrer"
+                        style={{fontSize:13,fontWeight:600,color:C.sky,textDecoration:"none",display:"block"}}>
+                        {data.address} ↗
+                      </a>
+                    </div>
+                  </div>
+                )}
+              </div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
                 <Inp label="Email" type="email" value={data.email||""} onChange={e=>setData(d=>({...d,email:e.target.value}))}/>
                 <Inp label="Phone" value={data.phone||""} onChange={e=>setData(d=>({...d,phone:e.target.value}))}/>
