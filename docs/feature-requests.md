@@ -33,10 +33,13 @@ A shared place for feature ideas, wherever they come from — the office, a fitt
 ### Job reference field, shown on the job card (distinguish concurrent jobs for the same customer) — ✅ built 2026-08-07
 - Editable Reference field on Jobs, shown on the Kanban card, a clearly-labeled banner in the job detail Details tab, and the Customer Directory job list.
 
-### Service Call Booked email template + automatic send
+### Service Call Booked email template + automatic send — ✅ built 2026-08-10
 - Requested by: office — 2026-08-07
-- "Please can you create an email template for a service call booked as we have one for install and survey but nothing for service call" — should include the automatic send like Survey Booked/Install Booked already have, not just a template sitting unused in Settings.
-- More involved than Survey Booked was: Service Call supports **multiple bookings per job** (`job.tabs.serviceCall.bookings`, an array, each with its own `id`), not a single date field. The automatic-send trigger needs to detect a *specific new booking* being added (matching by `id` against the previous saved state), not just a field transitioning from unset to set, and track sent-status per booking rather than per job. Estimated 25-35 min — comparable in scope to the original Survey Booked build (`api/src/functions/jobs.js` + `api/src/reminderCore.js` + a new default template + toggle + status indicator).
+- Includes automatic send (like Survey/Install Booked), per-booking sent-status, and a per-template editable BCC field (above the Subject Line on every email template) so the office can see when automated emails go out.
+
+### Primary and secondary email entry on Customer records (Sales + Installation cards)
+- Requested by: office — 2026-08-10
+- Ability to add both a primary and secondary email address under the Customer record, shown/usable on both Sales Pipeline and Installation Pipeline cards. Needs a design pass on which address automated emails (survey/install/service call booked, reminders) send to when both are set.
 
 ---
 
