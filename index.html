@@ -1833,7 +1833,7 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
     // never seen or edited again; no need for a second write to reset it.
     const newJob={
       customerId:savedCustomer.id,
-      title:`${savedCustomer.name} — Installation`,
+      title:savedCustomer.name,
       products:savedCustomer.productsOfInterest||[],
       status:"Book Survey",
       surveyDate:"",installDate:"",installers:"",
@@ -2031,7 +2031,7 @@ const InstallPipelinePage = ({jobs,setJobs,customers,settings}) => {
         onMouseEnter={e=>e.currentTarget.style.boxShadow="0 4px 10px rgba(0,0,0,0.1)"}
         onMouseLeave={e=>e.currentTarget.style.boxShadow="0 1px 3px rgba(0,0,0,0.06)"}
       >
-        <div style={{fontWeight:700,fontSize:13,color:C.text,marginBottom:3,lineHeight:1.3}}>{job.title}</div>
+        <div style={{fontWeight:700,fontSize:13,color:C.text,marginBottom:3,lineHeight:1.3}}>{(job.title||"").replace(/ — Installation$/,"")}</div>
         {job.reference&&<div style={{fontSize:11,color:C.navy,fontWeight:700,marginBottom:3,background:C.skyLight,display:"inline-block",padding:"1px 7px",borderRadius:6}}>📍 {job.reference}</div>}
         <div style={{fontSize:12,color:C.sky,fontWeight:600,marginBottom:3}}>{customerName(job.customerId)}</div>
         {cust?.phone&&<div style={{fontSize:12,color:C.slate,marginBottom:3}}>{cust.phone}</div>}
