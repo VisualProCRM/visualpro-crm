@@ -168,8 +168,7 @@ const INSTALL_META = {
 const STATUS_COLORS = {...STAGE_META,...INSTALL_META};
 
 // ── Seed data ─────────────────────────────────────────────────────────────────
-let nextId = 200;
-const uid = () => ++nextId;
+const uid = () => Date.now() * 1000 + Math.floor(Math.random() * 1000);
 
 // ── API client ────────────────────────────────────────────────────────────────
 // Talks directly to the Function App (not proxied through the Static Web App), so CORS is
