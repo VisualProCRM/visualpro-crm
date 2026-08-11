@@ -2917,14 +2917,17 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
     }}><span>{icon}</span>{label}</button>
   );
 
+  // Order here is the display order (object key order = insertion order in JS), grouped
+  // by which booking type each template belongs to so Settings can show a section
+  // heading per group rather than one flat list.
   const templateKeys={
-    surveyBooked:{label:"Survey Booked",icon:"📅"},
-    installBooked:{label:"Install Booked",icon:"🔨"},
-    installReminderWeek:{label:"Install Reminder (7-Day)",icon:"⏰"},
-    installReminderDay:{label:"Install Reminder (1-Day)",icon:"⏰"},
-    serviceCallBooked:{label:"Service Call Booked",icon:"🔧"},
-    surveyReminderDay:{label:"Survey Reminder (1-Day)",icon:"⏰"},
-    serviceCallReminderDay:{label:"Service Call Reminder (1-Day)",icon:"⏰"},
+    surveyBooked:{label:"Survey Booked",icon:"📅",group:"Survey"},
+    surveyReminderDay:{label:"Survey Reminder (1-Day)",icon:"⏰",group:"Survey"},
+    installBooked:{label:"Install Booked",icon:"🔨",group:"Installation"},
+    installReminderWeek:{label:"Install Reminder (7-Day)",icon:"⏰",group:"Installation"},
+    installReminderDay:{label:"Install Reminder (1-Day)",icon:"⏰",group:"Installation"},
+    serviceCallBooked:{label:"Service Call Booked",icon:"🔧",group:"Service Call"},
+    serviceCallReminderDay:{label:"Service Call Reminder (1-Day)",icon:"⏰",group:"Service Call"},
   };
 
   const placeholders=[
@@ -3067,30 +3070,44 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
               </div>
             </div>
 
-            {/* Template cards */}
-            {Object.entries(templateKeys).map(([key,{label,icon}])=>{
-              const tmpl=settings.emailTemplates?.[key]||DEFAULT_EMAIL_TEMPLATES[key];
-              return (
-              <div key={key} style={{background:C.white,borderRadius:10,border:`1px solid ${C.border}`,padding:24}}>
-                <h3 style={{margin:"0 0 4px",fontSize:16,color:C.navy,fontWeight:800}}>{icon} {label} Email</h3>
-                <p style={{margin:"0 0 16px",fontSize:13,color:C.slate}}>Sent when a {label.toLowerCase()} is confirmed.</p>
-                <div style={{display:"flex",flexDirection:"column",gap:12}}>
-                  <div>
-                    <Inp label="BCC Email (optional)" value={tmpl.bcc||""} onChange={e=>updateTemplate(key,"bcc",e.target.value)} placeholder="e.g. enquiries@visualglazing.co.uk"/>
-                    <p style={{margin:"6px 0 0",fontSize:12,color:C.muted}}>Every email this template sends is also BCC'd here, so you can see when it's gone out.</p>
+            {/* Template cards, grouped by booking type with a heading whenever the group
+                changes — templateKeys is already in the desired display/group order. */}
+            {(()=>{
+              let lastGroup=null;
+              return Object.entries(templateKeys).map(([key,{label,icon,group}])=>{
+                const tmpl=settings.emailTemplates?.[key]||DEFAULT_EMAIL_TEMPLATES[key];
+                const showHeader=group!==lastGroup;
+                lastGroup=group;
+                return (
+                <React.Fragment key={key}>
+                  {showHeader&&(
+                    <div style={{display:"flex",alignItems:"center",gap:10,marginTop:key===Object.keys(templateKeys)[0]?0:8}}>
+                      <div style={{fontSize:12,fontWeight:800,color:C.slate,textTransform:"uppercase",letterSpacing:"0.08em",whiteSpace:"nowrap"}}>{group} Emails</div>
+                      <div style={{flex:1,height:1,background:C.border}}/>
+                    </div>
+                  )}
+                  <div style={{background:C.white,borderRadius:10,border:`1px solid ${C.border}`,padding:24}}>
+                    <h3 style={{margin:"0 0 4px",fontSize:16,color:C.navy,fontWeight:800}}>{icon} {label} Email</h3>
+                    <p style={{margin:"0 0 16px",fontSize:13,color:C.slate}}>Sent when a {label.toLowerCase()} is confirmed.</p>
+                    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+                      <div>
+                        <Inp label="BCC Email (optional)" value={tmpl.bcc||""} onChange={e=>updateTemplate(key,"bcc",e.target.value)} placeholder="e.g. enquiries@visualglazing.co.uk"/>
+                        <p style={{margin:"6px 0 0",fontSize:12,color:C.muted}}>Every email this template sends is also BCC'd here, so you can see when it's gone out.</p>
+                      </div>
+                      <Inp label="Subject Line" value={tmpl.subject} onChange={e=>updateTemplate(key,"subject",e.target.value)}/>
+                      <TA label="Email Body" value={tmpl.body} onChange={e=>updateTemplate(key,"body",e.target.value)} style={{minHeight:220,fontFamily:"monospace",fontSize:13,lineHeight:1.6}}/>
+                    </div>
+                    <div style={{marginTop:16,paddingTop:16,borderTop:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                      <button onClick={()=>updateTemplate(key,"body",DEFAULT_EMAIL_TEMPLATES[key].body)||updateTemplate(key,"subject",DEFAULT_EMAIL_TEMPLATES[key].subject)}
+                        style={{background:"none",border:"none",color:C.muted,fontSize:13,cursor:"pointer"}}>↩ Reset to default</button>
+                      <div style={{background:saveStatus==="saving"?C.slateLight:saveStatus==="error"?"#FEF2F2":"#F0FDF4",color:saveStatus==="saving"?C.slate:saveStatus==="error"?C.red:C.mint,fontSize:12,fontWeight:700,padding:"7px 14px",borderRadius:8,border:`1px solid ${saveStatus==="saving"?C.border:saveStatus==="error"?"#FECACA":"#86EFAC"}`,whiteSpace:"nowrap"}}>
+                    {saveStatus==="saving"?"Saving…":saveStatus==="error"?"⚠ Save failed":"✓ Saved"}
                   </div>
-                  <Inp label="Subject Line" value={tmpl.subject} onChange={e=>updateTemplate(key,"subject",e.target.value)}/>
-                  <TA label="Email Body" value={tmpl.body} onChange={e=>updateTemplate(key,"body",e.target.value)} style={{minHeight:220,fontFamily:"monospace",fontSize:13,lineHeight:1.6}}/>
-                </div>
-                <div style={{marginTop:16,paddingTop:16,borderTop:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                  <button onClick={()=>updateTemplate(key,"body",DEFAULT_EMAIL_TEMPLATES[key].body)||updateTemplate(key,"subject",DEFAULT_EMAIL_TEMPLATES[key].subject)}
-                    style={{background:"none",border:"none",color:C.muted,fontSize:13,cursor:"pointer"}}>↩ Reset to default</button>
-                  <div style={{background:saveStatus==="saving"?C.slateLight:saveStatus==="error"?"#FEF2F2":"#F0FDF4",color:saveStatus==="saving"?C.slate:saveStatus==="error"?C.red:C.mint,fontSize:12,fontWeight:700,padding:"7px 14px",borderRadius:8,border:`1px solid ${saveStatus==="saving"?C.border:saveStatus==="error"?"#FECACA":"#86EFAC"}`,whiteSpace:"nowrap"}}>
-                {saveStatus==="saving"?"Saving…":saveStatus==="error"?"⚠ Save failed":"✓ Saved"}
-              </div>
-                </div>
-              </div>
-              );})}
+                    </div>
+                  </div>
+                </React.Fragment>
+                );});
+            })()}
           </div>
         )}
 
