@@ -3648,7 +3648,29 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
   const [showFeedback,setShowFeedback]=useState(false);
   const [showChecklist,setShowChecklist]=useState(false);
   const [viewDate,setViewDate]=useState(new Date());
-  const [fitterViewMode,setFitterViewMode]=useState("list"); // "list" | "day" | "month"
+  // Each fitter can hold down a view button to pin it as their default, so the calendar
+  // opens straight into whichever view they actually use — stored per-fitter in
+  // localStorage (a personal device preference, not business data, so no API/Settings
+  // round-trip needed). Wrapped in try/catch since private-browsing mode can throw on
+  // localStorage access.
+  const defaultViewKey=`fitterDefaultView_${fitterName}`;
+  const getStoredDefaultView=()=>{ try{ return localStorage.getItem(defaultViewKey); }catch(e){ return null; } };
+  const [fitterViewMode,setFitterViewMode]=useState(()=>getStoredDefaultView()||"list");
+  const [defaultView,setDefaultView]=useState(()=>getStoredDefaultView());
+  const longPressTimer=useRef(null);
+  const longPressTriggered=useRef(false);
+  const LONG_PRESS_MS=600;
+  const pinDefaultView=(val)=>{
+    try{ localStorage.setItem(defaultViewKey,val); }catch(e){}
+    setDefaultView(val);
+    setFitterViewMode(val);
+  };
+  const handleViewPressStart=(val)=>{
+    longPressTriggered.current=false;
+    clearTimeout(longPressTimer.current);
+    longPressTimer.current=setTimeout(()=>{ longPressTriggered.current=true; pinDefaultView(val); },LONG_PRESS_MS);
+  };
+  const handleViewPressEnd=()=>clearTimeout(longPressTimer.current);
   const [dayViewDate,setDayViewDate]=useState(new Date());
   const today=new Date().toISOString().slice(0,10);
   const fmtDate=(y,m,d)=>`${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
@@ -4157,11 +4179,20 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
       <div style={{flex:1,overflowY:"auto",padding:16}}>
         {/* View switcher — List (agenda) / Day (hourly timeline) / Month, mirroring the
             iOS Outlook app's view options. */}
-        <div style={{display:"flex",gap:4,background:C.slateLight,borderRadius:10,padding:4,marginBottom:16}}>
+        <div style={{display:"flex",gap:4,background:C.slateLight,borderRadius:10,padding:4,marginBottom:6}}>
           {[["list","List"],["day","Day"],["month","Month"]].map(([val,label])=>(
-            <button key={val} onClick={()=>setFitterViewMode(val)} style={{flex:1,padding:"8px 0",borderRadius:7,fontSize:13,fontWeight:700,cursor:"pointer",border:"none",background:fitterViewMode===val?C.white:"transparent",color:fitterViewMode===val?C.navy:C.slate,boxShadow:fitterViewMode===val?"0 1px 3px rgba(0,0,0,0.12)":"none"}}>{label}</button>
+            <button key={val}
+              onClick={()=>{ if(longPressTriggered.current){longPressTriggered.current=false;return;} setFitterViewMode(val); }}
+              onPointerDown={()=>handleViewPressStart(val)}
+              onPointerUp={handleViewPressEnd}
+              onPointerLeave={handleViewPressEnd}
+              style={{position:"relative",flex:1,padding:"8px 0",borderRadius:7,fontSize:13,fontWeight:700,cursor:"pointer",border:"none",background:fitterViewMode===val?C.white:"transparent",color:fitterViewMode===val?C.navy:C.slate,boxShadow:fitterViewMode===val?"0 1px 3px rgba(0,0,0,0.12)":"none",userSelect:"none",WebkitUserSelect:"none",touchAction:"manipulation"}}>
+              {label}
+              {defaultView===val&&<span style={{position:"absolute",top:-5,right:-5,background:C.mint,color:"#fff",borderRadius:"50%",width:16,height:16,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:900,boxShadow:"0 1px 2px rgba(0,0,0,0.3)"}}>✓</span>}
+            </button>
           ))}
         </div>
+        <div style={{fontSize:11,color:C.muted,textAlign:"center",marginBottom:16}}>Hold a view to set it as your default</div>
 
         {/* Upcoming jobs */}
         {fitterViewMode==="list"&&(
