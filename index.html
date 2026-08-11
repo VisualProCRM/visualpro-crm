@@ -149,6 +149,40 @@ Kind regards,
 {{companyName}}
 {{companyPhone}}`,
   },
+  surveyReminderDay: {
+    bcc: "",
+    subject: "Reminder: Your Survey is Tomorrow – {{customerName}}",
+    body: `Dear {{customerName}},
+
+This is a friendly reminder that your survey is scheduled for tomorrow:
+
+📅 Date: {{surveyDate}}
+👷 Surveyor: {{fitterName}}
+📍 Address: {{address}}
+
+If you need to rearrange or have any questions, please don't hesitate to get in touch.
+
+Kind regards,
+{{companyName}}
+{{companyPhone}}`,
+  },
+  serviceCallReminderDay: {
+    bcc: "",
+    subject: "Reminder: Your Service Call is Tomorrow – {{customerName}}",
+    body: `Dear {{customerName}},
+
+This is a friendly reminder that your service call is scheduled for tomorrow:
+
+📅 Date: {{serviceCallDate}}
+👷 Fitter: {{fitterName}}
+📍 Address: {{address}}
+
+If you need to rearrange or have any questions, please don't hesitate to get in touch.
+
+Kind regards,
+{{companyName}}
+{{companyPhone}}`,
+  },
 };
 
 const STAGE_META = {
@@ -834,6 +868,13 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
                   :data.tabs.survey.notifyEnabled===false
                     ?"📧 Survey booked email disabled for this job"
                     :"📧 Survey booked email will send automatically on save"}
+              </div>
+              <div style={{marginTop:4,fontSize:12,fontWeight:600}}>
+                {data.tabs.survey.reminderSent?.status==="sent"
+                  ?`📧 Day-before reminder sent ${data.tabs.survey.reminderSent.sentAt}`
+                  :data.tabs.survey.notifyEnabled===false
+                    ?"📧 Day-before reminder disabled for this job"
+                    :"📧 Day-before reminder will send automatically"}
               </div>
             </div>
           )}
@@ -1607,6 +1648,13 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
                             :sc.notifyEnabled===false
                               ?"📧 Service call booked email disabled for this job"
                               :"📧 Service call booked email will send automatically on save"}
+                        </div>
+                        <div style={{marginTop:2,fontWeight:600}}>
+                          {b.reminderSent?.status==="sent"
+                            ?`📧 Day-before reminder sent ${b.reminderSent.sentAt}`
+                            :sc.notifyEnabled===false
+                              ?"📧 Day-before reminder disabled for this job"
+                              :"📧 Day-before reminder will send automatically"}
                         </div>
                       </div>
                     )}
@@ -2727,6 +2775,8 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
     installReminderWeek:{label:"Install Reminder (7-Day)",icon:"⏰"},
     installReminderDay:{label:"Install Reminder (1-Day)",icon:"⏰"},
     serviceCallBooked:{label:"Service Call Booked",icon:"🔧"},
+    surveyReminderDay:{label:"Survey Reminder (1-Day)",icon:"⏰"},
+    serviceCallReminderDay:{label:"Service Call Reminder (1-Day)",icon:"⏰"},
   };
 
   const placeholders=[
