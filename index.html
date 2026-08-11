@@ -2212,11 +2212,14 @@ const InstallPipelinePage = ({jobs,setJobs,customers,settings}) => {
 const CalendarPage = ({customers,jobs,settings}) => {
   const [viewDate,setViewDate]=useState(new Date());
   const [filterFitter,setFilterFitter]=useState("All");
+  const [viewMode,setViewMode]=useState("workingWeek"); // "workingWeek" | "week" | "month"
 
   const year=viewDate.getFullYear(), month=viewDate.getMonth();
   const firstDay=new Date(year,month,1).getDay();
   const daysInMonth=new Date(year,month+1,0).getDate();
   const adjusted=(firstDay+6)%7; // Mon=0
+
+  const fmtDate=(y,m,d)=>`${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
 
   // Survey bookings can live in two places: a Customer's own Survey tab (used pre-Deal Won,
   // while there's no Job yet) or a Job's Survey tab (used once a deal converts — see
@@ -2229,13 +2232,13 @@ const CalendarPage = ({customers,jobs,settings}) => {
     ...customers.filter(c=>c.stage!=="Deal Won").flatMap(c=>{
       const s=c.tabs?.survey;
       if(!s?.date||!s?.fitter) return [];
-      return [{date:s.date,fitter:s.fitter,label:c.name,type:"Survey",color:"#4A90D9",time:s.time||""}];
+      return [{date:s.date,fitter:s.fitter,label:c.name,type:"Survey",color:"#4A90D9",time:s.time||"",endTime:s.endTime||""}];
     }),
     ...jobs.flatMap(j=>{
       const s=j.tabs?.survey;
       if(!s?.date||!s?.fitter) return [];
       const cust=customers.find(c=>c.id===j.customerId);
-      return [{date:s.date,fitter:s.fitter,label:cust?.name||j.title,type:"Survey",color:"#4A90D9",time:s.time||"",notes:s.notes||""}];
+      return [{date:s.date,fitter:s.fitter,label:cust?.name||j.title,type:"Survey",color:"#4A90D9",time:s.time||"",endTime:s.endTime||"",notes:s.notes||""}];
     }),
   ];
   // Installation bookings from job installation tab — expanded across working days
@@ -2279,16 +2282,35 @@ const CalendarPage = ({customers,jobs,settings}) => {
       return [{date:b.date,fitter:b.fitter,label:j.title,type:"Service Call",color:"#7C3AED",notes:b.notes||"",time:b.startTime||"",endTime:b.endTime||"",job:j}];
     });
   });
-  const allEvents=[...surveyEvents,...installTabEvents,...installFieldEvents,...serviceCallEvents].filter(e=>filterFitter==="All"||e.fitter===filterFitter);
+  const allEvents=[...surveyEvents,...installTabEvents,...installFieldEvents,...serviceCallEvents]
+    .filter(e=>filterFitter==="All"||e.fitter===filterFitter)
+    .sort((a,b)=>(a.time||"").localeCompare(b.time||""));
 
-  const eventsForDay=(d)=>{
-    const ds=`${year}-${String(month+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
-    return allEvents.filter(e=>e.date===ds);
-  };
+  const eventsForDate=(ds)=>allEvents.filter(e=>e.date===ds);
+  const eventsForDay=(d)=>eventsForDate(fmtDate(year,month,d));
 
   const monthName=viewDate.toLocaleDateString("en-GB",{month:"long",year:"numeric"});
-  const prev=()=>setViewDate(new Date(year,month-1,1));
-  const next=()=>setViewDate(new Date(year,month+1,1));
+
+  // Monday of the week containing d, using local Y/M/D arithmetic throughout (never
+  // toISOString) so the computed date string never shifts by a day around BST/GMT changes.
+  const startOfWeek=(d)=>{
+    const dow=d.getDay(); // 0=Sun
+    const diff=dow===0?-6:1-dow;
+    return new Date(d.getFullYear(),d.getMonth(),d.getDate()+diff);
+  };
+  const weekStart=startOfWeek(viewDate);
+  const numDays=viewMode==="workingWeek"?5:7;
+  const weekDays=Array.from({length:numDays},(_,i)=>new Date(weekStart.getFullYear(),weekStart.getMonth(),weekStart.getDate()+i));
+
+  const prev=()=>{
+    if(viewMode==="month") setViewDate(new Date(year,month-1,1));
+    else setViewDate(d=>new Date(d.getFullYear(),d.getMonth(),d.getDate()-7));
+  };
+  const next=()=>{
+    if(viewMode==="month") setViewDate(new Date(year,month+1,1));
+    else setViewDate(d=>new Date(d.getFullYear(),d.getMonth(),d.getDate()+7));
+  };
+  const goToday=()=>setViewDate(new Date());
 
   const days=[];
   for(let i=0;i<adjusted;i++) days.push(null);
@@ -2296,18 +2318,79 @@ const CalendarPage = ({customers,jobs,settings}) => {
 
   const today=new Date();
   const isToday=(d)=>d&&today.getFullYear()===year&&today.getMonth()===month&&today.getDate()===d;
+  const todayStr=fmtDate(today.getFullYear(),today.getMonth(),today.getDate());
+
+  const rangeLabel=(()=>{
+    if(viewMode==="month") return monthName;
+    const last=weekDays[weekDays.length-1];
+    const sameMonth=weekStart.getMonth()===last.getMonth();
+    const startStr=sameMonth
+      ?`${weekStart.getDate()}`
+      :weekStart.toLocaleDateString("en-GB",{day:"numeric",month:"short"});
+    const endStr=last.toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"});
+    return `${startStr} – ${endStr}`;
+  })();
+
+  // Week/Working Week hourly grid — positions timed events by minute-of-day, gives
+  // untimed events (e.g. legacy install fallback with no startTime) their own "All day"
+  // strip per column, and lays out same-day overlaps in side-by-side lanes.
+  const HOUR_START=7, HOUR_END=19, HOUR_HEIGHT=60;
+  const toMin=(t)=>{
+    if(!t) return null;
+    const [h,m]=t.split(":").map(Number);
+    if(Number.isNaN(h)) return null;
+    return h*60+(m||0);
+  };
+  const eventRange=(ev)=>{
+    const s=toMin(ev.time);
+    if(s==null) return null;
+    let e;
+    if(ev.endTime){
+      const em=toMin(ev.endTime);
+      e=(em!=null&&em>s)?em:s+60;
+    } else {
+      e=s+(ev.type==="Install"?120:60);
+    }
+    if(e<=HOUR_START*60||s>=HOUR_END*60) return null; // entirely outside the visible window
+    return {start:Math.max(s,HOUR_START*60),end:Math.min(e,HOUR_END*60)};
+  };
+  const layoutDay=(dateObj)=>{
+    const ds=fmtDate(dateObj.getFullYear(),dateObj.getMonth(),dateObj.getDate());
+    const events=eventsForDate(ds);
+    const timed=[],untimed=[];
+    events.forEach(ev=>{
+      const r=eventRange(ev);
+      if(!r) untimed.push(ev); else timed.push({...ev,...r});
+    });
+    timed.sort((a,b)=>a.start-b.start);
+    const laneEnds=[];
+    timed.forEach(ev=>{
+      let lane=laneEnds.findIndex(end=>end<=ev.start);
+      if(lane===-1){lane=laneEnds.length;laneEnds.push(ev.end);} else laneEnds[lane]=ev.end;
+      ev.lane=lane;
+    });
+    const totalLanes=Math.max(1,laneEnds.length);
+    timed.forEach(ev=>{ev.totalLanes=totalLanes;});
+    return {date:dateObj,dateStr:ds,timed,untimed};
+  };
 
   return (
     <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,flexWrap:"wrap",gap:12}}>
         <h2 style={{margin:0,color:C.navy,fontWeight:800,fontSize:22}}>Fitter Calendar</h2>
-        <div style={{display:"flex",gap:10,alignItems:"center"}}>
+        <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
+          <div style={{display:"flex",gap:3,background:C.slateLight,borderRadius:8,padding:3}}>
+            {[["workingWeek","Working Week"],["week","Week"],["month","Month"]].map(([val,label])=>(
+              <button key={val} onClick={()=>setViewMode(val)} style={{padding:"6px 12px",borderRadius:6,fontSize:12,fontWeight:600,cursor:"pointer",border:"none",background:viewMode===val?C.white:"transparent",color:viewMode===val?C.navy:C.slate,boxShadow:viewMode===val?"0 1px 2px rgba(0,0,0,0.12)":"none"}}>{label}</button>
+            ))}
+          </div>
           <Sel value={filterFitter} onChange={e=>setFilterFitter(e.target.value)} style={{fontSize:13,padding:"6px 10px"}}>
             <option value="All">All Fitters</option>
             {(settings?.fitters||DEFAULT_FITTERS).map(f=><option key={f}>{f}</option>)}
           </Sel>
+          <Btn variant="secondary" onClick={goToday} style={{padding:"6px 12px"}}>Today</Btn>
           <Btn variant="secondary" onClick={prev} style={{padding:"6px 12px"}}>‹</Btn>
-          <span style={{fontWeight:700,color:C.navy,minWidth:160,textAlign:"center"}}>{monthName}</span>
+          <span style={{fontWeight:700,color:C.navy,minWidth:170,textAlign:"center"}}>{rangeLabel}</span>
           <Btn variant="secondary" onClick={next} style={{padding:"6px 12px"}}>›</Btn>
         </div>
       </div>
@@ -2322,32 +2405,97 @@ const CalendarPage = ({customers,jobs,settings}) => {
         ))}
       </div>
 
-      {/* Calendar grid */}
-      <div style={{background:C.white,borderRadius:10,border:`1px solid ${C.border}`,overflow:"hidden"}}>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",background:C.navy}}>
-          {["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map(d=>(
-            <div key={d} style={{padding:"10px 0",textAlign:"center",fontSize:12,fontWeight:700,color:"rgba(255,255,255,0.7)"}}>{d}</div>
-          ))}
+      {viewMode==="month"?(
+        /* Month grid */
+        <div style={{background:C.white,borderRadius:10,border:`1px solid ${C.border}`,overflow:"hidden"}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",background:C.navy}}>
+            {["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map(d=>(
+              <div key={d} style={{padding:"10px 0",textAlign:"center",fontSize:12,fontWeight:700,color:"rgba(255,255,255,0.7)"}}>{d}</div>
+            ))}
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)"}}>
+            {days.map((d,i)=>{
+              const events=d?eventsForDay(d):[];
+              return (
+                <div key={i} style={{minHeight:90,borderRight:`1px solid ${C.border}`,borderBottom:`1px solid ${C.border}`,padding:"6px 8px",background:d?C.white:"#FAFAFA"}}>
+                  {d&&<div style={{fontSize:13,fontWeight:isToday(d)?800:500,color:isToday(d)?C.sky:C.text,marginBottom:4,width:24,height:24,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:"50%",background:isToday(d)?C.skyLight:"transparent"}}>{d}</div>}
+                  {events.map((ev,ei)=>(
+                    <div key={ei} style={{background:ev.color,color:"#fff",borderRadius:4,padding:"3px 6px",fontSize:11,marginBottom:3,lineHeight:1.4}}>
+                      <div style={{fontWeight:700}}>{ev.type}{ev.time?` · ${ev.time}`:""}{ev.isMultiDay?` (Day ${ev.dayIndex}/${ev.totalDays})`:""}</div>
+                      <div style={{opacity:.9,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ev.label}</div>
+                      <div style={{opacity:.75,fontSize:10}}>{ev.fitter}</div>
+                      {ev.notes&&<div style={{opacity:.85,fontSize:10,marginTop:2,borderTop:"1px solid rgba(255,255,255,0.3)",paddingTop:2}}>{ev.notes.split("\n").slice(0,2).join(" · ")}</div>}
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
         </div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)"}}>
-          {days.map((d,i)=>{
-            const events=d?eventsForDay(d):[];
-            return (
-              <div key={i} style={{minHeight:90,borderRight:`1px solid ${C.border}`,borderBottom:`1px solid ${C.border}`,padding:"6px 8px",background:d?C.white:"#FAFAFA"}}>
-                {d&&<div style={{fontSize:13,fontWeight:isToday(d)?800:500,color:isToday(d)?C.sky:C.text,marginBottom:4,width:24,height:24,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:"50%",background:isToday(d)?C.skyLight:"transparent"}}>{d}</div>}
-                {events.map((ev,ei)=>(
-                  <div key={ei} style={{background:ev.color,color:"#fff",borderRadius:4,padding:"3px 6px",fontSize:11,marginBottom:3,lineHeight:1.4}}>
-                    <div style={{fontWeight:700}}>{ev.type}{ev.time?` · ${ev.time}`:""}{ev.isMultiDay?` (Day ${ev.dayIndex}/${ev.totalDays})`:""}</div>
-                    <div style={{opacity:.9,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ev.label}</div>
-                    <div style={{opacity:.75,fontSize:10}}>{ev.fitter}</div>
-                    {ev.notes&&<div style={{opacity:.85,fontSize:10,marginTop:2,borderTop:"1px solid rgba(255,255,255,0.3)",paddingTop:2}}>{ev.notes.split("\n").slice(0,2).join(" · ")}</div>}
-                  </div>
-                ))}
+      ):(()=>{
+        /* Week / Working Week hourly grid */
+        const hours=[]; for(let h=HOUR_START;h<HOUR_END;h++) hours.push(h);
+        const gridHeight=hours.length*HOUR_HEIGHT;
+        const pxPerMin=HOUR_HEIGHT/60;
+        const dayInfo=weekDays.map(layoutDay);
+        const maxUntimed=Math.max(0,...dayInfo.map(d=>d.untimed.length));
+        const allDayHeight=maxUntimed>0?(10+maxUntimed*20):0;
+
+        return (
+          <div style={{background:C.white,borderRadius:10,border:`1px solid ${C.border}`,overflow:"auto"}}>
+            <div style={{display:"flex",minWidth:numDays*130+52}}>
+              <div style={{width:52,flexShrink:0,borderRight:`1px solid ${C.border}`}}>
+                <div style={{height:44,borderBottom:`1px solid ${C.border}`}}/>
+                {allDayHeight>0&&<div style={{height:allDayHeight,borderBottom:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,color:C.muted}}>All day</div>}
+                <div style={{position:"relative",height:gridHeight}}>
+                  {hours.map(h=>(
+                    <div key={h} style={{position:"absolute",top:(h-HOUR_START)*HOUR_HEIGHT-7,right:6,fontSize:11,color:C.muted}}>{h}:00</div>
+                  ))}
+                </div>
               </div>
-            );
-          })}
-        </div>
-      </div>
+              {dayInfo.map((di,idx)=>{
+                const isTod=di.dateStr===todayStr;
+                return (
+                  <div key={di.dateStr} style={{flex:1,minWidth:130,borderRight:idx<dayInfo.length-1?`1px solid ${C.border}`:"none",background:isTod?C.skyLight:C.white}}>
+                    <div style={{height:44,borderBottom:`1px solid ${C.border}`,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
+                      <div style={{fontSize:11,color:C.muted,fontWeight:600}}>{di.date.toLocaleDateString("en-GB",{weekday:"short"})}</div>
+                      <div style={{fontSize:14,fontWeight:isTod?800:600,color:isTod?C.sky:C.navy}}>{di.date.getDate()}</div>
+                    </div>
+                    {allDayHeight>0&&(
+                      <div style={{height:allDayHeight,borderBottom:`1px solid ${C.border}`,padding:"4px",overflow:"hidden"}}>
+                        {di.untimed.map((ev,i)=>(
+                          <div key={i} title={`${ev.type} · ${ev.label} · ${ev.fitter}`} style={{background:ev.color,color:"#fff",borderRadius:3,padding:"1px 5px",fontSize:10,marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                            {ev.type}: {ev.label}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div style={{position:"relative",height:gridHeight}}>
+                      {hours.map(h=>(
+                        <div key={h} style={{position:"absolute",top:(h-HOUR_START)*HOUR_HEIGHT,left:0,right:0,borderTop:`1px solid ${C.border}`}}/>
+                      ))}
+                      {di.timed.map((ev,i)=>{
+                        const top=(ev.start-HOUR_START*60)*pxPerMin;
+                        const height=Math.max(30,(ev.end-ev.start)*pxPerMin);
+                        const width=100/ev.totalLanes;
+                        const left=ev.lane*width;
+                        return (
+                          <div key={i} title={`${ev.type} · ${ev.label} · ${ev.fitter}${ev.notes?" · "+ev.notes:""}`}
+                            style={{position:"absolute",top,height,left:`calc(${left}% + 2px)`,width:`calc(${width}% - 4px)`,background:ev.color,color:"#fff",borderRadius:4,padding:"2px 5px",fontSize:10,overflow:"hidden",boxShadow:"0 1px 2px rgba(0,0,0,0.15)"}}>
+                            <div style={{fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{ev.time}{ev.endTime?`–${ev.endTime}`:""} {ev.type}</div>
+                            <div style={{opacity:.9,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{ev.label}</div>
+                            {height>44&&<div style={{opacity:.75,fontSize:9,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{ev.fitter}</div>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

@@ -41,6 +41,15 @@ A shared place for feature ideas, wherever they come from — the office, a fitt
 - Requested by: office — 2026-08-10
 - Ability to add both a primary and secondary email address under the Customer record, shown/usable on both Sales Pipeline and Installation Pipeline cards. Needs a design pass on which address automated emails (survey/install/service call booked, reminders) send to when both are set.
 
+### Fitter Calendar: Week/Working Week/Month view switcher with hourly grid — ✅ built 2026-08-11
+- Requested by: office — 2026-08-11
+- Outlook-style view switcher (Working Week / Week / Month, default Working Week), an hours column (7am–7pm) down the left of the Week/Working Week views, and events positioned/ordered by their actual time rather than just listed.
+
+### Fitter Calendar: travel time between appointments
+- Requested by: office — 2026-08-11, raised alongside the calendar view-switcher work above
+- Bake in estimated travel time between a fitter's consecutive appointments (based on the distance between job addresses), shown on the calendar so back-to-back bookings that aren't realistically reachable stand out.
+- **Needs a paid mapping API** (e.g. Google Distance Matrix) for real postcode-to-postcode travel times — the same kind of Google Cloud billing commitment the office previously held off on for address autocomplete. Deliberately deferred until the office is ready to commit to that cost; not started.
+
 ---
 
 ## Resolved / not needed
