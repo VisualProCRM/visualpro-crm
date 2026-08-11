@@ -3648,7 +3648,10 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
   const [showFeedback,setShowFeedback]=useState(false);
   const [showChecklist,setShowChecklist]=useState(false);
   const [viewDate,setViewDate]=useState(new Date());
+  const [fitterViewMode,setFitterViewMode]=useState("list"); // "list" | "day" | "month"
+  const [dayViewDate,setDayViewDate]=useState(new Date());
   const today=new Date().toISOString().slice(0,10);
+  const fmtDate=(y,m,d)=>`${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
 
   // idle | saving | saved | error — for the note fields below, which used to call
   // apiUpdateJob on every keystroke (a real network request per character typed, which is
@@ -3701,7 +3704,7 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
         }
       });
     });
-    return evts.sort((a,b)=>a.date.localeCompare(b.date));
+    return evts.sort((a,b)=>a.date===b.date?(a.time||"").localeCompare(b.time||""):a.date.localeCompare(b.date));
   },[jobs,fitterName]);
 
   const updateJob=(updated)=>{
@@ -4152,7 +4155,16 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
       </div>
 
       <div style={{flex:1,overflowY:"auto",padding:16}}>
+        {/* View switcher — List (agenda) / Day (hourly timeline) / Month, mirroring the
+            iOS Outlook app's view options. */}
+        <div style={{display:"flex",gap:4,background:C.slateLight,borderRadius:10,padding:4,marginBottom:16}}>
+          {[["list","List"],["day","Day"],["month","Month"]].map(([val,label])=>(
+            <button key={val} onClick={()=>setFitterViewMode(val)} style={{flex:1,padding:"8px 0",borderRadius:7,fontSize:13,fontWeight:700,cursor:"pointer",border:"none",background:fitterViewMode===val?C.white:"transparent",color:fitterViewMode===val?C.navy:C.slate,boxShadow:fitterViewMode===val?"0 1px 3px rgba(0,0,0,0.12)":"none"}}>{label}</button>
+          ))}
+        </div>
+
         {/* Upcoming jobs */}
+        {fitterViewMode==="list"&&(
         <div style={{marginBottom:20}}>
           <div style={{fontSize:13,fontWeight:700,color:C.navy,marginBottom:10,textTransform:"uppercase",letterSpacing:"0.06em"}}>Your Upcoming Jobs</div>
           {upcoming.length===0&&(
@@ -4243,8 +4255,104 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
             });
           })()}
         </div>
+        )}
+
+        {/* Day view — hourly timeline for one day, swipe/tap through with the arrows,
+            mirroring the iOS Outlook app's Day view. */}
+        {fitterViewMode==="day"&&(()=>{
+          const HOUR_START=7,HOUR_END=19,HOUR_HEIGHT=64;
+          const hours=[]; for(let h=HOUR_START;h<HOUR_END;h++) hours.push(h);
+          const gridHeight=hours.length*HOUR_HEIGHT;
+          const pxPerMin=HOUR_HEIGHT/60;
+          const toMin=(t)=>{
+            if(!t) return null;
+            const [h,m]=t.split(":").map(Number);
+            if(Number.isNaN(h)) return null;
+            return h*60+(m||0);
+          };
+          const typeColor=(t)=>t==="Survey"?"#15803D":t==="Service Call"?"#DC2626":"#92400E";
+          const dayViewDateStr=fmtDate(dayViewDate.getFullYear(),dayViewDate.getMonth(),dayViewDate.getDate());
+          const todayLocal=new Date();
+          const todayStr=fmtDate(todayLocal.getFullYear(),todayLocal.getMonth(),todayLocal.getDate());
+          const isTod=dayViewDateStr===todayStr;
+          const dayEvents=myEvents.filter(e=>e.date===dayViewDateStr);
+          const timed=[],untimed=[];
+          dayEvents.forEach(ev=>{
+            const s=toMin(ev.time);
+            if(s==null){untimed.push(ev);return;}
+            let e;
+            if(ev.endTime){ const em=toMin(ev.endTime); e=(em!=null&&em>s)?em:s+60; }
+            else e=s+(ev.type==="Install"?120:60);
+            if(e<=HOUR_START*60||s>=HOUR_END*60){untimed.push(ev);return;}
+            timed.push({...ev,start:Math.max(s,HOUR_START*60),end:Math.min(e,HOUR_END*60)});
+          });
+          timed.sort((a,b)=>a.start-b.start);
+          const laneEnds=[];
+          timed.forEach(ev=>{
+            let lane=laneEnds.findIndex(end=>end<=ev.start);
+            if(lane===-1){lane=laneEnds.length;laneEnds.push(ev.end);} else laneEnds[lane]=ev.end;
+            ev.lane=lane;
+          });
+          const totalLanes=Math.max(1,laneEnds.length);
+          const openEvent=(ev)=>{setSelectedJob(ev.job);setView("job");setActiveTab(ev.type==="Survey"?"survey":ev.type==="Service Call"?"servicecall":"installation");};
+          return (
+            <div style={{marginBottom:20}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+                <button onClick={()=>setDayViewDate(d=>new Date(d.getFullYear(),d.getMonth(),d.getDate()-1))} style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 14px",cursor:"pointer",fontSize:16,color:C.navy}}>‹</button>
+                <div style={{textAlign:"center"}}>
+                  <div style={{fontWeight:800,color:C.navy,fontSize:15}}>{dayViewDate.toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long"})}</div>
+                  {isTod?<div style={{fontSize:11,color:C.sky,fontWeight:700}}>Today</div>
+                    :<button onClick={()=>setDayViewDate(new Date())} style={{background:"none",border:"none",color:C.sky,fontSize:11,fontWeight:700,cursor:"pointer",padding:0}}>Jump to Today</button>}
+                </div>
+                <button onClick={()=>setDayViewDate(d=>new Date(d.getFullYear(),d.getMonth(),d.getDate()+1))} style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 14px",cursor:"pointer",fontSize:16,color:C.navy}}>›</button>
+              </div>
+              {untimed.length>0&&(
+                <div style={{background:C.white,borderRadius:10,border:`1px solid ${C.border}`,padding:8,marginBottom:10}}>
+                  {untimed.map((ev,i)=>(
+                    <div key={i} onClick={()=>openEvent(ev)}
+                      style={{background:typeColor(ev.type),color:"#fff",borderRadius:6,padding:"6px 10px",fontSize:12,fontWeight:600,marginBottom:i<untimed.length-1?4:0,cursor:"pointer"}}>
+                      {ev.type} · {ev.job.title}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {dayEvents.length===0?(
+                <div style={{background:C.white,borderRadius:12,padding:24,textAlign:"center",color:C.muted,border:`1px solid ${C.border}`}}>No jobs scheduled for this day.</div>
+              ):(
+                <div style={{background:C.white,borderRadius:10,border:`1px solid ${C.border}`,overflow:"hidden"}}>
+                  <div style={{display:"flex"}}>
+                    <div style={{width:48,flexShrink:0,borderRight:`1px solid ${C.border}`,position:"relative",height:gridHeight}}>
+                      {hours.map(h=>(
+                        <div key={h} style={{position:"absolute",top:(h-HOUR_START)*HOUR_HEIGHT-7,right:6,fontSize:11,color:C.muted}}>{h}:00</div>
+                      ))}
+                    </div>
+                    <div style={{flex:1,position:"relative",height:gridHeight}}>
+                      {hours.map(h=>(
+                        <div key={h} style={{position:"absolute",top:(h-HOUR_START)*HOUR_HEIGHT,left:0,right:0,borderTop:`1px solid ${C.border}`}}/>
+                      ))}
+                      {timed.map((ev,i)=>{
+                        const top=(ev.start-HOUR_START*60)*pxPerMin;
+                        const height=Math.max(34,(ev.end-ev.start)*pxPerMin);
+                        const width=100/totalLanes;
+                        const left=ev.lane*width;
+                        return (
+                          <div key={i} onClick={()=>openEvent(ev)}
+                            style={{position:"absolute",top,height,left:`calc(${left}% + 2px)`,width:`calc(${width}% - 4px)`,background:typeColor(ev.type),color:"#fff",borderRadius:6,padding:"3px 6px",fontSize:11,overflow:"hidden",cursor:"pointer",boxShadow:"0 1px 3px rgba(0,0,0,0.15)"}}>
+                            <div style={{fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{ev.time}{ev.endTime?`–${ev.endTime}`:""} {ev.type}</div>
+                            <div style={{opacity:.9,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{ev.job.title}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Mini calendar */}
+        {fitterViewMode==="month"&&(
         <div style={{background:C.white,borderRadius:12,border:`1px solid ${C.border}`,overflow:"hidden"}}>
           <div style={{background:C.navy,padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <button onClick={()=>setViewDate(new Date(year,month-1,1))} style={{background:"none",border:"none",color:"#fff",cursor:"pointer",fontSize:18,padding:"0 4px"}}>‹</button>
@@ -4275,6 +4383,7 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
             })}
           </div>
         </div>
+        )}
       </div>
     </div>
   );
