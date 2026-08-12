@@ -50,6 +50,14 @@ A shared place for feature ideas, wherever they come from — the office, a fitt
 - Bake in estimated travel time between a fitter's consecutive appointments (based on the distance between job addresses), shown on the calendar so back-to-back bookings that aren't realistically reachable stand out.
 - **Needs a paid mapping API** (e.g. Google Distance Matrix) for real postcode-to-postcode travel times — the same kind of Google Cloud billing commitment the office previously held off on for address autocomplete. Deliberately deferred until the office is ready to commit to that cost; not started.
 
+### Fitter mobile calendar: List/Day/Month view switcher + per-fitter default view — ✅ built 2026-08-11
+- Requested by: office — 2026-08-11
+- Same idea as the desktop switcher above, adapted for the fitter mobile app (List agenda / Day hourly timeline / Month), modeled on the iOS Outlook app. Also added holding a view button for ~1s to pin it as that fitter's personal default (green tick), so the app opens straight into it next time.
+
+### Email templates: reorder + group by booking type — ✅ built 2026-08-11
+- Requested by: office — 2026-08-11
+- Settings → Email Templates now lists Survey Booked → Survey Reminder → Install Booked → Install Reminder (7-Day) → Install Reminder (1-Day) → Service Call Booked → Service Call Reminder, with a heading grouping each booking type's emails together.
+
 ---
 
 ## Resolved / not needed
