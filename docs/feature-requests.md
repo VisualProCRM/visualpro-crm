@@ -75,7 +75,10 @@ A shared place for feature ideas, wherever they come from — the office, a fitt
 - Company logo: uploaded in Settings → Company Info, shown in the sidebar and the login screen in place of the generic window icon.
 - Fitter photos: uploaded in Settings → Fitters, right next to each fitter's portal password, shown on the login screen's fitter selection list in place of the generic hard-hat icon.
 
----
+### Supplier logo uploads — ✅ built 2026-08-11
+- Requested by: office — 2026-08-11
+- Same pattern as fitter photos: an upload control next to each supplier's name in Settings → Suppliers, shown as a small icon next to the supplier name in Track Orders' Upcoming Deliveries and All Orders lists.
+- Office also asked about auto-finding a supplier's logo just from typing the company name — **not realistically possible** as a free/reliable service, since logo-lookup APIs (Clearbit, Brandfetch, etc.) work off a known domain, not a fuzzy name match; guessing the domain from a name risks pulling the wrong company's logo with no way to catch it. Offered a domain-based auto-fetch (add a Website field, logo pulls from that domain automatically) as the realistic middle ground — **office chose manual-upload only for now**, so that option is parked, not built.
 
 ## Resolved / not needed
 
