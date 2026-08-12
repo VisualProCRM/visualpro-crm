@@ -70,6 +70,11 @@ A shared place for feature ideas, wherever they come from — the office, a fitt
 - Raised by: office — 2026-08-11, while checking the sector work above
 - Sector only ever lived on the Customer record (not Jobs) and was never actually displayed anywhere day-to-day — only used in edit forms and Dashboard reporting. Now shown as a colour-coded, emoji badge (🛍️ Retail / 🔧 Trade / 🏢 Commercial) on Sales and Installation Pipeline Kanban cards, the Customer Directory detail banner, and the Customer Info panel on both Customer and Job Details tabs. Confirmed there is exactly **one** master record for sector today — the Customer row — except for the handful of known duplicate-Customer cases (see the big "Extend Deal tracking" item above), where each duplicate has its own independent value until that's fixed properly.
 
+### Company logo + fitter photo uploads — ✅ built 2026-08-11
+- Requested by: office — 2026-08-11
+- Company logo: uploaded in Settings → Company Info, shown in the sidebar and the login screen in place of the generic window icon.
+- Fitter photos: uploaded in Settings → Fitters, right next to each fitter's portal password, shown on the login screen's fitter selection list in place of the generic hard-hat icon.
+
 ---
 
 ## Resolved / not needed
