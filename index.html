@@ -2549,10 +2549,12 @@ const DEFAULT_SETTINGS = {
   companyPhone:"",
   companyEmail:"",
   companyWebsite:"",
+  companyLogo:"",
   emailTemplates:{...DEFAULT_EMAIL_TEMPLATES},
   feedbackQuestions:[...DEFAULT_FEEDBACK_QUESTIONS],
   checklistItems:[...DEFAULT_CHECKLIST_ITEMS],
   fitterPasswords:{"Tom Bailey":"glazing1","Steve Marsh":"glazing2","Dan Rees":"glazing3","Chris Wood":"glazing4"},
+  fitterPhotos:{},
 };
 
 // A plain {...s,...saved} shallow merge replaces emailTemplates wholesale rather than
@@ -2868,11 +2870,31 @@ const WebsiteEnquiryForm = ({companyName,onSubmit}) => {
 // ── FitterRow (own component so useState is at top level) ─────────────────────
 const FitterRow = ({fitter,index,pw,settings,setSettings}) => {
   const [showPw,setShowPw]=useState(false);
+  const [uploadingPhoto,setUploadingPhoto]=useState(false);
+  const photo=settings.fitterPhotos?.[fitter];
+  const handlePhoto=async(e)=>{
+    const file=e.target.files[0];
+    if(!file) return;
+    setUploadingPhoto(true);
+    try{
+      const saved=await uploadFile(file,"photos");
+      setSettings(s=>({...s,fitterPhotos:{...s.fitterPhotos,[fitter]:saved.data}}));
+    }catch(err){
+      window.alert("Failed to upload photo: "+err.message);
+    }finally{
+      setUploadingPhoto(false);
+      e.target.value="";
+    }
+  };
+  const removePhoto=()=>setSettings(s=>{
+    const newPhotos={...s.fitterPhotos}; delete newPhotos[fitter];
+    return {...s,fitterPhotos:newPhotos};
+  });
   return (
     <div style={{background:C.slateLight,borderRadius:10,padding:14,marginBottom:12}}>
       <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:10}}>
-        <div style={{width:36,height:36,borderRadius:"50%",background:C.navy,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,flexShrink:0}}>
-          {fitter?fitter.charAt(0).toUpperCase():"?"}
+        <div style={{width:36,height:36,borderRadius:"50%",background:C.navy,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,flexShrink:0,overflow:"hidden"}}>
+          {photo?<img src={photo} alt={fitter} style={{width:"100%",height:"100%",objectFit:"cover"}}/>:(fitter?fitter.charAt(0).toUpperCase():"?")}
         </div>
         <input value={fitter} onChange={e=>{
           const newName=e.target.value; const oldName=fitter;
@@ -2880,14 +2902,24 @@ const FitterRow = ({fitter,index,pw,settings,setSettings}) => {
             const newFitters=s.fitters.map((x,xi)=>xi===index?newName:x);
             const newPws={...s.fitterPasswords};
             if(oldName&&newPws[oldName]!==undefined){newPws[newName]=newPws[oldName];delete newPws[oldName];}
-            return {...s,fitters:newFitters,fitterPasswords:newPws};
+            const newPhotos={...s.fitterPhotos};
+            if(oldName&&newPhotos[oldName]!==undefined){newPhotos[newName]=newPhotos[oldName];delete newPhotos[oldName];}
+            return {...s,fitters:newFitters,fitterPasswords:newPws,fitterPhotos:newPhotos};
           });
         }} placeholder="Fitter name" style={{flex:1,border:`1px solid ${C.border}`,borderRadius:6,padding:"8px 12px",fontSize:14,outline:"none",background:C.white}}/>
         <button onClick={()=>setSettings(s=>{
           const newFitters=s.fitters.filter((_,xi)=>xi!==index);
           const newPws={...s.fitterPasswords}; delete newPws[fitter];
-          return {...s,fitters:newFitters,fitterPasswords:newPws};
+          const newPhotos={...s.fitterPhotos}; delete newPhotos[fitter];
+          return {...s,fitters:newFitters,fitterPasswords:newPws,fitterPhotos:newPhotos};
         })} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:6,padding:"6px 10px",cursor:"pointer",color:C.red,fontSize:13,flexShrink:0}}>Remove</button>
+      </div>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+        <label style={{display:"inline-flex",alignItems:"center",gap:6,cursor:uploadingPhoto?"default":"pointer",background:C.white,border:`1px dashed ${C.border}`,borderRadius:6,padding:"5px 12px",fontSize:12,color:C.slate,fontWeight:600}}>
+          📷 {uploadingPhoto?"Uploading…":photo?"Change Photo":"Add Photo"}
+          <input type="file" accept="image/*" onChange={handlePhoto} disabled={uploadingPhoto} style={{display:"none"}}/>
+        </label>
+        {photo&&<button onClick={removePhoto} style={{background:"none",border:"none",color:C.red,fontSize:12,cursor:"pointer"}}>Remove Photo</button>}
       </div>
       <div>
         <label style={{fontSize:11,fontWeight:700,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",display:"block",marginBottom:6}}>🔒 Portal Password</label>
@@ -2912,8 +2944,23 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
   // idle | saving | saved | error
   const [saveStatus,setSaveStatus]=useState("idle");
   const skipNextSave=useRef(true); // don't fire a save for the initial load from the API
+  const [uploadingLogo,setUploadingLogo]=useState(false);
 
   const update=(key,val)=>setSettings(s=>({...s,[key]:val}));
+  const handleLogoUpload=async(e)=>{
+    const file=e.target.files[0];
+    if(!file) return;
+    setUploadingLogo(true);
+    try{
+      const saved=await uploadFile(file,"photos");
+      update("companyLogo",saved.data);
+    }catch(err){
+      window.alert("Failed to upload logo: "+err.message);
+    }finally{
+      setUploadingLogo(false);
+      e.target.value="";
+    }
+  };
   const updateTemplate=(key,field,val)=>setSettings(s=>({...s,emailTemplates:{...s.emailTemplates,[key]:{...s.emailTemplates[key],[field]:val}}}));
 
   const addPerson=(key)=>setSettings(s=>({...s,[key]:[...s[key],""]}));
@@ -3066,6 +3113,22 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
             <h3 style={{margin:"0 0 6px",fontSize:18,color:C.navy,fontWeight:800}}>🏠 Company Info</h3>
             <p style={{margin:"0 0 20px",fontSize:13,color:C.slate}}>This information is used to auto-fill your email templates.</p>
             <div style={{display:"flex",flexDirection:"column",gap:14}}>
+              <div>
+                <label style={{fontSize:12,fontWeight:600,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",display:"block",marginBottom:8}}>Company Logo</label>
+                <div style={{display:"flex",alignItems:"center",gap:14}}>
+                  <div style={{width:64,height:64,borderRadius:10,background:C.navy,display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,flexShrink:0,overflow:"hidden"}}>
+                    {settings.companyLogo?<img src={settings.companyLogo} alt="Company logo" style={{width:"100%",height:"100%",objectFit:"contain"}}/>:"🪟"}
+                  </div>
+                  <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                    <label style={{display:"inline-flex",alignItems:"center",gap:6,cursor:uploadingLogo?"default":"pointer",background:C.slateLight,border:`1px dashed ${C.border}`,borderRadius:6,padding:"7px 14px",fontSize:13,color:C.slate,fontWeight:600,width:"fit-content"}}>
+                      📷 {uploadingLogo?"Uploading…":settings.companyLogo?"Change Logo":"Upload Logo"}
+                      <input type="file" accept="image/*" onChange={handleLogoUpload} disabled={uploadingLogo} style={{display:"none"}}/>
+                    </label>
+                    {settings.companyLogo&&<button onClick={()=>update("companyLogo","")} style={{background:"none",border:"none",color:C.red,fontSize:12,cursor:"pointer",textAlign:"left",padding:0}}>Remove Logo</button>}
+                  </div>
+                </div>
+                <p style={{margin:"8px 0 0",fontSize:12,color:C.muted}}>Shown in the sidebar and on the login screen. A square image works best.</p>
+              </div>
               <Inp label="Company Name" value={settings.companyName} onChange={e=>update("companyName",e.target.value)} placeholder="e.g. ABC Glazing Ltd"/>
               <Inp label="Company Phone" value={settings.companyPhone} onChange={e=>update("companyPhone",e.target.value)} placeholder="e.g. 01252 123456"/>
               <Inp label="Company Email" value={settings.companyEmail} onChange={e=>update("companyEmail",e.target.value)} placeholder="e.g. info@abcglazing.co.uk"/>
@@ -5427,7 +5490,9 @@ function App() {
       <div style={{minHeight:"100vh",background:C.navy,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Inter','Segoe UI',sans-serif",padding:20}}>
         <div style={{background:C.white,borderRadius:16,width:"100%",maxWidth:400,overflow:"hidden",boxShadow:"0 24px 64px rgba(0,0,0,0.3)"}}>
           <div style={{background:C.navy,padding:"28px 24px",textAlign:"center",borderBottom:`3px solid ${C.sky}`}}>
-            <div style={{fontSize:40,marginBottom:8}}>🪟</div>
+            {settings.companyLogo
+              ?<img src={settings.companyLogo} alt={settings.companyName||"Company logo"} style={{width:56,height:56,objectFit:"contain",marginBottom:8,borderRadius:8}}/>
+              :<div style={{fontSize:40,marginBottom:8}}>🪟</div>}
             <div style={{color:"#fff",fontWeight:800,fontSize:22}}>{settings.companyName||"VisualPro"}</div>
             <div style={{color:"rgba(255,255,255,0.5)",fontSize:13,marginTop:4}}>Select your name to continue</div>
           </div>
@@ -5450,12 +5515,15 @@ function App() {
             </div>
             {settings.fitters.map(f=>{
               const hasPw=!!(settings.fitterPasswords?.[f]);
+              const photo=settings.fitterPhotos?.[f];
               return (
                 <button key={f} onClick={()=>{setSelectedFitter(f);setPwInput("");setPwError(false);}}
                   style={{display:"flex",alignItems:"center",gap:14,padding:"14px 16px",borderRadius:10,border:`1px solid ${C.border}`,background:C.white,cursor:"pointer",textAlign:"left"}}
                   onMouseEnter={e=>e.currentTarget.style.background=C.slateLight}
                   onMouseLeave={e=>e.currentTarget.style.background=C.white}>
-                  <div style={{width:40,height:40,borderRadius:"50%",background:C.mint,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>👷</div>
+                  <div style={{width:40,height:40,borderRadius:"50%",background:C.mint,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0,overflow:"hidden"}}>
+                    {photo?<img src={photo} alt={f} style={{width:"100%",height:"100%",objectFit:"cover"}}/>:"👷"}
+                  </div>
                   <div style={{flex:1}}>
                     <div style={{fontWeight:700,fontSize:15,color:C.navy}}>{f}</div>
                     <div style={{fontSize:12,color:C.slate,marginTop:1}}>Fitter portal · {hasPw?"🔒 Password protected":"⚠️ No password set"}</div>
@@ -5512,7 +5580,9 @@ function App() {
       <div style={{width:220,background:C.navy,display:"flex",flexDirection:"column",flexShrink:0}}>
         <div style={{padding:"24px 20px 20px",borderBottom:"1px solid rgba(255,255,255,0.1)"}}>
           <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <div style={{width:32,height:32,background:C.sky,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>🪟</div>
+            <div style={{width:32,height:32,background:C.sky,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,overflow:"hidden",flexShrink:0}}>
+              {settings.companyLogo?<img src={settings.companyLogo} alt={settings.companyName||"Logo"} style={{width:"100%",height:"100%",objectFit:"cover"}}/>:"🪟"}
+            </div>
             <div>
               <div style={{color:"#fff",fontWeight:800,fontSize:15,lineHeight:1.2}}>{settings.companyName||"VisualPro"}</div>
               <div style={{color:"rgba(255,255,255,0.5)",fontSize:11}}>CRM</div>
