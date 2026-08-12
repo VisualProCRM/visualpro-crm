@@ -37,9 +37,9 @@ A shared place for feature ideas, wherever they come from — the office, a fitt
 - Requested by: office — 2026-08-07
 - Includes automatic send (like Survey/Install Booked), per-booking sent-status, and a per-template editable BCC field (above the Subject Line on every email template) so the office can see when automated emails go out.
 
-### Primary and secondary email entry on Customer records (Sales + Installation cards)
+### Primary and secondary email entry on Customer records (Sales + Installation cards) — ✅ built 2026-08-11
 - Requested by: office — 2026-08-10
-- Ability to add both a primary and secondary email address under the Customer record, shown/usable on both Sales Pipeline and Installation Pipeline cards. Needs a design pass on which address automated emails (survey/install/service call booked, reminders) send to when both are set.
+- Secondary email is editable everywhere the primary is (Sales Pipeline card, Customer Directory add/edit, new-enquiry form) and shown alongside it in the Customer Info panels and Directory banner. Decision confirmed: all automated emails (survey/install/service call booked, all reminders) send to **both** addresses when both are set.
 
 ### Fitter Calendar: Week/Working Week/Month view switcher with hourly grid — ✅ built 2026-08-11
 - Requested by: office — 2026-08-11
@@ -58,9 +58,13 @@ A shared place for feature ideas, wherever they come from — the office, a fitt
 - Requested by: office — 2026-08-11
 - Settings → Email Templates now lists Survey Booked → Survey Reminder → Install Booked → Install Reminder (7-Day) → Install Reminder (1-Day) → Service Call Booked → Service Call Reminder, with a heading grouping each booking type's emails together.
 
-### Customer Directory: sector mini-dashboard in the empty right-hand panel
+### Customer Directory: sector mini-dashboard in the empty right-hand panel — ✅ built 2026-08-11
 - Requested by: office — 2026-08-11
-- Right now the Customers page's detail panel is just a "Select a customer to view their details" placeholder with a lot of unused space until you click into someone. Replace/fill that empty state with a small dashboard showing customer counts by sector (Retail / Trade / Commercial) — sector categorization and the equivalent "By Sector" breakdown already exist on the main Dashboard, so this is mostly about surfacing the same stats here rather than building new computation.
+- The empty-state panel (shown before selecting a customer) now shows a customer-count tile per sector (Retail / Trade / Commercial), styled with the same badges/colours used elsewhere.
+
+### Customer sector display shown inconsistently (why + fixed) — ✅ built 2026-08-11
+- Raised by: office — 2026-08-11, while checking the sector work above
+- Sector only ever lived on the Customer record (not Jobs) and was never actually displayed anywhere day-to-day — only used in edit forms and Dashboard reporting. Now shown as a colour-coded, emoji badge (🛍️ Retail / 🔧 Trade / 🏢 Commercial) on Sales and Installation Pipeline Kanban cards, the Customer Directory detail banner, and the Customer Info panel on both Customer and Job Details tabs. Confirmed there is exactly **one** master record for sector today — the Customer row — except for the handful of known duplicate-Customer cases (see the big "Extend Deal tracking" item above), where each duplicate has its own independent value until that's fixed properly.
 
 ---
 
