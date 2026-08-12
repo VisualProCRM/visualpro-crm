@@ -43,11 +43,12 @@ function fillTemplate(tmpl, vars) {
   );
 }
 
-// BCCs to the sending template's own bcc field (if set) — configured per-template in
-// Settings, not a single global address, so different templates can go to different
-// inboxes if needed. Lets the office see when a send actually went out.
-function buildRecipients(recipient, tmpl) {
-  const recipients = { to: [{ address: recipient }] };
+// Sends to every address in recipientList (a customer's primary + optional secondary
+// email — both get every automated email, per the office's preference) and BCCs the
+// sending template's own bcc field (if set) — configured per-template in Settings, not a
+// single global address, so different templates can go to different inboxes if needed.
+function buildRecipients(recipientList, tmpl) {
+  const recipients = { to: recipientList.map((address) => ({ address })) };
   if (tmpl.bcc && tmpl.bcc.trim()) {
     recipients.bcc = [{ address: tmpl.bcc.trim() }];
   }
@@ -184,8 +185,8 @@ async function sendJobReminder({ pool, jobId, reminderKey, testEmailOverride }) 
   if (!customerResult.recordset.length) throw new Error('Customer not found');
   const customer = JSON.parse(customerResult.recordset[0].DataJson);
 
-  const recipient = testEmailOverride || customer.email;
-  if (!recipient) throw new Error('No recipient email available');
+  const recipientList = testEmailOverride ? [testEmailOverride] : [customer.email, customer.email2].filter(Boolean);
+  if (!recipientList.length) throw new Error('No recipient email available');
 
   const settingsResult = await pool.request().query('SELECT * FROM dbo.Settings WHERE TenantId = 1');
   const settings = settingsResult.recordset.length ? JSON.parse(settingsResult.recordset[0].DataJson) : {};
@@ -215,7 +216,7 @@ async function sendJobReminder({ pool, jobId, reminderKey, testEmailOverride }) 
   const poller = await emailClient.beginSend({
     senderAddress,
     content: { subject, plainText },
-    recipients: buildRecipients(recipient, tmpl),
+    recipients: buildRecipients(recipientList, tmpl),
   });
   const result = await poller.pollUntilDone();
 
@@ -234,7 +235,7 @@ async function sendJobReminder({ pool, jobId, reminderKey, testEmailOverride }) 
       .query('UPDATE dbo.Jobs SET DataJson = @DataJson, UpdatedAt = SYSUTCDATETIME() WHERE Id = @Id');
   }
 
-  return { sent: true, to: recipient, senderAddress, messageId: result.id };
+  return { sent: true, to: recipientList.join(', '), senderAddress, messageId: result.id };
 }
 
 // Sends the "survey booked" email for a job. Called from jobs.js's update handler the
@@ -254,8 +255,8 @@ async function sendSurveyBookedEmail({ pool, jobId, testEmailOverride }) {
   if (!customerResult.recordset.length) throw new Error('Customer not found');
   const customer = JSON.parse(customerResult.recordset[0].DataJson);
 
-  const recipient = testEmailOverride || customer.email;
-  if (!recipient) throw new Error('No recipient email available');
+  const recipientList = testEmailOverride ? [testEmailOverride] : [customer.email, customer.email2].filter(Boolean);
+  if (!recipientList.length) throw new Error('No recipient email available');
 
   const settingsResult = await pool.request().query('SELECT * FROM dbo.Settings WHERE TenantId = 1');
   const settings = settingsResult.recordset.length ? JSON.parse(settingsResult.recordset[0].DataJson) : {};
@@ -283,7 +284,7 @@ async function sendSurveyBookedEmail({ pool, jobId, testEmailOverride }) {
   const poller = await emailClient.beginSend({
     senderAddress,
     content: { subject, plainText },
-    recipients: buildRecipients(recipient, tmpl),
+    recipients: buildRecipients(recipientList, tmpl),
   });
   const result = await poller.pollUntilDone();
 
@@ -298,7 +299,7 @@ async function sendSurveyBookedEmail({ pool, jobId, testEmailOverride }) {
       .query('UPDATE dbo.Jobs SET DataJson = @DataJson, UpdatedAt = SYSUTCDATETIME() WHERE Id = @Id');
   }
 
-  return { sent: true, to: recipient, senderAddress, messageId: result.id };
+  return { sent: true, to: recipientList.join(', '), senderAddress, messageId: result.id };
 }
 
 // Sends the "service call booked" email for one specific booking on a job. Unlike Survey
@@ -323,8 +324,8 @@ async function sendServiceCallBookedEmail({ pool, jobId, bookingId, testEmailOve
   if (!customerResult.recordset.length) throw new Error('Customer not found');
   const customer = JSON.parse(customerResult.recordset[0].DataJson);
 
-  const recipient = testEmailOverride || customer.email;
-  if (!recipient) throw new Error('No recipient email available');
+  const recipientList = testEmailOverride ? [testEmailOverride] : [customer.email, customer.email2].filter(Boolean);
+  if (!recipientList.length) throw new Error('No recipient email available');
 
   const settingsResult = await pool.request().query('SELECT * FROM dbo.Settings WHERE TenantId = 1');
   const settings = settingsResult.recordset.length ? JSON.parse(settingsResult.recordset[0].DataJson) : {};
@@ -351,7 +352,7 @@ async function sendServiceCallBookedEmail({ pool, jobId, bookingId, testEmailOve
   const poller = await emailClient.beginSend({
     senderAddress,
     content: { subject, plainText },
-    recipients: buildRecipients(recipient, tmpl),
+    recipients: buildRecipients(recipientList, tmpl),
   });
   const result = await poller.pollUntilDone();
 
@@ -366,7 +367,7 @@ async function sendServiceCallBookedEmail({ pool, jobId, bookingId, testEmailOve
       .query('UPDATE dbo.Jobs SET DataJson = @DataJson, UpdatedAt = SYSUTCDATETIME() WHERE Id = @Id');
   }
 
-  return { sent: true, to: recipient, senderAddress, messageId: result.id };
+  return { sent: true, to: recipientList.join(', '), senderAddress, messageId: result.id };
 }
 
 // Sends the "survey reminder" email (day before) for a job. Mirrors sendSurveyBookedEmail
@@ -386,8 +387,8 @@ async function sendSurveyReminderEmail({ pool, jobId, testEmailOverride }) {
   if (!customerResult.recordset.length) throw new Error('Customer not found');
   const customer = JSON.parse(customerResult.recordset[0].DataJson);
 
-  const recipient = testEmailOverride || customer.email;
-  if (!recipient) throw new Error('No recipient email available');
+  const recipientList = testEmailOverride ? [testEmailOverride] : [customer.email, customer.email2].filter(Boolean);
+  if (!recipientList.length) throw new Error('No recipient email available');
 
   const settingsResult = await pool.request().query('SELECT * FROM dbo.Settings WHERE TenantId = 1');
   const settings = settingsResult.recordset.length ? JSON.parse(settingsResult.recordset[0].DataJson) : {};
@@ -415,7 +416,7 @@ async function sendSurveyReminderEmail({ pool, jobId, testEmailOverride }) {
   const poller = await emailClient.beginSend({
     senderAddress,
     content: { subject, plainText },
-    recipients: buildRecipients(recipient, tmpl),
+    recipients: buildRecipients(recipientList, tmpl),
   });
   const result = await poller.pollUntilDone();
 
@@ -430,7 +431,7 @@ async function sendSurveyReminderEmail({ pool, jobId, testEmailOverride }) {
       .query('UPDATE dbo.Jobs SET DataJson = @DataJson, UpdatedAt = SYSUTCDATETIME() WHERE Id = @Id');
   }
 
-  return { sent: true, to: recipient, senderAddress, messageId: result.id };
+  return { sent: true, to: recipientList.join(', '), senderAddress, messageId: result.id };
 }
 
 // Sends the "service call reminder" email (day before) for one specific booking on a job.
@@ -453,8 +454,8 @@ async function sendServiceCallReminderEmail({ pool, jobId, bookingId, testEmailO
   if (!customerResult.recordset.length) throw new Error('Customer not found');
   const customer = JSON.parse(customerResult.recordset[0].DataJson);
 
-  const recipient = testEmailOverride || customer.email;
-  if (!recipient) throw new Error('No recipient email available');
+  const recipientList = testEmailOverride ? [testEmailOverride] : [customer.email, customer.email2].filter(Boolean);
+  if (!recipientList.length) throw new Error('No recipient email available');
 
   const settingsResult = await pool.request().query('SELECT * FROM dbo.Settings WHERE TenantId = 1');
   const settings = settingsResult.recordset.length ? JSON.parse(settingsResult.recordset[0].DataJson) : {};
@@ -481,7 +482,7 @@ async function sendServiceCallReminderEmail({ pool, jobId, bookingId, testEmailO
   const poller = await emailClient.beginSend({
     senderAddress,
     content: { subject, plainText },
-    recipients: buildRecipients(recipient, tmpl),
+    recipients: buildRecipients(recipientList, tmpl),
   });
   const result = await poller.pollUntilDone();
 
@@ -496,7 +497,7 @@ async function sendServiceCallReminderEmail({ pool, jobId, bookingId, testEmailO
       .query('UPDATE dbo.Jobs SET DataJson = @DataJson, UpdatedAt = SYSUTCDATETIME() WHERE Id = @Id');
   }
 
-  return { sent: true, to: recipient, senderAddress, messageId: result.id };
+  return { sent: true, to: recipientList.join(', '), senderAddress, messageId: result.id };
 }
 
 module.exports = {

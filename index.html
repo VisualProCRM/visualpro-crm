@@ -470,7 +470,7 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
               {/* Full customer info panel */}
               <div style={{background:C.slateLight,borderRadius:8,padding:12}}>
                 <div style={{fontSize:12,fontWeight:600,color:C.slate,marginBottom:8}}>CUSTOMER INFO</div>
-                {customer&&[["📧",customer.email],["📞",customer.phone],["🔗 Source",customer.source],["🏷️ Sector",customer.sector],["💰 Quote",totalQuoteValue(data)?`£${totalQuoteValue(data).toLocaleString()}`:"—"],["📊 Margin",totalQuoteValue(data)&&totalQuoteCost(data)?(()=>{const m=calcMargin(totalQuoteValue(data),totalQuoteCost(data));return m?`${m.pct}% (£${m.profit.toLocaleString()})`:"—"})():"—"]].map(([icon,val])=>(
+                {customer&&[["📧",customer.email],...(customer.email2?[["📧 Secondary",customer.email2]]:[]),["📞",customer.phone],["🔗 Source",customer.source],["🏷️ Sector",customer.sector],["💰 Quote",totalQuoteValue(data)?`£${totalQuoteValue(data).toLocaleString()}`:"—"],["📊 Margin",totalQuoteValue(data)&&totalQuoteCost(data)?(()=>{const m=calcMargin(totalQuoteValue(data),totalQuoteCost(data));return m?`${m.pct}% (£${m.profit.toLocaleString()})`:"—"})():"—"]].map(([icon,val])=>(
                   <div key={icon} style={{fontSize:13,color:C.text,padding:"5px 0",borderBottom:`1px solid ${C.border}`,display:"flex",gap:8,alignItems:"center"}}>
                     <span style={{color:C.slate,minWidth:90,flexShrink:0}}>{icon}</span>
                     {icon==="🏷️ Sector"&&val&&SECTOR_META[val]?(
@@ -611,7 +611,7 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
               {/* Customer info panel — mirrors the read-only summary shown on a Job's Details tab, for visual consistency between the Sales and Installation Pipeline cards */}
               <div style={{background:C.slateLight,borderRadius:8,padding:12}}>
                 <div style={{fontSize:12,fontWeight:600,color:C.slate,marginBottom:8}}>CUSTOMER INFO</div>
-                {[["📧",data.email],["📞",data.phone],["🔗 Source",data.source],["🏷️ Sector",data.sector],["💰 Quote",totalQuoteValue(data)?`£${totalQuoteValue(data).toLocaleString()}`:"—"],["📊 Margin",totalQuoteValue(data)&&totalQuoteCost(data)?(()=>{const m=calcMargin(totalQuoteValue(data),totalQuoteCost(data));return m?`${m.pct}% (£${m.profit.toLocaleString()})`:"—"})():"—"]].map(([icon,val])=>(
+                {[["📧",data.email],...(data.email2?[["📧 Secondary",data.email2]]:[]),["📞",data.phone],["🔗 Source",data.source],["🏷️ Sector",data.sector],["💰 Quote",totalQuoteValue(data)?`£${totalQuoteValue(data).toLocaleString()}`:"—"],["📊 Margin",totalQuoteValue(data)&&totalQuoteCost(data)?(()=>{const m=calcMargin(totalQuoteValue(data),totalQuoteCost(data));return m?`${m.pct}% (£${m.profit.toLocaleString()})`:"—"})():"—"]].map(([icon,val])=>(
                   <div key={icon} style={{fontSize:13,color:C.text,padding:"5px 0",borderBottom:`1px solid ${C.border}`,display:"flex",gap:8,alignItems:"center"}}>
                     <span style={{color:C.slate,minWidth:90,flexShrink:0}}>{icon}</span>
                     {icon==="🏷️ Sector"&&val&&SECTOR_META[val]?(
@@ -637,6 +637,7 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
                 <Inp label="Email" type="email" value={data.email||""} onChange={e=>setData(d=>({...d,email:e.target.value}))}/>
                 <Inp label="Phone" value={data.phone||""} onChange={e=>setData(d=>({...d,phone:e.target.value}))}/>
               </div>
+              <Inp label="Secondary Email (optional)" type="email" value={data.email2||""} onChange={e=>setData(d=>({...d,email2:e.target.value}))} placeholder="e.g. a partner or business contact — also gets every automated email"/>
               <Inp label="Address" value={data.address||""} onChange={e=>setData(d=>({...d,address:e.target.value}))}/>
               {/* Google Maps embed */}
               {data.address&&(
@@ -1688,7 +1689,7 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
 
 // ── Customer / Lead Form (add new) ────────────────────────────────────────────
 const CustomerForm = ({initial={},onSave,onCancel}) => {
-  const [form,setForm]=useState({name:"",email:"",phone:"",address:"",source:"Website",sector:"",stage:"New Enquiry",notes:"",windowcad:"",quoteValue:"",quoteCost:"",installationValue:"",installationCost:"",...initial});
+  const [form,setForm]=useState({name:"",email:"",email2:"",phone:"",address:"",source:"Website",sector:"",stage:"New Enquiry",notes:"",windowcad:"",quoteValue:"",quoteCost:"",installationValue:"",installationCost:"",...initial});
   const set=k=>e=>setForm(f=>({...f,[k]:e.target.value}));
   const margin=calcMargin(totalQuoteValue(form),totalQuoteCost(form));
   return (
@@ -1698,6 +1699,7 @@ const CustomerForm = ({initial={},onSave,onCancel}) => {
         <Inp label="Email" type="email" value={form.email} onChange={set("email")}/>
         <Inp label="Phone" value={form.phone} onChange={set("phone")}/>
       </div>
+      <Inp label="Secondary Email (optional)" type="email" value={form.email2} onChange={set("email2")} placeholder="e.g. a partner or business contact — also gets every automated email"/>
       <Inp label="Address" value={form.address} onChange={set("address")}/>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
         <Sel label="Pipeline Stage" value={form.stage} onChange={set("stage")}>{LEAD_STAGES.map(s=><option key={s}>{s}</option>)}</Sel>
@@ -4762,6 +4764,14 @@ const CustomerDirectoryPage = ({customers,setCustomers,jobs,setJobs,settings,onN
   const [selectedJob,setSelectedJob]=useState(null);
   const [addJobModal,setAddJobModal]=useState(false);
 
+  // Sector counts for the empty-state mini dashboard — reuses the same SECTOR_META already
+  // used for the badges shown elsewhere, so this stays visually consistent with them.
+  const sectorCounts=useMemo(()=>{
+    const counts={}; SECTORS.forEach(s=>counts[s]=0);
+    customers.forEach(c=>{ if(c.sector&&counts[c.sector]!==undefined) counts[c.sector]++; });
+    return counts;
+  },[customers]);
+
   // Auto-select from global search
   useState(()=>{
     if(window._gsCustId){
@@ -4859,10 +4869,24 @@ const CustomerDirectoryPage = ({customers,setCustomers,jobs,setJobs,settings,onN
 
       {/* Right — customer detail */}
       {!cust&&(
-        <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",color:C.muted,flexDirection:"column",gap:12}}>
-          <span style={{fontSize:48}}>🏢</span>
-          <div style={{fontSize:16,fontWeight:600}}>Select a customer to view their details</div>
-          <div style={{fontSize:13}}>Or add a new customer using the button on the left</div>
+        <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",color:C.muted,gap:32,padding:24}}>
+          <div>
+            <div style={{fontSize:12,fontWeight:700,color:C.slate,textTransform:"uppercase",letterSpacing:"0.06em",textAlign:"center",marginBottom:14}}>Customers by Sector</div>
+            <div style={{display:"flex",gap:16,flexWrap:"wrap",justifyContent:"center"}}>
+              {SECTORS.map(s=>(
+                <div key={s} style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:12,padding:"18px 26px",textAlign:"center",minWidth:110}}>
+                  <div style={{fontSize:26,marginBottom:4}}>{SECTOR_META[s].icon}</div>
+                  <div style={{fontSize:26,fontWeight:800,color:SECTOR_META[s].text}}>{sectorCounts[s]}</div>
+                  <div style={{fontSize:12,color:C.slate,fontWeight:600,marginTop:2}}>{s}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:12}}>
+            <span style={{fontSize:48}}>🏢</span>
+            <div style={{fontSize:16,fontWeight:600}}>Select a customer to view their details</div>
+            <div style={{fontSize:13}}>Or add a new customer using the button on the left</div>
+          </div>
         </div>
       )}
 
@@ -4882,6 +4906,7 @@ const CustomerDirectoryPage = ({customers,setCustomers,jobs,setJobs,settings,onN
                 <div style={{display:"flex",gap:16,flexWrap:"wrap",fontSize:13,opacity:.85}}>
                   {cust.phone&&<span>📞 {cust.phone}</span>}
                   {cust.email&&<span>📧 {cust.email}</span>}
+                  {cust.email2&&<span>📧 {cust.email2} <span style={{opacity:.6}}>(secondary)</span></span>}
                 </div>
                 {cust.address&&<div style={{fontSize:13,opacity:.75,marginTop:4}}>📍 {cust.address}</div>}
               </div>
@@ -5042,9 +5067,9 @@ const CustomerDirectoryPage = ({customers,setCustomers,jobs,setJobs,settings,onN
 const CustomerDirectoryForm = ({initial={},onSave,onCancel}) => {
   const [type,setType]=useState(initial.type||"customer");
   const [form,setForm]=useState({
-    name:"",email:"",phone:"",address:"",source:"Website",notes:"",
+    name:"",email:"",email2:"",phone:"",address:"",source:"Website",notes:"",
     // Company extras
-    companyName:"",companyPhone:"",companyEmail:"",companyAddress:"",
+    companyName:"",companyPhone:"",companyEmail:"",companyEmail2:"",companyAddress:"",
     companyWebsite:"",companyVat:"",companyReg:"",
     contacts:[{name:"",role:"",phone:"",email:""}],
     ...initial,
@@ -5065,6 +5090,7 @@ const CustomerDirectoryForm = ({initial={},onSave,onCancel}) => {
       name:type==="company"?form.companyName:form.name,
       phone:type==="company"?form.companyPhone:form.phone,
       email:type==="company"?form.companyEmail:form.email,
+      email2:type==="company"?form.companyEmail2:form.email2,
       address:type==="company"?form.companyAddress:form.address,
     });
   };
@@ -5092,6 +5118,7 @@ const CustomerDirectoryForm = ({initial={},onSave,onCancel}) => {
             <Inp label="Phone" value={form.phone||""} onChange={set("phone")} placeholder="07700 000000"/>
             <Inp label="Email" type="email" value={form.email||""} onChange={set("email")} placeholder="john@email.com"/>
           </div>
+          <Inp label="Secondary Email (optional)" type="email" value={form.email2||""} onChange={set("email2")} placeholder="e.g. a partner or business contact — also gets every automated email"/>
           <Inp label="Address" value={form.address||""} onChange={set("address")} placeholder="14 Oak Lane, Camberley, GU15 2AB"/>
           <Sel label="Lead Source" value={form.source||"Website"} onChange={set("source")}>
             {SOURCES.map(s=><option key={s}>{s}</option>)}
@@ -5116,6 +5143,7 @@ const CustomerDirectoryForm = ({initial={},onSave,onCancel}) => {
                 <Inp label="Company Phone" value={form.companyPhone||""} onChange={set("companyPhone")} placeholder="01252 000000"/>
                 <Inp label="Company Email" type="email" value={form.companyEmail||""} onChange={set("companyEmail")} placeholder="info@smithbuilders.co.uk"/>
               </div>
+              <Inp label="Secondary Email (optional)" type="email" value={form.companyEmail2||""} onChange={set("companyEmail2")} placeholder="e.g. a second contact at the company — also gets every automated email"/>
               <Inp label="Company Address" value={form.companyAddress||""} onChange={set("companyAddress")} placeholder="Unit 4, Business Park, Farnborough, GU14 0AA"/>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
                 <Inp label="Website" value={form.companyWebsite||""} onChange={set("companyWebsite")} placeholder="www.smithbuilders.co.uk"/>
