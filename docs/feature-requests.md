@@ -58,6 +58,10 @@ A shared place for feature ideas, wherever they come from — the office, a fitt
 - Requested by: office — 2026-08-11
 - Settings → Email Templates now lists Survey Booked → Survey Reminder → Install Booked → Install Reminder (7-Day) → Install Reminder (1-Day) → Service Call Booked → Service Call Reminder, with a heading grouping each booking type's emails together.
 
+### Customer Directory: sector mini-dashboard in the empty right-hand panel
+- Requested by: office — 2026-08-11
+- Right now the Customers page's detail panel is just a "Select a customer to view their details" placeholder with a lot of unused space until you click into someone. Replace/fill that empty state with a small dashboard showing customer counts by sector (Retail / Trade / Commercial) — sector categorization and the equivalent "By Sector" breakdown already exist on the main Dashboard, so this is mostly about surfacing the same stats here rather than building new computation.
+
 ---
 
 ## Resolved / not needed
