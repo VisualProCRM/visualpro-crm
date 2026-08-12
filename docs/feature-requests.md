@@ -58,6 +58,10 @@ A shared place for feature ideas, wherever they come from — the office, a fitt
 - Requested by: office — 2026-08-11
 - Settings → Email Templates now lists Survey Booked → Survey Reminder → Install Booked → Install Reminder (7-Day) → Install Reminder (1-Day) → Service Call Booked → Service Call Reminder, with a heading grouping each booking type's emails together.
 
+### Track Orders: same Working Week/Week/Month view switcher as the Fitter Calendar — ✅ built 2026-08-11
+- Requested by: office — 2026-08-11
+- Month view unchanged; the new Week/Working Week views show each day as a column of stacked delivery badges rather than an hourly grid, since deliveries only ever have a date, not a time-of-day. The summary row at the top (job card/manual counts, save status, Add Delivery) was kept as-is.
+
 ### Customer Directory: sector mini-dashboard in the empty right-hand panel — ✅ built 2026-08-11
 - Requested by: office — 2026-08-11
 - The empty-state panel (shown before selecting a customer) now shows a customer-count tile per sector (Retail / Trade / Commercial), styled with the same badges/colours used elsewhere.
