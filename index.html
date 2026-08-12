@@ -45,9 +45,9 @@ const COMPLETED_STAGE = "Job Completed ✓";
 const SOURCES       = ["Website","Referral","Checkatrade","Google Ads","Facebook","Flyer","Other"];
 const SECTORS       = ["Retail","Trade","Commercial"];
 const SECTOR_META = {
-  Retail:{bg:"#EFF6FF",text:"#1D4ED8"},
-  Trade:{bg:"#FFF7ED",text:"#C2410C"},
-  Commercial:{bg:"#F5F3FF",text:"#6D28D9"},
+  Retail:{bg:"#EFF6FF",text:"#1D4ED8",icon:"🛍️"},
+  Trade:{bg:"#FFF7ED",text:"#C2410C",icon:"🔧"},
+  Commercial:{bg:"#F5F3FF",text:"#6D28D9",icon:"🏢"},
 };
 const PRODUCT_TYPES = ["Casement Windows","Sash Windows","French Doors","Bi-fold Doors","Patio Doors","Composite Door","Roof Lantern","Conservatory","Other"];
 const DEFAULT_FITTERS = ["Tom Bailey","Steve Marsh","Dan Rees","Chris Wood"];
@@ -471,9 +471,13 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
               <div style={{background:C.slateLight,borderRadius:8,padding:12}}>
                 <div style={{fontSize:12,fontWeight:600,color:C.slate,marginBottom:8}}>CUSTOMER INFO</div>
                 {customer&&[["📧",customer.email],["📞",customer.phone],["🔗 Source",customer.source],["🏷️ Sector",customer.sector],["💰 Quote",totalQuoteValue(data)?`£${totalQuoteValue(data).toLocaleString()}`:"—"],["📊 Margin",totalQuoteValue(data)&&totalQuoteCost(data)?(()=>{const m=calcMargin(totalQuoteValue(data),totalQuoteCost(data));return m?`${m.pct}% (£${m.profit.toLocaleString()})`:"—"})():"—"]].map(([icon,val])=>(
-                  <div key={icon} style={{fontSize:13,color:C.text,padding:"5px 0",borderBottom:`1px solid ${C.border}`,display:"flex",gap:8}}>
+                  <div key={icon} style={{fontSize:13,color:C.text,padding:"5px 0",borderBottom:`1px solid ${C.border}`,display:"flex",gap:8,alignItems:"center"}}>
                     <span style={{color:C.slate,minWidth:90,flexShrink:0}}>{icon}</span>
-                    <span style={{fontWeight:500}}>{val||"—"}</span>
+                    {icon==="🏷️ Sector"&&val&&SECTOR_META[val]?(
+                      <span style={{fontWeight:700,fontSize:12,background:SECTOR_META[val].bg,color:SECTOR_META[val].text,padding:"3px 10px",borderRadius:10}}>{SECTOR_META[val].icon} {val}</span>
+                    ):(
+                      <span style={{fontWeight:500}}>{val||"—"}</span>
+                    )}
                   </div>
                 ))}
                 {/* Address with map link */}
@@ -608,9 +612,13 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
               <div style={{background:C.slateLight,borderRadius:8,padding:12}}>
                 <div style={{fontSize:12,fontWeight:600,color:C.slate,marginBottom:8}}>CUSTOMER INFO</div>
                 {[["📧",data.email],["📞",data.phone],["🔗 Source",data.source],["🏷️ Sector",data.sector],["💰 Quote",totalQuoteValue(data)?`£${totalQuoteValue(data).toLocaleString()}`:"—"],["📊 Margin",totalQuoteValue(data)&&totalQuoteCost(data)?(()=>{const m=calcMargin(totalQuoteValue(data),totalQuoteCost(data));return m?`${m.pct}% (£${m.profit.toLocaleString()})`:"—"})():"—"]].map(([icon,val])=>(
-                  <div key={icon} style={{fontSize:13,color:C.text,padding:"5px 0",borderBottom:`1px solid ${C.border}`,display:"flex",gap:8}}>
+                  <div key={icon} style={{fontSize:13,color:C.text,padding:"5px 0",borderBottom:`1px solid ${C.border}`,display:"flex",gap:8,alignItems:"center"}}>
                     <span style={{color:C.slate,minWidth:90,flexShrink:0}}>{icon}</span>
-                    <span style={{fontWeight:500}}>{val||"—"}</span>
+                    {icon==="🏷️ Sector"&&val&&SECTOR_META[val]?(
+                      <span style={{fontWeight:700,fontSize:12,background:SECTOR_META[val].bg,color:SECTOR_META[val].text,padding:"3px 10px",borderRadius:10}}>{SECTOR_META[val].icon} {val}</span>
+                    ):(
+                      <span style={{fontWeight:500}}>{val||"—"}</span>
+                    )}
                   </div>
                 ))}
                 {data.address&&(
@@ -2018,7 +2026,7 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
           <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
             <span style={{fontSize:10,background:C.slateLight,color:C.slate,padding:"2px 7px",borderRadius:10,fontWeight:500}}>{c.source}</span>
             {c.sector&&SECTOR_META[c.sector]&&(
-              <span style={{fontSize:10,background:SECTOR_META[c.sector].bg,color:SECTOR_META[c.sector].text,padding:"2px 7px",borderRadius:10,fontWeight:700}}>{c.sector}</span>
+              <span style={{fontSize:10,background:SECTOR_META[c.sector].bg,color:SECTOR_META[c.sector].text,padding:"2px 7px",borderRadius:10,fontWeight:700}}>{SECTOR_META[c.sector].icon} {c.sector}</span>
             )}
           </div>
           {c.tabs?.quote?.expectedSaleDate?(
@@ -2128,7 +2136,7 @@ const InstallPipelinePage = ({jobs,setJobs,customers,settings}) => {
         <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginBottom:3}}>
           <div style={{fontSize:12,color:C.sky,fontWeight:600}}>{customerName(job.customerId)}</div>
           {cust?.sector&&SECTOR_META[cust.sector]&&(
-            <span style={{fontSize:10,background:SECTOR_META[cust.sector].bg,color:SECTOR_META[cust.sector].text,padding:"2px 7px",borderRadius:10,fontWeight:700}}>{cust.sector}</span>
+            <span style={{fontSize:10,background:SECTOR_META[cust.sector].bg,color:SECTOR_META[cust.sector].text,padding:"2px 7px",borderRadius:10,fontWeight:700}}>{SECTOR_META[cust.sector].icon} {cust.sector}</span>
           )}
         </div>
         {cust?.phone&&<div style={{fontSize:12,color:C.slate,marginBottom:3}}>{cust.phone}</div>}
@@ -4868,7 +4876,7 @@ const CustomerDirectoryPage = ({customers,setCustomers,jobs,setJobs,settings,onN
                 <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
                   <div style={{fontSize:22,fontWeight:800}}>{cust.name}</div>
                   {cust.sector&&SECTOR_META[cust.sector]&&(
-                    <span style={{background:SECTOR_META[cust.sector].bg,color:SECTOR_META[cust.sector].text,fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:10}}>{cust.sector}</span>
+                    <span style={{background:SECTOR_META[cust.sector].bg,color:SECTOR_META[cust.sector].text,fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:10}}>{SECTOR_META[cust.sector].icon} {cust.sector}</span>
                   )}
                 </div>
                 <div style={{display:"flex",gap:16,flexWrap:"wrap",fontSize:13,opacity:.85}}>
