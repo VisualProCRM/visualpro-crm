@@ -2555,6 +2555,7 @@ const DEFAULT_SETTINGS = {
   checklistItems:[...DEFAULT_CHECKLIST_ITEMS],
   fitterPasswords:{"Tom Bailey":"glazing1","Steve Marsh":"glazing2","Dan Rees":"glazing3","Chris Wood":"glazing4"},
   fitterPhotos:{},
+  supplierLogos:{},
 };
 
 // A plain {...s,...saved} shallow merge replaces emailTemplates wholesale rather than
@@ -2939,6 +2940,56 @@ const FitterRow = ({fitter,index,pw,settings,setSettings}) => {
     </div>
   );
 };
+
+// ── SupplierRow (own component so useState is at top level) ───────────────────
+const SupplierRow = ({supplier,index,settings,setSettings}) => {
+  const [uploadingLogo,setUploadingLogo]=useState(false);
+  const logo=settings.supplierLogos?.[supplier];
+  const handleLogo=async(e)=>{
+    const file=e.target.files[0];
+    if(!file) return;
+    setUploadingLogo(true);
+    try{
+      const saved=await uploadFile(file,"photos");
+      setSettings(s=>({...s,supplierLogos:{...s.supplierLogos,[supplier]:saved.data}}));
+    }catch(err){
+      window.alert("Failed to upload logo: "+err.message);
+    }finally{
+      setUploadingLogo(false);
+      e.target.value="";
+    }
+  };
+  const removeLogo=()=>setSettings(s=>{
+    const newLogos={...s.supplierLogos}; delete newLogos[supplier];
+    return {...s,supplierLogos:newLogos};
+  });
+  return (
+    <div style={{display:"flex",gap:10,marginBottom:10,alignItems:"center"}}>
+      <div style={{width:36,height:36,borderRadius:8,background:"#F0FDF4",border:`1px solid #86EFAC`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0,overflow:"hidden"}}>
+        {logo?<img src={logo} alt={supplier} style={{width:"100%",height:"100%",objectFit:"contain"}}/>:"🚚"}
+      </div>
+      <input value={supplier} onChange={e=>{
+        const newName=e.target.value; const oldName=supplier;
+        setSettings(s=>{
+          const newSuppliers=(s.suppliers||DEFAULT_SUPPLIERS).map((x,xi)=>xi===index?newName:x);
+          const newLogos={...s.supplierLogos};
+          if(oldName&&newLogos[oldName]!==undefined){newLogos[newName]=newLogos[oldName];delete newLogos[oldName];}
+          return {...s,suppliers:newSuppliers,supplierLogos:newLogos};
+        });
+      }} placeholder="Supplier name e.g. Epwin Group" style={{flex:1,border:`1px solid ${C.border}`,borderRadius:6,padding:"8px 12px",fontSize:14,outline:"none"}}/>
+      <label style={{display:"inline-flex",alignItems:"center",gap:6,cursor:uploadingLogo?"default":"pointer",background:C.slateLight,border:`1px dashed ${C.border}`,borderRadius:6,padding:"7px 10px",fontSize:12,color:C.slate,fontWeight:600,whiteSpace:"nowrap",flexShrink:0}}>
+        📷 {uploadingLogo?"Uploading…":logo?"Change":"Add Logo"}
+        <input type="file" accept="image/*" onChange={handleLogo} disabled={uploadingLogo} style={{display:"none"}}/>
+      </label>
+      {logo&&<button onClick={removeLogo} style={{background:"none",border:"none",color:C.red,fontSize:12,cursor:"pointer",flexShrink:0,whiteSpace:"nowrap"}}>Remove Logo</button>}
+      <button onClick={()=>setSettings(s=>{
+        const newSuppliers=(s.suppliers||DEFAULT_SUPPLIERS).filter((_,xi)=>xi!==index);
+        const newLogos={...s.supplierLogos}; delete newLogos[supplier];
+        return {...s,suppliers:newSuppliers,supplierLogos:newLogos};
+      })} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:6,padding:"6px 10px",cursor:"pointer",color:C.red,fontSize:13,flexShrink:0}}>Remove</button>
+    </div>
+  );
+};
 const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
   const [activeSection,setActiveSection]=useState("fitters");
   // idle | saving | saved | error
@@ -3087,13 +3138,7 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
             <h3 style={{margin:"0 0 6px",fontSize:18,color:C.navy,fontWeight:800}}>🚚 Suppliers</h3>
             <p style={{margin:"0 0 20px",fontSize:13,color:C.slate}}>Manage your supplier list. These appear in the delivery booking section on each job card so you can track which supplier each delivery is coming from.</p>
             {(settings.suppliers||DEFAULT_SUPPLIERS).map((s,i)=>(
-              <div key={i} style={{display:"flex",gap:10,marginBottom:10,alignItems:"center"}}>
-                <div style={{width:36,height:36,borderRadius:8,background:"#F0FDF4",border:`1px solid #86EFAC`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>🚚</div>
-                <input value={s} onChange={e=>setSettings(ss=>({...ss,suppliers:(ss.suppliers||DEFAULT_SUPPLIERS).map((x,xi)=>xi===i?e.target.value:x)}))}
-                  placeholder="Supplier name e.g. Epwin Group" style={{flex:1,border:`1px solid ${C.border}`,borderRadius:6,padding:"8px 12px",fontSize:14,outline:"none"}}/>
-                <button onClick={()=>setSettings(ss=>({...ss,suppliers:(ss.suppliers||DEFAULT_SUPPLIERS).filter((_,xi)=>xi!==i)}))}
-                  style={{background:"none",border:`1px solid ${C.border}`,borderRadius:6,padding:"6px 10px",cursor:"pointer",color:C.red,fontSize:13}}>Remove</button>
-              </div>
+              <SupplierRow key={i} supplier={s} index={i} settings={settings} setSettings={setSettings}/>
             ))}
             <button onClick={()=>setSettings(ss=>({...ss,suppliers:[...(ss.suppliers||DEFAULT_SUPPLIERS),""]}))}
               style={{marginTop:6,border:`1px dashed ${C.border}`,borderRadius:8,padding:"10px 16px",background:"transparent",color:C.sky,fontSize:14,fontWeight:600,cursor:"pointer",width:"100%"}}>
@@ -4525,7 +4570,7 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
   );
 };
 // ── Track Orders Page ──────────────────────────────────────────────────────────
-const TrackOrdersPage = ({jobs,customers}) => {
+const TrackOrdersPage = ({jobs,customers,settings}) => {
   const [viewDate,setViewDate]=useState(new Date());
   const [viewMode,setViewMode]=useState("workingWeek"); // "workingWeek" | "week" | "month" — same options as the Fitter Calendar
   const [orders,setOrders]=useState([]);
@@ -4719,7 +4764,12 @@ const TrackOrdersPage = ({jobs,customers}) => {
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontWeight:700,fontSize:14,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{o.description}</div>
                   <div style={{fontSize:12,color:C.slate,marginTop:1}}>
-                    {o.supplier&&<span>{o.supplier} · </span>}
+                    {o.supplier&&(
+                      <span style={{display:"inline-flex",alignItems:"center",gap:4}}>
+                        {settings?.supplierLogos?.[o.supplier]&&<img src={settings.supplierLogos[o.supplier]} alt="" style={{width:14,height:14,objectFit:"contain",borderRadius:3}}/>}
+                        {o.supplier} ·
+                      </span>
+                    )}
                     {o.fromJobCard?(
                       <span>{o.jobTitle||""}{o.customerName?` · ${o.customerName}`:""}</span>
                     ):(
@@ -4842,7 +4892,12 @@ const TrackOrdersPage = ({jobs,customers}) => {
                     {o.fromJobCard&&<span style={{background:C.skyLight,color:C.sky,fontSize:10,fontWeight:700,padding:"1px 6px",borderRadius:8,flexShrink:0}}>📋 Job Card</span>}
                   </div>
                   <div style={{fontSize:12,color:C.slate,marginTop:1}}>
-                    {o.supplier&&<span>{o.supplier} · </span>}
+                    {o.supplier&&(
+                      <span style={{display:"inline-flex",alignItems:"center",gap:4}}>
+                        {settings?.supplierLogos?.[o.supplier]&&<img src={settings.supplierLogos[o.supplier]} alt="" style={{width:14,height:14,objectFit:"contain",borderRadius:3}}/>}
+                        {o.supplier} ·
+                      </span>
+                    )}
                     {o.fromJobCard?<span>{o.jobTitle}{o.customerName?` · ${o.customerName}`:""}</span>:<span>{customerName(o.jobId)}</span>}
                     <span> · Due {o.deliveryDate}</span>
                   </div>
@@ -5683,7 +5738,7 @@ function App() {
           {page==="pipeline"&&<SalesPipelinePage customers={customers} setCustomers={setCustomers} jobs={jobs} setJobs={setJobs} settings={settings}/>}
           {page==="jobs"&&<InstallPipelinePage jobs={jobs} setJobs={setJobs} customers={customers} settings={settings}/>}
           {page==="calendar"&&<CalendarPage customers={customers} jobs={jobs} settings={settings}/>}
-          {page==="orders"&&<TrackOrdersPage jobs={jobs} customers={customers}/>}
+          {page==="orders"&&<TrackOrdersPage jobs={jobs} customers={customers} settings={settings}/>}
           {page==="customers"&&<CustomerDirectoryPage customers={customers} setCustomers={setCustomers} jobs={jobs} setJobs={setJobs} settings={settings} onNavigate={setPage}/>}
           {page==="settings"&&<SettingsPage settings={settings} setSettings={setSettings} onNewEnquiry={lead=>apiCreateCustomer(lead).then(saved=>setCustomers(cs=>[saved,...cs])).catch(err=>window.alert("Failed to save enquiry: "+err.message))}/>}
         </div>
