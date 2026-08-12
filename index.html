@@ -4464,6 +4464,7 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
 // ── Track Orders Page ──────────────────────────────────────────────────────────
 const TrackOrdersPage = ({jobs,customers}) => {
   const [viewDate,setViewDate]=useState(new Date());
+  const [viewMode,setViewMode]=useState("workingWeek"); // "workingWeek" | "week" | "month" — same options as the Fitter Calendar
   const [orders,setOrders]=useState([]);
   const [ordersLoaded,setOrdersLoaded]=useState(false);
   // idle | saving | saved | error
@@ -4515,6 +4516,37 @@ const TrackOrdersPage = ({jobs,customers}) => {
 
   const today=new Date().toISOString().slice(0,10);
 
+  // Working Week / Week view helpers — same pattern as the Fitter Calendar's CalendarPage.
+  // Deliveries only ever have a date (no time-of-day), so these views show each day's
+  // deliveries as a stacked list rather than an hourly grid.
+  const fmtDate=(y,m,d)=>`${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+  const startOfWeek=(d)=>{
+    const dow=d.getDay(); // 0=Sun
+    const diff=dow===0?-6:1-dow;
+    return new Date(d.getFullYear(),d.getMonth(),d.getDate()+diff);
+  };
+  const weekStart=startOfWeek(viewDate);
+  const numDays=viewMode==="workingWeek"?5:7;
+  const weekDays=Array.from({length:numDays},(_,i)=>new Date(weekStart.getFullYear(),weekStart.getMonth(),weekStart.getDate()+i));
+  const monthName=viewDate.toLocaleDateString("en-GB",{month:"long",year:"numeric"});
+  const prev=()=>{
+    if(viewMode==="month") setViewDate(new Date(year,month-1,1));
+    else setViewDate(d=>new Date(d.getFullYear(),d.getMonth(),d.getDate()-7));
+  };
+  const next=()=>{
+    if(viewMode==="month") setViewDate(new Date(year,month+1,1));
+    else setViewDate(d=>new Date(d.getFullYear(),d.getMonth(),d.getDate()+7));
+  };
+  const goToday=()=>setViewDate(new Date());
+  const rangeLabel=(()=>{
+    if(viewMode==="month") return monthName;
+    const last=weekDays[weekDays.length-1];
+    const sameMonth=weekStart.getMonth()===last.getMonth();
+    const startStr=sameMonth?`${weekStart.getDate()}`:weekStart.toLocaleDateString("en-GB",{day:"numeric",month:"short"});
+    const endStr=last.toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"});
+    return `${startStr} – ${endStr}`;
+  })();
+
   // Pull deliveries from job cards and merge with manually added orders
   const jobDeliveries=useMemo(()=>{
     const result=[];
@@ -4542,10 +4574,8 @@ const TrackOrdersPage = ({jobs,customers}) => {
   // Combined list for calendar — manual orders + job card deliveries
   const allOrders=useMemo(()=>[...orders,...jobDeliveries],[orders,jobDeliveries]);
 
-  const ordersForDay=(d)=>{
-    const ds=`${year}-${String(month+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
-    return allOrders.filter(o=>o.deliveryDate===ds);
-  };
+  const ordersForDate=(ds)=>allOrders.filter(o=>o.deliveryDate===ds);
+  const ordersForDay=(d)=>ordersForDate(fmtDate(year,month,d));
 
   const customerName=(jobId)=>{
     const job=jobs.find(j=>j.id===Number(jobId));
@@ -4646,46 +4676,93 @@ const TrackOrdersPage = ({jobs,customers}) => {
 
       {/* Calendar */}
       <div style={{background:C.white,borderRadius:10,border:`1px solid ${C.border}`,overflow:"hidden"}}>
-        <div style={{background:C.navy,padding:"14px 20px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <Btn variant="secondary" onClick={()=>setViewDate(new Date(year,month-1,1))} style={{padding:"5px 12px",background:"rgba(255,255,255,0.1)",color:"#fff",border:"none"}}>‹</Btn>
-          <span style={{color:"#fff",fontWeight:700,fontSize:15}}>{viewDate.toLocaleDateString("en-GB",{month:"long",year:"numeric"})}</span>
-          <Btn variant="secondary" onClick={()=>setViewDate(new Date(year,month+1,1))} style={{padding:"5px 12px",background:"rgba(255,255,255,0.1)",color:"#fff",border:"none"}}>›</Btn>
+        <div style={{background:C.navy,padding:"14px 20px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}}>
+          <div style={{display:"flex",gap:3,background:"rgba(255,255,255,0.1)",borderRadius:8,padding:3}}>
+            {[["workingWeek","Working Week"],["week","Week"],["month","Month"]].map(([val,label])=>(
+              <button key={val} onClick={()=>setViewMode(val)} style={{padding:"6px 12px",borderRadius:6,fontSize:12,fontWeight:600,cursor:"pointer",border:"none",background:viewMode===val?"#fff":"transparent",color:viewMode===val?C.navy:"rgba(255,255,255,0.8)"}}>{label}</button>
+            ))}
+          </div>
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            <Btn variant="secondary" onClick={goToday} style={{padding:"5px 12px",background:"rgba(255,255,255,0.1)",color:"#fff",border:"none"}}>Today</Btn>
+            <Btn variant="secondary" onClick={prev} style={{padding:"5px 12px",background:"rgba(255,255,255,0.1)",color:"#fff",border:"none"}}>‹</Btn>
+            <span style={{color:"#fff",fontWeight:700,fontSize:15,minWidth:150,textAlign:"center"}}>{rangeLabel}</span>
+            <Btn variant="secondary" onClick={next} style={{padding:"5px 12px",background:"rgba(255,255,255,0.1)",color:"#fff",border:"none"}}>›</Btn>
+          </div>
         </div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",background:C.navy}}>
-          {["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map(d=>(
-            <div key={d} style={{padding:"8px 0",textAlign:"center",fontSize:12,fontWeight:700,color:"rgba(255,255,255,0.6)"}}>{d}</div>
-          ))}
-        </div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)"}}>
-          {days.map((d,i)=>{
-            const dayOrders=d?ordersForDay(d):[];
-            const ds=d?`${year}-${String(month+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`:"";
-            const isToday=ds===today;
-            return (
-              <div key={i} style={{minHeight:100,borderRight:`1px solid ${C.border}`,borderBottom:`1px solid ${C.border}`,padding:"6px 6px",background:d?C.white:"#FAFAFA",verticalAlign:"top"}}>
-                {d&&(
-                  <>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-                      <div style={{fontSize:13,fontWeight:isToday?800:500,color:isToday?C.white:C.text,width:24,height:24,borderRadius:"50%",background:isToday?C.sky:"transparent",display:"flex",alignItems:"center",justifyContent:"center"}}>{d}</div>
+
+        {viewMode==="month"?(
+          <>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",background:C.navy}}>
+              {["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map(d=>(
+                <div key={d} style={{padding:"8px 0",textAlign:"center",fontSize:12,fontWeight:700,color:"rgba(255,255,255,0.6)"}}>{d}</div>
+              ))}
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)"}}>
+              {days.map((d,i)=>{
+                const dayOrders=d?ordersForDay(d):[];
+                const ds=d?fmtDate(year,month,d):"";
+                const isToday=ds===today;
+                return (
+                  <div key={i} style={{minHeight:100,borderRight:`1px solid ${C.border}`,borderBottom:`1px solid ${C.border}`,padding:"6px 6px",background:d?C.white:"#FAFAFA",verticalAlign:"top"}}>
+                    {d&&(
+                      <>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                          <div style={{fontSize:13,fontWeight:isToday?800:500,color:isToday?C.white:C.text,width:24,height:24,borderRadius:"50%",background:isToday?C.sky:"transparent",display:"flex",alignItems:"center",justifyContent:"center"}}>{d}</div>
+                          <button onClick={()=>{setForm({jobId:jobs[0]?.id||"",supplier:"",description:"",deliveryDate:ds,status:"Ordered",notes:""});setEditOrder(null);setShowModal(true);}}
+                            style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:16,lineHeight:1,padding:0,opacity:0}}>+
+                          </button>
+                        </div>
+                        {dayOrders.map(o=>{
+                          const st=STATUS_STYLE[o.status]||STATUS_STYLE["Ordered"];
+                          return (
+                            <div key={o.id} onClick={()=>openEdit(o)} style={{background:st.bg,color:st.text,borderRadius:4,padding:"3px 6px",fontSize:11,marginBottom:3,cursor:"pointer",lineHeight:1.4}}>
+                              <div style={{fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{o.description}</div>
+                              {o.supplier&&<div style={{opacity:.8,fontSize:10,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{o.supplier}</div>}
+                            </div>
+                          );
+                        })}
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        ):(
+          /* Working Week / Week — deliveries have no time-of-day, so each column just
+             stacks that day's deliveries (same badge styling as the month view's cells,
+             with more room since there are fewer, wider columns). */
+          <div style={{display:"flex"}}>
+            {weekDays.map((dd,idx)=>{
+              const ds=fmtDate(dd.getFullYear(),dd.getMonth(),dd.getDate());
+              const dayOrders=ordersForDate(ds);
+              const isToday=ds===today;
+              return (
+                <div key={ds} style={{flex:1,minWidth:0,borderRight:idx<weekDays.length-1?`1px solid ${C.border}`:"none",background:isToday?C.skyLight:C.white}}>
+                  <div style={{padding:"10px 8px",borderBottom:`1px solid ${C.border}`,textAlign:"center"}}>
+                    <div style={{fontSize:11,color:C.muted,fontWeight:600}}>{dd.toLocaleDateString("en-GB",{weekday:"short"})}</div>
+                    <div style={{fontSize:14,fontWeight:isToday?800:600,color:isToday?C.sky:C.navy}}>{dd.getDate()}</div>
+                  </div>
+                  <div style={{padding:"8px",minHeight:220}}>
+                    {dayOrders.length===0&&(
                       <button onClick={()=>{setForm({jobId:jobs[0]?.id||"",supplier:"",description:"",deliveryDate:ds,status:"Ordered",notes:""});setEditOrder(null);setShowModal(true);}}
-                        style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:16,lineHeight:1,padding:0,opacity:0}}>+
-                      </button>
-                    </div>
+                        style={{width:"100%",background:"none",border:`1px dashed ${C.border}`,borderRadius:6,padding:"8px 0",color:C.muted,fontSize:11,cursor:"pointer"}}>+ Add</button>
+                    )}
                     {dayOrders.map(o=>{
                       const st=STATUS_STYLE[o.status]||STATUS_STYLE["Ordered"];
                       return (
-                        <div key={o.id} onClick={()=>openEdit(o)} style={{background:st.bg,color:st.text,borderRadius:4,padding:"3px 6px",fontSize:11,marginBottom:3,cursor:"pointer",lineHeight:1.4}}>
+                        <div key={o.id} onClick={()=>openEdit(o)} style={{background:st.bg,color:st.text,borderRadius:6,padding:"6px 8px",fontSize:12,marginBottom:6,cursor:"pointer",lineHeight:1.4}}>
                           <div style={{fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{o.description}</div>
-                          {o.supplier&&<div style={{opacity:.8,fontSize:10,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{o.supplier}</div>}
+                          {o.supplier&&<div style={{opacity:.8,fontSize:11,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{o.supplier}</div>}
                         </div>
                       );
                     })}
-                  </>
-                )}
-              </div>
-            );
-          })}
-        </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* All orders list */}
