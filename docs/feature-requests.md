@@ -80,6 +80,13 @@ A shared place for feature ideas, wherever they come from — the office, a fitt
 - Same pattern as fitter photos: an upload control next to each supplier's name in Settings → Suppliers, shown as a small icon next to the supplier name in Track Orders' Upcoming Deliveries and All Orders lists.
 - Office also asked about auto-finding a supplier's logo just from typing the company name — **not realistically possible** as a free/reliable service, since logo-lookup APIs (Clearbit, Brandfetch, etc.) work off a known domain, not a fuzzy name match; guessing the domain from a name risks pulling the wrong company's logo with no way to catch it. Offered a domain-based auto-fetch (add a Website field, logo pulls from that domain automatically) as the realistic middle ground — **office chose manual-upload only for now**, so that option is parked, not built.
 
+### Bug: Install Booked email was never actually wired up — ✅ fixed 2026-08-17
+- Raised by: office — 2026-08-17, after a real install booking (Catriona Davies, job #29) sent no confirmation email
+- Root cause: the "Install Booked" template existed in Settings and looked identical to Survey Booked / Service Call Booked (both of which work correctly), but no backend code ever triggered it — no send function, no detection logic in the job save handler. It had silently never worked since Survey/Service Call Booked were built.
+- Fixed: added `sendInstallBookedEmail` (`api/src/reminderCore.js`) and wired detection into `jobs.js`'s update handler (same "date+fitters newly set" pattern as Survey Booked), plus the same notifyEnabled toggle + sent-status banner Survey/Service Call already have, in the Installation tab.
+- Verified all other automated emails (Survey Booked, Service Call Booked, Survey/Service Call day-before reminders, Install week/day reminders) are unaffected and working correctly — this was an isolated gap, not a wider outage.
+- Catriona Davies' missed confirmation was sent manually the same day once the fix deployed; her install's week/day reminders were already correctly scheduled (that part was never affected).
+
 ## Resolved / not needed
 
 ### Multi-job/multi-survey booking per fitter per day
