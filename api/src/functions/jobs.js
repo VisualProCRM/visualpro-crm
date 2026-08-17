@@ -2,7 +2,7 @@ const { app } = require('@azure/functions');
 const { getPool, sql } = require('../db');
 const { mapJobRow } = require('../mapRow');
 const { requireAuth } = require('../auth');
-const { sendSurveyBookedEmail, sendServiceCallBookedEmail } = require('../reminderCore');
+const { sendInstallBookedEmail, sendSurveyBookedEmail, sendServiceCallBookedEmail } = require('../reminderCore');
 
 app.http('jobsList', {
   methods: ['GET'],
@@ -116,6 +116,23 @@ app.http('jobsUpdate', {
           sentAny = true;
         } catch (err) {
           context.error('sendSurveyBookedEmail failed', err);
+        }
+      }
+
+      // Install Booked — same shape as the survey check above. Was never actually wired up
+      // despite the template existing in Settings (found 2026-08-11 after a real booking
+      // didn't send); this closes that gap.
+      const installWasBooked = !!(before?.tabs?.installation?.date && (before?.tabs?.installation?.fitters || []).length > 0);
+      const installIsNowBooked = !!(body.tabs?.installation?.date && (body.tabs?.installation?.fitters || []).length > 0);
+      const installNotifyEnabled = body.tabs?.installation?.notifyEnabled !== false; // default on
+      const installAlreadySent = !!body.tabs?.installation?.bookedEmailSent;
+
+      if (!installWasBooked && installIsNowBooked && installNotifyEnabled && !installAlreadySent) {
+        try {
+          await sendInstallBookedEmail({ pool, jobId: id });
+          sentAny = true;
+        } catch (err) {
+          context.error('sendInstallBookedEmail failed', err);
         }
       }
 

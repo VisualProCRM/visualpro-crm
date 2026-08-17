@@ -101,6 +101,25 @@ Kind regards,
 {{companyPhone}}`,
 };
 
+const DEFAULT_INSTALL_BOOKED = {
+  subject: 'Your Installation has been Booked – {{customerName}}',
+  body: `Dear {{customerName}},
+
+Great news! Your installation has been confirmed for:
+
+Date: {{installDate}}
+Installers: {{fitterNames}}
+Address: {{address}}
+
+Our team will arrive in the morning. Please ensure access is available and any furniture near windows/doors is moved.
+
+If you have any questions, please contact us.
+
+Kind regards,
+{{companyName}}
+{{companyPhone}}`,
+};
+
 const DEFAULT_SURVEY_BOOKED = {
   subject: 'Your Survey has been Booked – {{customerName}}',
   body: `Dear {{customerName}},
@@ -228,6 +247,70 @@ async function sendJobReminder({ pool, jobId, reminderKey, testEmailOverride }) 
       status: 'sent',
       sentAt: new Date().toLocaleDateString('en-GB'),
     };
+    await pool
+      .request()
+      .input('Id', sql.Int, jobId)
+      .input('DataJson', sql.NVarChar, JSON.stringify(job))
+      .query('UPDATE dbo.Jobs SET DataJson = @DataJson, UpdatedAt = SYSUTCDATETIME() WHERE Id = @Id');
+  }
+
+  return { sent: true, to: recipientList.join(', '), senderAddress, messageId: result.id };
+}
+
+// Sends the "install booked" email for a job. Called from jobs.js's update handler the
+// moment an install's date+fitters are first set — mirrors sendSurveyBookedEmail. Marks
+// tabs.installation.bookedEmailSent, kept separate from emailReminders.week/day (which
+// track the week/day-before reminders, a different email entirely).
+async function sendInstallBookedEmail({ pool, jobId, testEmailOverride }) {
+  const jobResult = await pool.request().input('Id', sql.Int, jobId).query('SELECT * FROM dbo.Jobs WHERE Id = @Id');
+  if (!jobResult.recordset.length) throw new Error('Job not found');
+  const jobRow = jobResult.recordset[0];
+  const job = JSON.parse(jobRow.DataJson);
+
+  const customerResult = await pool
+    .request()
+    .input('Id', sql.Int, jobRow.CustomerId)
+    .query('SELECT * FROM dbo.Customers WHERE Id = @Id');
+  if (!customerResult.recordset.length) throw new Error('Customer not found');
+  const customer = JSON.parse(customerResult.recordset[0].DataJson);
+
+  const recipientList = testEmailOverride ? [testEmailOverride] : [customer.email, customer.email2].filter(Boolean);
+  if (!recipientList.length) throw new Error('No recipient email available');
+
+  const settingsResult = await pool.request().query('SELECT * FROM dbo.Settings WHERE TenantId = 1');
+  const settings = settingsResult.recordset.length ? JSON.parse(settingsResult.recordset[0].DataJson) : {};
+  const tmpl = settings.emailTemplates?.installBooked || DEFAULT_INSTALL_BOOKED;
+
+  const installDate = job.tabs?.installation?.date;
+  const vars = {
+    customerName: customer.name || '',
+    address: customer.address || '',
+    installDate: installDate
+      ? new Date(installDate).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+      : '',
+    fitterNames: (job.tabs?.installation?.fitters || []).join(', '),
+    companyName: settings.companyName || 'VisualPro',
+    companyPhone: settings.companyPhone || '',
+  };
+
+  const subject = fillTemplate(tmpl.subject, vars);
+  const plainText = fillTemplate(tmpl.body, vars);
+
+  const { hostname } = await getSenderDomain();
+  const senderUsername = process.env.EMAIL_SENDER_USERNAME || 'donotreply';
+  const senderAddress = `${senderUsername}@${hostname}`;
+
+  const poller = await emailClient.beginSend({
+    senderAddress,
+    content: { subject, plainText },
+    recipients: buildRecipients(recipientList, tmpl),
+  });
+  const result = await poller.pollUntilDone();
+
+  if (!testEmailOverride) {
+    job.tabs = job.tabs || {};
+    job.tabs.installation = job.tabs.installation || {};
+    job.tabs.installation.bookedEmailSent = { status: 'sent', sentAt: new Date().toLocaleDateString('en-GB') };
     await pool
       .request()
       .input('Id', sql.Int, jobId)
@@ -502,6 +585,7 @@ async function sendServiceCallReminderEmail({ pool, jobId, bookingId, testEmailO
 
 module.exports = {
   sendJobReminder,
+  sendInstallBookedEmail,
   sendSurveyBookedEmail,
   sendServiceCallBookedEmail,
   sendSurveyReminderEmail,

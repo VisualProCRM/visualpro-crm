@@ -1073,9 +1073,24 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
                 )}
                 <div style={{fontSize:13,color:"#166534",marginBottom:3}}>👷 {(data.tabs.installation.fitters||[]).join(", ")}</div>
                 <div style={{fontSize:12,color:"#15803D",opacity:0.8}}>Weekends automatically skipped · Visible on Fitter Calendar</div>
+                <div style={{marginTop:6,fontSize:12,fontWeight:600}}>
+                  {data.tabs.installation.bookedEmailSent?.status==="sent"
+                    ?`📧 Install booked email sent ${data.tabs.installation.bookedEmailSent.sentAt}`
+                    :data.tabs.installation.notifyEnabled===false
+                      ?"📧 Install booked email disabled for this job"
+                      :"📧 Install booked email will send automatically on save"}
+                </div>
               </div>
             );
           })()}
+
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:C.slateLight,borderRadius:8,padding:"10px 14px"}}>
+            <div style={{fontSize:13,fontWeight:600,color:C.text}}>Send install booked email automatically</div>
+            <div onClick={()=>setTab("installation",{notifyEnabled:data.tabs.installation.notifyEnabled===false})}
+              style={{width:42,height:23,borderRadius:12,background:data.tabs.installation.notifyEnabled!==false?C.mint:C.border,position:"relative",cursor:"pointer",flexShrink:0}}>
+              <div style={{width:17,height:17,borderRadius:"50%",background:"#fff",position:"absolute",top:3,left:data.tabs.installation.notifyEnabled!==false?22:3,transition:"left 0.15s",boxShadow:"0 1px 3px rgba(0,0,0,0.3)"}}/>
+            </div>
+          </div>
 
           {/* ── Deliveries for this job ── */}
           {(()=>{
