@@ -238,6 +238,12 @@ async function sendJobReminder({ pool, jobId, reminderKey, testEmailOverride }) 
     recipients: buildRecipients(recipientList, tmpl),
   });
   const result = await poller.pollUntilDone();
+  // pollUntilDone() resolves (doesn't throw) even when ACS itself reports the send as
+  // failed — e.g. domain issues, throttling — so status must be checked explicitly or a
+  // failed send silently gets marked "sent" below, same as every other send function here.
+  if (result.status !== 'Succeeded') {
+    throw new Error(`ACS email send did not succeed: ${result.status}${result.error ? ' - ' + result.error.message : ''}`);
+  }
 
   if (!testEmailOverride) {
     job.tabs = job.tabs || {};
@@ -306,6 +312,12 @@ async function sendInstallBookedEmail({ pool, jobId, testEmailOverride }) {
     recipients: buildRecipients(recipientList, tmpl),
   });
   const result = await poller.pollUntilDone();
+  // pollUntilDone() resolves (doesn't throw) even when ACS itself reports the send as
+  // failed — e.g. domain issues, throttling — so status must be checked explicitly or a
+  // failed send silently gets marked "sent" below, same as every other send function here.
+  if (result.status !== 'Succeeded') {
+    throw new Error(`ACS email send did not succeed: ${result.status}${result.error ? ' - ' + result.error.message : ''}`);
+  }
 
   if (!testEmailOverride) {
     job.tabs = job.tabs || {};
@@ -370,6 +382,12 @@ async function sendSurveyBookedEmail({ pool, jobId, testEmailOverride }) {
     recipients: buildRecipients(recipientList, tmpl),
   });
   const result = await poller.pollUntilDone();
+  // pollUntilDone() resolves (doesn't throw) even when ACS itself reports the send as
+  // failed — e.g. domain issues, throttling — so status must be checked explicitly or a
+  // failed send silently gets marked "sent" below, same as every other send function here.
+  if (result.status !== 'Succeeded') {
+    throw new Error(`ACS email send did not succeed: ${result.status}${result.error ? ' - ' + result.error.message : ''}`);
+  }
 
   if (!testEmailOverride) {
     job.tabs = job.tabs || {};
@@ -438,6 +456,12 @@ async function sendServiceCallBookedEmail({ pool, jobId, bookingId, testEmailOve
     recipients: buildRecipients(recipientList, tmpl),
   });
   const result = await poller.pollUntilDone();
+  // pollUntilDone() resolves (doesn't throw) even when ACS itself reports the send as
+  // failed — e.g. domain issues, throttling — so status must be checked explicitly or a
+  // failed send silently gets marked "sent" below, same as every other send function here.
+  if (result.status !== 'Succeeded') {
+    throw new Error(`ACS email send did not succeed: ${result.status}${result.error ? ' - ' + result.error.message : ''}`);
+  }
 
   if (!testEmailOverride) {
     job.tabs.serviceCall.bookings = bookings.map((b) =>
@@ -502,6 +526,12 @@ async function sendSurveyReminderEmail({ pool, jobId, testEmailOverride }) {
     recipients: buildRecipients(recipientList, tmpl),
   });
   const result = await poller.pollUntilDone();
+  // pollUntilDone() resolves (doesn't throw) even when ACS itself reports the send as
+  // failed — e.g. domain issues, throttling — so status must be checked explicitly or a
+  // failed send silently gets marked "sent" below, same as every other send function here.
+  if (result.status !== 'Succeeded') {
+    throw new Error(`ACS email send did not succeed: ${result.status}${result.error ? ' - ' + result.error.message : ''}`);
+  }
 
   if (!testEmailOverride) {
     job.tabs = job.tabs || {};
@@ -568,6 +598,12 @@ async function sendServiceCallReminderEmail({ pool, jobId, bookingId, testEmailO
     recipients: buildRecipients(recipientList, tmpl),
   });
   const result = await poller.pollUntilDone();
+  // pollUntilDone() resolves (doesn't throw) even when ACS itself reports the send as
+  // failed — e.g. domain issues, throttling — so status must be checked explicitly or a
+  // failed send silently gets marked "sent" below, same as every other send function here.
+  if (result.status !== 'Succeeded') {
+    throw new Error(`ACS email send did not succeed: ${result.status}${result.error ? ' - ' + result.error.message : ''}`);
+  }
 
   if (!testEmailOverride) {
     job.tabs.serviceCall.bookings = bookings.map((b) =>
