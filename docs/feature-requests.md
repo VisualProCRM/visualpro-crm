@@ -86,6 +86,8 @@ A shared place for feature ideas, wherever they come from — the office, a fitt
 - Fixed: added `sendInstallBookedEmail` (`api/src/reminderCore.js`) and wired detection into `jobs.js`'s update handler (same "date+fitters newly set" pattern as Survey Booked), plus the same notifyEnabled toggle + sent-status banner Survey/Service Call already have, in the Installation tab.
 - Verified all other automated emails (Survey Booked, Service Call Booked, Survey/Service Call day-before reminders, Install week/day reminders) are unaffected and working correctly — this was an isolated gap, not a wider outage.
 - Catriona Davies' missed confirmation was sent manually the same day once the fix deployed; her install's week/day reminders were already correctly scheduled (that part was never affected).
+- **Follow-on finding, same day**: `poller.pollUntilDone()` (Azure Communication Services Email SDK) resolves normally even when ACS itself reports the send as failed — it only throws on transport/auth errors, not a `status: "Failed"` result. All 6 send functions in `reminderCore.js` were marking the job "sent" unconditionally once the poll completed, without checking `result.status`, so a real ACS-side failure would have looked identical to success. Fixed to throw (and correctly stay un-sent) when status isn't `"Succeeded"`.
+- Could not retroactively confirm Catriona's original send status (no diagnostic logging was capturing it at the time) — decided not to resend a duplicate since her week/day reminders are unaffected either way and will confirm the booking regardless.
 
 ## Resolved / not needed
 
