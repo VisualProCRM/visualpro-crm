@@ -51,6 +51,10 @@ param emailSenderUsername string = 'enquiries'
 @description('Secret used to sign/verify the API\'s own session tokens (see api/src/auth.js) — passed in via a GitHub secret (SESSION_TOKEN_SECRET), same pattern as aadAuthClientSecret.')
 param sessionTokenSecret string
 
+@secure()
+@description('Path-segment secret for the WindowCAD7 CRM webhook receiver — passed in via a GitHub secret (WINDOWCAD_WEBHOOK_SECRET), same pattern as sessionTokenSecret.')
+param windowcadWebhookSecret string
+
 module storage 'modules/storage.bicep' = {
   name: 'storage-deploy'
   params: {
@@ -125,6 +129,7 @@ module functionApp 'modules/functionapp.bicep' = {
     emailDomainName: emailDomainName
     emailSenderUsername: emailSenderUsername
     sessionTokenSecret: sessionTokenSecret
+    windowcadWebhookSecret: windowcadWebhookSecret
     sqlServerFqdn: sql.outputs.sqlServerFqdn
     sqlDatabaseName: sql.outputs.sqlDatabaseName
     storageAccountName: storage.outputs.storageAccountName

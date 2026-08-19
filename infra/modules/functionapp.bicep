@@ -34,6 +34,10 @@ param emailSenderUsername string = 'donotreply'
 @secure()
 param sessionTokenSecret string
 
+@description('Path-segment secret for the WindowCAD7 CRM webhook receiver (/api/windowcad/webhook/{secret}) — WindowCAD7\'s own integration settings only offer a plain URL field, no custom headers/auth, so this is the only practical way to keep the endpoint from being spammed by anyone who finds the URL. Passed in via a GitHub secret (WINDOWCAD_WEBHOOK_SECRET), same pattern as sessionTokenSecret — not a hardcoded default, since this is committed to source control.')
+@secure()
+param windowcadWebhookSecret string
+
 @description('Origins allowed to call this API cross-origin (the frontend Static Web App, plus localhost for local dev, plus the Azure Portal so its built-in Test/Run feature works for manually invoking functions like the timer trigger). Note: the SWA hostname changed after upgrading from Free to Standard tier — this is the post-upgrade hostname, not the original.')
 param corsAllowedOrigins array = [
   'https://mango-beach-0c25f8610.7.azurestaticapps.net'
@@ -107,6 +111,7 @@ resource functionApp 'Microsoft.Web/sites@2023-01-01' = {
         { name: 'EMAIL_DOMAIN_NAME', value: emailDomainName }
         { name: 'EMAIL_SENDER_USERNAME', value: emailSenderUsername }
         { name: 'SESSION_TOKEN_SECRET', value: sessionTokenSecret }
+        { name: 'WINDOWCAD_WEBHOOK_SECRET', value: windowcadWebhookSecret }
         { name: 'RESOURCE_GROUP_NAME', value: resourceGroup().name }
         { name: 'AZURE_SUBSCRIPTION_ID', value: subscription().subscriptionId }
       ]

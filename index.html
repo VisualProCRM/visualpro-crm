@@ -245,6 +245,7 @@ const apiUpdateSettings = (data) => apiRequest("/settings", { method: "PUT", bod
 
 const apiGetOrders = () => apiRequest("/orders");
 const apiUpdateOrders = (data) => apiRequest("/orders", { method: "PUT", body: JSON.stringify(data) });
+const apiGetWindowcadEvents = () => apiRequest("/windowcad/events");
 
 const apiLogin = (role, password) => apiRequest("/login", { method: "POST", body: JSON.stringify({ role, password }) });
 const apiSendReminder = (jobId, reminderKey) =>
@@ -3022,6 +3023,15 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
   const [saveStatus,setSaveStatus]=useState("idle");
   const skipNextSave=useRef(true); // don't fire a save for the initial load from the API
   const [uploadingLogo,setUploadingLogo]=useState(false);
+  const [windowcadEvents,setWindowcadEvents]=useState(null); // null = not loaded yet
+  const [windowcadLoading,setWindowcadLoading]=useState(false);
+  const loadWindowcadEvents=()=>{
+    setWindowcadLoading(true);
+    apiGetWindowcadEvents()
+      .then(setWindowcadEvents)
+      .catch(err=>window.alert("Failed to load captured events: "+err.message))
+      .finally(()=>setWindowcadLoading(false));
+  };
 
   const update=(key,val)=>setSettings(s=>({...s,[key]:val}));
   const handleLogoUpload=async(e)=>{
@@ -3104,6 +3114,7 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
           {sectionBtn("feedback","Feedback Form","⭐")}
           {sectionBtn("checklist","Fitter Checklist","✅")}
           {sectionBtn("mileage","Mileage","🚗")}
+          {sectionBtn("windowcad","WindowCAD7","🪟")}
           {sectionBtn("enquiryform","Website Enquiry Form","🌐")}
         </div>
       </div>
@@ -3365,6 +3376,47 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
                 {saveStatus==="saving"?"Saving…":saveStatus==="error"?"⚠ Save failed":"✓ Saved"}
               </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── WINDOWCAD7 ── */}
+        {activeSection==="windowcad"&&(
+          <div style={{display:"flex",flexDirection:"column",gap:16}}>
+            <div style={{background:C.white,borderRadius:10,border:`1px solid ${C.border}`,padding:24}}>
+              <h3 style={{margin:"0 0 6px",fontSize:18,color:C.navy,fontWeight:800}}>🪟 WindowCAD7 Integration</h3>
+              <p style={{margin:"0 0 20px",fontSize:13,color:C.slate}}>WindowCAD7 has its own CRM webhook (in WindowCAD7: Settings → CRM → API url) that posts a project's JSON to a URL you give it, whenever a chosen event fires. No formal docs exist for the payload shape yet, so this page just captures whatever comes through so we can see it and decide what to build against it.</p>
+
+              <div style={{background:C.slateLight,borderRadius:8,padding:14,marginBottom:16}}>
+                <div style={{fontSize:13,fontWeight:700,color:C.navy,marginBottom:6}}>Setup (one-time)</div>
+                <ol style={{margin:0,paddingLeft:18,fontSize:13,color:C.slate,lineHeight:1.8}}>
+                  <li>In WindowCAD7: Settings → CRM → paste the webhook URL (ask your CRM admin for it — it contains a secret, so it isn't shown here)</li>
+                  <li>Pick an event from the "Events" dropdown</li>
+                  <li>Trigger that event in WindowCAD7 (e.g. save/order a project)</li>
+                  <li>Click "Refresh" below to see what arrived</li>
+                </ol>
+              </div>
+
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                <div style={{fontSize:13,fontWeight:700,color:C.navy}}>Captured Events</div>
+                <button onClick={loadWindowcadEvents} disabled={windowcadLoading}
+                  style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:6,padding:"6px 14px",fontSize:12,fontWeight:600,cursor:windowcadLoading?"default":"pointer",color:C.navy}}>
+                  {windowcadLoading?"Loading…":"🔄 Refresh"}
+                </button>
+              </div>
+
+              {windowcadEvents===null&&!windowcadLoading&&(
+                <div style={{padding:20,textAlign:"center",color:C.muted,fontSize:13,background:C.slateLight,borderRadius:8}}>Click Refresh to check for captured events.</div>
+              )}
+              {windowcadEvents?.length===0&&(
+                <div style={{padding:20,textAlign:"center",color:C.muted,fontSize:13,background:C.slateLight,borderRadius:8}}>Nothing captured yet — trigger an event in WindowCAD7, then refresh.</div>
+              )}
+              {windowcadEvents?.map((ev,i)=>(
+                <div key={i} style={{border:`1px solid ${C.border}`,borderRadius:8,marginBottom:10,overflow:"hidden"}}>
+                  <div style={{background:C.slateLight,padding:"8px 12px",fontSize:12,fontWeight:600,color:C.slate}}>{new Date(ev.receivedAt).toLocaleString("en-GB")}</div>
+                  <pre style={{margin:0,padding:12,fontSize:11,fontFamily:"monospace",overflowX:"auto",background:C.white,color:C.text}}>{JSON.stringify(ev.payload,null,2)}</pre>
+                </div>
+              ))}
             </div>
           </div>
         )}
