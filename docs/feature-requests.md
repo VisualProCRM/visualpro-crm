@@ -89,7 +89,12 @@ A shared place for feature ideas, wherever they come from — the office, a fitt
 - **Follow-on finding, same day**: `poller.pollUntilDone()` (Azure Communication Services Email SDK) resolves normally even when ACS itself reports the send as failed — it only throws on transport/auth errors, not a `status: "Failed"` result. All 6 send functions in `reminderCore.js` were marking the job "sent" unconditionally once the poll completed, without checking `result.status`, so a real ACS-side failure would have looked identical to success. Fixed to throw (and correctly stay un-sent) when status isn't `"Succeeded"`.
 - Could not retroactively confirm Catriona's original send status (no diagnostic logging was capturing it at the time) — decided not to resend a duplicate since her week/day reminders are unaffected either way and will confirm the booking regardless.
 
-## Resolved / not needed
+### Fitter mileage tracker — 🚧 groundwork built 2026-08-17, distance calc pending
+- Requested by: office — 2026-08-17
+- Goal: automatically work out each fitter's daily mileage (for reimbursement, HMRC 45p/mile by default) from a per-fitter home postcode to that day's jobs, pulled from their calendar.
+- **Built**: Home Postcode field per fitter (Settings → Fitters, next to password/photo), a mileage rate setting (Settings → Mileage), and a new "Mileage" page listing each fitter's job-site visits (Survey/Install/Service Call) per month — same event data the Fitter Calendar already uses.
+- **Not yet built — needs a decision the office already made**: real driving-distance calculation. Chosen approach: a free-tier routing API (OpenRouteService) rather than straight-line distance (too inaccurate for real reimbursement) or Google Distance Matrix (needs billing, same as previously declined for travel time/address autocomplete). **Blocked on the office signing up for a free OpenRouteService API key** — once provided, still needs: postcode geocoding, the actual distance-calculation calls, a caching table (`dbo.Mileage`, same generic-blob pattern as Orders) so it's not re-querying the same route every page view, and wiring real numbers into the Mileage page (currently shows "— mi" placeholders).
+- Directly related to the "Fitter Calendar: travel time between appointments" item below — same underlying distance capability could serve both.
 
 ### Multi-job/multi-survey booking per fitter per day
 - Requested by: office — 2026-07-30
