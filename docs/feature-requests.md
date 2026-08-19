@@ -96,6 +96,26 @@ A shared place for feature ideas, wherever they come from — the office, a fitt
 - **Not yet built — needs a decision the office already made**: real driving-distance calculation. Chosen approach: a free-tier routing API (OpenRouteService) rather than straight-line distance (too inaccurate for real reimbursement) or Google Distance Matrix (needs billing, same as previously declined for travel time/address autocomplete). **Blocked on the office signing up for a free OpenRouteService API key** — once provided, still needs: postcode geocoding, the actual distance-calculation calls, a caching table (`dbo.Mileage`, same generic-blob pattern as Orders) so it's not re-querying the same route every page view, and wiring real numbers into the Mileage page (currently shows "— mi" placeholders).
 - Directly related to the "Fitter Calendar: travel time between appointments" item below — same underlying distance capability could serve both.
 
+### Mileage tracking for office staff too, including a home postcode setting
+- Requested by: office — 2026-08-19
+- Extend the mileage tracker above to office staff as well, not just fitters — needs its own home postcode field per office staff member (Settings → Office Staff, same pattern as the fitter one) and office staff included as a selectable option on the Mileage page. Same distance-calc engine (still pending the OpenRouteService key) would serve both.
+
+### WindowCAD7 CRM integration — ✅ built 2026-08-19
+- Requested by: office — 2026-08-11, response from ICAAL received 2026-08-19
+- ICAAL provided no formal API docs, just pointed at WindowCAD7's own Settings → CRM panel — discovered it's a webhook: WindowCAD7 POSTs a project's JSON to a URL of our choosing whenever a chosen event fires ("Project created" / "Project status changed" / others). Built a receiver (`POST /api/windowcad/webhook/{secret}`, secret-in-path since WindowCAD7 only offers a plain URL field, no custom headers) that:
+  - Always captures the raw payload (viewable in-app at Settings → WindowCAD7) so future payload shapes can be inspected without needing a new build.
+  - Matches an incoming project to the CRM: already-linked by WindowCAD7 Reference → update in place; else an existing customer found by email or phone → new Job created under them (repeat/concurrent business, using the CRM's existing multi-Job-per-Customer support); else → new Sales Pipeline lead created, stage set to "Quoted" if a price already exists.
+  - Auto-populates Name, Email, Phone, Address+Postcode, Quote Value (WindowCAD7's VAT-inclusive total), and Installation Value (parsed from WindowCAD7's free-text Installation Fee field, confirmed always in a fixed format) — Product/Installation **Cost** stay manual, WindowCAD7 has no concept of internal cost.
+  - Shows WindowCAD7's own project status as a clearly-labelled read-only line — deliberately does **not** drive the CRM's own Sales/Install pipeline stage, the two vocabularies don't correspond.
+  - The CRM now also quietly refreshes customer/job data every 20s while logged in, so a WindowCAD7 update shows up without a manual page reload.
+- Verified fully end-to-end against real WindowCAD7 test data (a real project created and auto-populated a new lead correctly; a real price/status change updated that same lead's Quote Value and Status).
+- **Real bug found and fixed same day**: WindowCAD7 sometimes sends its webhook with `Content-Type: text/plain` even though the body is genuinely JSON — the receiver originally trusted that header and silently discarded the event as an opaque raw-text capture instead of processing it. Fixed to always attempt `JSON.parse` on the raw body regardless of the declared content type.
+- **Not yet tested**: WindowCAD7's separate "Print to CRM" button / "Print document" option (seen in its CRM settings, currently off) — looks like it may send an actual generated document (e.g. the quote PDF) rather than JSON, which could enable auto-attaching the Quote/Survey/Order Confirmation documents the office currently attaches by hand. The receiver was made defensive about non-JSON bodies in anticipation of testing this next.
+
+---
+
+## Resolved / not needed
+
 ### Multi-job/multi-survey booking per fitter per day
 - Requested by: office — 2026-07-30
 - Turned out to already work — nothing in the app prevents or hides multiple bookings for the same fitter on the same day; both the office and fitter mobile calendars already show every booking for a day. No build needed, confirmed 2026-07-30.
