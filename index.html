@@ -2571,6 +2571,8 @@ const DEFAULT_SETTINGS = {
   fitterPasswords:{"Tom Bailey":"glazing1","Steve Marsh":"glazing2","Dan Rees":"glazing3","Chris Wood":"glazing4"},
   fitterPhotos:{},
   supplierLogos:{},
+  fitterHomes:{},
+  mileageRate:"45",
 };
 
 // A plain {...s,...saved} shallow merge replaces emailTemplates wholesale rather than
@@ -2920,14 +2922,17 @@ const FitterRow = ({fitter,index,pw,settings,setSettings}) => {
             if(oldName&&newPws[oldName]!==undefined){newPws[newName]=newPws[oldName];delete newPws[oldName];}
             const newPhotos={...s.fitterPhotos};
             if(oldName&&newPhotos[oldName]!==undefined){newPhotos[newName]=newPhotos[oldName];delete newPhotos[oldName];}
-            return {...s,fitters:newFitters,fitterPasswords:newPws,fitterPhotos:newPhotos};
+            const newHomes={...s.fitterHomes};
+            if(oldName&&newHomes[oldName]!==undefined){newHomes[newName]=newHomes[oldName];delete newHomes[oldName];}
+            return {...s,fitters:newFitters,fitterPasswords:newPws,fitterPhotos:newPhotos,fitterHomes:newHomes};
           });
         }} placeholder="Fitter name" style={{flex:1,border:`1px solid ${C.border}`,borderRadius:6,padding:"8px 12px",fontSize:14,outline:"none",background:C.white}}/>
         <button onClick={()=>setSettings(s=>{
           const newFitters=s.fitters.filter((_,xi)=>xi!==index);
           const newPws={...s.fitterPasswords}; delete newPws[fitter];
           const newPhotos={...s.fitterPhotos}; delete newPhotos[fitter];
-          return {...s,fitters:newFitters,fitterPasswords:newPws,fitterPhotos:newPhotos};
+          const newHomes={...s.fitterHomes}; delete newHomes[fitter];
+          return {...s,fitters:newFitters,fitterPasswords:newPws,fitterPhotos:newPhotos,fitterHomes:newHomes};
         })} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:6,padding:"6px 10px",cursor:"pointer",color:C.red,fontSize:13,flexShrink:0}}>Remove</button>
       </div>
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
@@ -2936,6 +2941,12 @@ const FitterRow = ({fitter,index,pw,settings,setSettings}) => {
           <input type="file" accept="image/*" onChange={handlePhoto} disabled={uploadingPhoto} style={{display:"none"}}/>
         </label>
         {photo&&<button onClick={removePhoto} style={{background:"none",border:"none",color:C.red,fontSize:12,cursor:"pointer"}}>Remove Photo</button>}
+      </div>
+      <div style={{marginBottom:10}}>
+        <label style={{fontSize:11,fontWeight:700,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",display:"block",marginBottom:6}}>🏠 Home Postcode</label>
+        <input value={settings.fitterHomes?.[fitter]||""} onChange={e=>setSettings(s=>({...s,fitterHomes:{...s.fitterHomes,[fitter]:e.target.value}}))}
+          placeholder="e.g. RG12 1AB" style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:6,padding:"8px 12px",fontSize:14,outline:"none",background:C.white,boxSizing:"border-box"}}/>
+        <div style={{fontSize:11,color:C.muted,marginTop:4}}>Used as the starting/ending point for this fitter's mileage tracking.</div>
       </div>
       <div>
         <label style={{fontSize:11,fontWeight:700,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",display:"block",marginBottom:6}}>🔒 Portal Password</label>
@@ -3092,6 +3103,7 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
           {sectionBtn("emails","Email Templates","✉️")}
           {sectionBtn("feedback","Feedback Form","⭐")}
           {sectionBtn("checklist","Fitter Checklist","✅")}
+          {sectionBtn("mileage","Mileage","🚗")}
           {sectionBtn("enquiryform","Website Enquiry Form","🌐")}
         </div>
       </div>
@@ -3318,6 +3330,37 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
                 + Add Checklist Item
               </button>
               <div style={{paddingTop:16,borderTop:`1px solid ${C.border}`,display:"flex",justifyContent:"flex-end"}}>
+                <div style={{background:saveStatus==="saving"?C.slateLight:saveStatus==="error"?"#FEF2F2":"#F0FDF4",color:saveStatus==="saving"?C.slate:saveStatus==="error"?C.red:C.mint,fontSize:12,fontWeight:700,padding:"7px 14px",borderRadius:8,border:`1px solid ${saveStatus==="saving"?C.border:saveStatus==="error"?"#FECACA":"#86EFAC"}`,whiteSpace:"nowrap"}}>
+                {saveStatus==="saving"?"Saving…":saveStatus==="error"?"⚠ Save failed":"✓ Saved"}
+              </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── MILEAGE ── */}
+        {activeSection==="mileage"&&(
+          <div style={{display:"flex",flexDirection:"column",gap:16}}>
+            <div style={{background:C.white,borderRadius:10,border:`1px solid ${C.border}`,padding:24}}>
+              <h3 style={{margin:"0 0 6px",fontSize:18,color:C.navy,fontWeight:800}}>🚗 Mileage</h3>
+              <p style={{margin:"0 0 20px",fontSize:13,color:C.slate}}>Automatically works out each fitter's daily mileage from their home postcode to the jobs on their calendar, for expense/reimbursement purposes.</p>
+
+              <div style={{maxWidth:280,marginBottom:20}}>
+                <Inp label="Mileage Rate (pence per mile)" type="number" value={settings.mileageRate||"45"} onChange={e=>update("mileageRate",e.target.value)} placeholder="45"/>
+                <p style={{margin:"6px 0 0",fontSize:12,color:C.muted}}>Defaults to the HMRC 45p/mile rate. Used to show a £ figure alongside the mileage total.</p>
+              </div>
+
+              <div style={{background:C.slateLight,borderRadius:8,padding:14,marginBottom:4}}>
+                <div style={{fontSize:13,fontWeight:700,color:C.navy,marginBottom:6}}>🏠 Fitter home postcodes</div>
+                <p style={{margin:0,fontSize:13,color:C.slate}}>Set in <strong>Settings → Fitters</strong>, next to each fitter's password — that's the starting/ending point for their daily mileage.</p>
+              </div>
+
+              <div style={{background:"#FFFBEB",border:`1px solid ${C.amber}`,borderRadius:8,padding:14,marginTop:14}}>
+                <div style={{fontSize:13,fontWeight:700,color:"#92400E",marginBottom:6}}>⏳ Distance calculation not yet connected</div>
+                <p style={{margin:0,fontSize:13,color:"#78350F"}}>The Mileage report needs a free driving-distance API (OpenRouteService) to work out real road mileage between addresses — this needs a one-time sign-up for an API key before it can calculate anything. Once that's in place, the Mileage page will start showing real totals automatically.</p>
+              </div>
+
+              <div style={{marginTop:20,paddingTop:20,borderTop:`1px solid ${C.border}`,display:"flex",justifyContent:"flex-end"}}>
                 <div style={{background:saveStatus==="saving"?C.slateLight:saveStatus==="error"?"#FEF2F2":"#F0FDF4",color:saveStatus==="saving"?C.slate:saveStatus==="error"?C.red:C.mint,fontSize:12,fontWeight:700,padding:"7px 14px",borderRadius:8,border:`1px solid ${saveStatus==="saving"?C.border:saveStatus==="error"?"#FECACA":"#86EFAC"}`,whiteSpace:"nowrap"}}>
                 {saveStatus==="saving"?"Saving…":saveStatus==="error"?"⚠ Save failed":"✓ Saved"}
               </div>
@@ -4965,6 +5008,84 @@ const TrackOrdersPage = ({jobs,customers,settings}) => {
   );
 };
 
+// ── Mileage Page ────────────────────────────────────────────────────────────
+// Groundwork only for now — pulls the right job-site visits from each fitter's calendar
+// (same event sources as the Fitter Calendar/FitterApp), ready for the distance-calc engine
+// to fill in once the OpenRouteService API key is wired up. See Settings > Mileage.
+const MileagePage = ({jobs,customers,settings}) => {
+  const [fitter,setFitter]=useState((settings?.fitters||DEFAULT_FITTERS)[0]||"");
+  const [viewDate,setViewDate]=useState(new Date());
+  const year=viewDate.getFullYear(), month=viewDate.getMonth();
+  const monthName=viewDate.toLocaleDateString("en-GB",{month:"long",year:"numeric"});
+  const prev=()=>setViewDate(new Date(year,month-1,1));
+  const next=()=>setViewDate(new Date(year,month+1,1));
+  const home=settings?.fitterHomes?.[fitter];
+
+  const fitterEvents=useMemo(()=>{
+    const evts=[];
+    jobs.forEach(job=>{
+      const cust=customers.find(c=>c.id===job.customerId);
+      const survey=job.tabs?.survey;
+      if(survey?.date&&survey?.fitter===fitter) evts.push({type:"Survey",date:survey.date,address:cust?.address||""});
+      const inst=job.tabs?.installation;
+      if(inst?.date&&(inst.fitters||[]).includes(fitter)) evts.push({type:"Install",date:inst.date,address:cust?.address||""});
+      (job.tabs?.serviceCall?.bookings||[]).forEach(b=>{
+        if(b.date&&b.fitter===fitter) evts.push({type:"Service Call",date:b.date,address:cust?.address||""});
+      });
+    });
+    return evts
+      .filter(e=>{ const d=new Date(e.date); return d.getFullYear()===year&&d.getMonth()===month; })
+      .sort((a,b)=>a.date.localeCompare(b.date));
+  },[jobs,customers,fitter,year,month]);
+
+  return (
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,flexWrap:"wrap",gap:12}}>
+        <h2 style={{margin:0,color:C.navy,fontWeight:800,fontSize:22}}>🚗 Mileage</h2>
+        <div style={{display:"flex",gap:10,alignItems:"center"}}>
+          <Sel value={fitter} onChange={e=>setFitter(e.target.value)} style={{fontSize:13,padding:"6px 10px"}}>
+            {(settings?.fitters||DEFAULT_FITTERS).map(f=><option key={f}>{f}</option>)}
+          </Sel>
+          <Btn variant="secondary" onClick={prev} style={{padding:"6px 12px"}}>‹</Btn>
+          <span style={{fontWeight:700,color:C.navy,minWidth:140,textAlign:"center"}}>{monthName}</span>
+          <Btn variant="secondary" onClick={next} style={{padding:"6px 12px"}}>›</Btn>
+        </div>
+      </div>
+
+      {!home&&(
+        <div style={{background:"#FEF2F2",border:"1px solid #FECACA",borderRadius:10,padding:14,marginBottom:16}}>
+          <div style={{fontSize:13,fontWeight:700,color:C.red}}>⚠ No home postcode set for {fitter}</div>
+          <div style={{fontSize:13,color:C.slate,marginTop:2}}>Add one in Settings → Fitters so mileage can be calculated from the right starting point.</div>
+        </div>
+      )}
+
+      <div style={{background:"#FFFBEB",border:`1px solid ${C.amber}`,borderRadius:10,padding:14,marginBottom:20}}>
+        <div style={{fontSize:13,fontWeight:700,color:"#92400E"}}>⏳ Distance calculation not yet connected</div>
+        <div style={{fontSize:13,color:"#78350F",marginTop:2}}>The visits below are correctly pulled from {fitter}'s calendar — once the mileage engine is wired up (Settings → Mileage), each day will show real driving mileage and a total for the month.</div>
+      </div>
+
+      <div style={{background:C.white,borderRadius:10,border:`1px solid ${C.border}`,overflow:"hidden"}}>
+        <div style={{background:C.navy,padding:"10px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span style={{color:"#fff",fontWeight:700,fontSize:14}}>{fitter}'s Job Visits — {monthName}</span>
+          <span style={{color:"rgba(255,255,255,0.6)",fontSize:12}}>{fitterEvents.length} visit{fitterEvents.length!==1?"s":""}</span>
+        </div>
+        {fitterEvents.length===0&&(
+          <div style={{padding:24,textAlign:"center",color:C.muted,fontSize:13}}>No jobs scheduled for {fitter} this month.</div>
+        )}
+        {fitterEvents.map((e,i)=>(
+          <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 16px",borderBottom:`1px solid ${C.border}`}}>
+            <div>
+              <div style={{fontSize:13,fontWeight:700,color:C.navy}}>{e.type} — {new Date(e.date).toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short"})}</div>
+              <div style={{fontSize:12,color:C.slate,marginTop:2}}>{e.address||"No address on file"}</div>
+            </div>
+            <div style={{fontSize:12,color:C.muted,fontStyle:"italic"}}>— mi</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 // ── Customer Directory Page ───────────────────────────────────────────────────
 const CustomerDirectoryPage = ({customers,setCustomers,jobs,setJobs,settings,onNavigate}) => {
   const [search,setSearch]=useState("");
@@ -5640,6 +5761,7 @@ function App() {
     {id:"jobs",label:"Installation Pipeline",icon:"🔨"},
     {id:"calendar",label:"Fitter Calendar",icon:"📅"},
     {id:"orders",label:"Track Orders",icon:"📦"},
+    {id:"mileage",label:"Mileage",icon:"🚗"},
     {id:"customers",label:"Customers",icon:"🏢"},
     {id:"settings",label:"Settings",icon:"⚙️"},
   ];
@@ -5754,6 +5876,7 @@ function App() {
           {page==="jobs"&&<InstallPipelinePage jobs={jobs} setJobs={setJobs} customers={customers} settings={settings}/>}
           {page==="calendar"&&<CalendarPage customers={customers} jobs={jobs} settings={settings}/>}
           {page==="orders"&&<TrackOrdersPage jobs={jobs} customers={customers} settings={settings}/>}
+          {page==="mileage"&&<MileagePage jobs={jobs} customers={customers} settings={settings}/>}
           {page==="customers"&&<CustomerDirectoryPage customers={customers} setCustomers={setCustomers} jobs={jobs} setJobs={setJobs} settings={settings} onNavigate={setPage}/>}
           {page==="settings"&&<SettingsPage settings={settings} setSettings={setSettings} onNewEnquiry={lead=>apiCreateCustomer(lead).then(saved=>setCustomers(cs=>[saved,...cs])).catch(err=>window.alert("Failed to save enquiry: "+err.message))}/>}
         </div>
