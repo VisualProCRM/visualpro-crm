@@ -1,6 +1,7 @@
 const { app } = require('@azure/functions');
 const { getPool, sql } = require('../db');
 const { requireAuth } = require('../auth');
+// (api-only touch to force a clean deploy-api re-run after the infra+api combined push)
 
 // Discovery-phase receiver for WindowCAD7's own CRM webhook (configured inside WindowCAD7
 // itself, Settings > CRM > API url) — no formal docs exist from ICAAL, so this just captures
