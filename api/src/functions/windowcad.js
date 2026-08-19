@@ -42,6 +42,11 @@ function extractProjectFields(project) {
     quoteValue: typeof project.price === 'number' && project.price > 0 ? String(project.price) : '',
     installationValue: installFeeMatch ? installFeeMatch[1].replace(/,/g, '') : '',
     windowcadStatus: (project.statusName || '').trim(),
+    // WindowCAD7's own "last modified" timestamp - used as a staleness guard so an
+    // out-of-order or duplicate webhook delivery (from whatever cause) can never overwrite
+    // newer data with older data. Not every payload has this (e.g. malformed/legacy test
+    // payloads), so treat missing as "always apply" rather than blocking on it.
+    windowcadModifiedAt: project.modifiedDate || '',
   };
 }
 
@@ -117,12 +122,22 @@ async function applyWindowcadProject(pool, project, context) {
   const jobRows = (await pool.request().query('SELECT * FROM dbo.Jobs WHERE TenantId = 1')).recordset;
   const jobs = jobRows.map(mapJobRow);
 
+  // Staleness guard: skip applying if this project's own modifiedDate is not newer than the
+  // last one we actually applied for it. Protects against any out-of-order or duplicate
+  // webhook delivery — from WindowCAD7 retrying, our own re-processing of an old capture, or
+  // anything else — ever overwriting newer data with older data. A record with no stored
+  // windowcadModifiedAt yet (never linked before) always applies.
+  const isStale = (record) =>
+    f.windowcadModifiedAt && record.windowcadModifiedAt && f.windowcadModifiedAt <= record.windowcadModifiedAt;
+
   const linkedJob = jobs.find((j) => j.windowcad && norm(j.windowcad) === norm(f.reference));
   if (linkedJob) {
+    if (isStale(linkedJob)) return { action: 'skipped-stale', jobId: linkedJob.id };
     const patch = { ...linkedJob };
     if (f.quoteValue) patch.quoteValue = f.quoteValue;
     if (f.installationValue) patch.installationValue = f.installationValue;
     if (f.windowcadStatus) patch.windowcadStatus = f.windowcadStatus;
+    if (f.windowcadModifiedAt) patch.windowcadModifiedAt = f.windowcadModifiedAt;
     await updateJobRow(pool, linkedJob.id, patch);
     // Identity fields still belong on the linked customer, source-of-truth per the office.
     const cust = customers.find((c) => c.id === linkedJob.customerId);
@@ -139,6 +154,7 @@ async function applyWindowcadProject(pool, project, context) {
 
   const linkedCustomer = customers.find((c) => c.windowcad && norm(c.windowcad) === norm(f.reference));
   if (linkedCustomer) {
+    if (isStale(linkedCustomer)) return { action: 'skipped-stale', customerId: linkedCustomer.id };
     const patch = { ...linkedCustomer };
     if (f.name) patch.name = f.name;
     if (f.email) patch.email = f.email;
@@ -147,6 +163,7 @@ async function applyWindowcadProject(pool, project, context) {
     if (f.quoteValue) patch.quoteValue = f.quoteValue;
     if (f.installationValue) patch.installationValue = f.installationValue;
     if (f.windowcadStatus) patch.windowcadStatus = f.windowcadStatus;
+    if (f.windowcadModifiedAt) patch.windowcadModifiedAt = f.windowcadModifiedAt;
     await updateCustomerRow(pool, linkedCustomer.id, patch);
     return { action: 'updated-customer', customerId: linkedCustomer.id };
   }
@@ -167,6 +184,7 @@ async function applyWindowcadProject(pool, project, context) {
       quoteValue: f.quoteValue,
       installationValue: f.installationValue,
       windowcadStatus: f.windowcadStatus,
+      windowcadModifiedAt: f.windowcadModifiedAt,
       wonAt: new Date().toISOString(),
       tabs: emptyTabs(),
     };
@@ -185,6 +203,7 @@ async function applyWindowcadProject(pool, project, context) {
     quoteValue: f.quoteValue,
     installationValue: f.installationValue,
     windowcadStatus: f.windowcadStatus,
+    windowcadModifiedAt: f.windowcadModifiedAt,
     tabs: emptyTabs(),
   };
   const created = await insertCustomerRow(pool, newCustomer);
