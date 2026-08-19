@@ -5646,6 +5646,21 @@ function App() {
       .catch(err=>{ console.error("Failed to load data",err); setDataLoadError(err.message); })
       .finally(()=>setDataLoaded(true));
   },[userRole]);
+
+  // Quietly re-fetches customers/jobs every 20s while logged in, so updates that land from
+  // outside the app itself (e.g. the WindowCAD7 webhook integration) show up without needing
+  // a manual page reload. Safe to replace the whole array wholesale — CardDetailModal copies
+  // its record into its own local state once on open, so a background refresh here never
+  // disrupts anyone actively editing an open record.
+  useEffect(()=>{
+    if(!userRole) return;
+    const timer=setInterval(()=>{
+      Promise.all([apiListCustomers(),apiListJobs()])
+        .then(([cs,js])=>{ setCustomers(cs); setJobs(js); })
+        .catch(err=>console.error("Background refresh failed",err));
+    },20000);
+    return ()=>clearInterval(timer);
+  },[userRole]);
   const [pwInput,setPwInput]=useState("");
   const [pwError,setPwError]=useState(false);
   const [showPw,setShowPw]=useState(false);
