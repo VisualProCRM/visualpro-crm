@@ -42,7 +42,7 @@ const C = {
 const LEAD_STAGES   = ["Prospect List","New Enquiry","Contacted","Quoted","Followed Up","Deal Won","Deal Lost"];
 const INSTALL_STAGES= ["Book Survey","Survey Booked","Order Confirmation Sent","Order Confirmation Signed","Order Products","Book Installation","Send Product Balance","Install Started","Install Completed","Send Guarantees","Job Completed ✓"];
 const COMPLETED_STAGE = "Job Completed ✓";
-const SOURCES       = ["Website","Referral","Checkatrade","Google Ads","Facebook","Flyer","Other"];
+const SOURCES       = ["Website","Referral","Checkatrade","Google Ads","Facebook","Flyer","WindowCAD7","Other"];
 const SECTORS       = ["Retail","Trade","Commercial"];
 const SECTOR_META = {
   Retail:{bg:"#EFF6FF",text:"#1D4ED8",icon:"🛍️"},
@@ -471,11 +471,13 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
               {/* Full customer info panel */}
               <div style={{background:C.slateLight,borderRadius:8,padding:12}}>
                 <div style={{fontSize:12,fontWeight:600,color:C.slate,marginBottom:8}}>CUSTOMER INFO</div>
-                {customer&&[["📧",customer.email],...(customer.email2?[["📧 Secondary",customer.email2]]:[]),["📞",customer.phone],["🔗 Source",customer.source],["🏷️ Sector",customer.sector],["💰 Quote",totalQuoteValue(data)?`£${totalQuoteValue(data).toLocaleString()}`:"—"],["📊 Margin",totalQuoteValue(data)&&totalQuoteCost(data)?(()=>{const m=calcMargin(totalQuoteValue(data),totalQuoteCost(data));return m?`${m.pct}% (£${m.profit.toLocaleString()})`:"—"})():"—"]].map(([icon,val])=>(
+                {customer&&[["📧",customer.email],...(customer.email2?[["📧 Secondary",customer.email2]]:[]),["📞",customer.phone],["🔗 Source",customer.source],["🏷️ Sector",customer.sector],...(data.windowcadStatus?[["🪟 WindowCAD7 Status",data.windowcadStatus]]:[]),["💰 Quote",totalQuoteValue(data)?`£${totalQuoteValue(data).toLocaleString()}`:"—"],["📊 Margin",totalQuoteValue(data)&&totalQuoteCost(data)?(()=>{const m=calcMargin(totalQuoteValue(data),totalQuoteCost(data));return m?`${m.pct}% (£${m.profit.toLocaleString()})`:"—"})():"—"]].map(([icon,val])=>(
                   <div key={icon} style={{fontSize:13,color:C.text,padding:"5px 0",borderBottom:`1px solid ${C.border}`,display:"flex",gap:8,alignItems:"center"}}>
                     <span style={{color:C.slate,minWidth:90,flexShrink:0}}>{icon}</span>
                     {icon==="🏷️ Sector"&&val&&SECTOR_META[val]?(
                       <span style={{fontWeight:700,fontSize:12,background:SECTOR_META[val].bg,color:SECTOR_META[val].text,padding:"3px 10px",borderRadius:10}}>{SECTOR_META[val].icon} {val}</span>
+                    ):icon==="🪟 WindowCAD7 Status"?(
+                      <span style={{fontWeight:700,fontSize:12,background:"#EEF2FF",color:"#4338CA",padding:"3px 10px",borderRadius:10}}>{val}</span>
                     ):(
                       <span style={{fontWeight:500}}>{val||"—"}</span>
                     )}
@@ -612,11 +614,13 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
               {/* Customer info panel — mirrors the read-only summary shown on a Job's Details tab, for visual consistency between the Sales and Installation Pipeline cards */}
               <div style={{background:C.slateLight,borderRadius:8,padding:12}}>
                 <div style={{fontSize:12,fontWeight:600,color:C.slate,marginBottom:8}}>CUSTOMER INFO</div>
-                {[["📧",data.email],...(data.email2?[["📧 Secondary",data.email2]]:[]),["📞",data.phone],["🔗 Source",data.source],["🏷️ Sector",data.sector],["💰 Quote",totalQuoteValue(data)?`£${totalQuoteValue(data).toLocaleString()}`:"—"],["📊 Margin",totalQuoteValue(data)&&totalQuoteCost(data)?(()=>{const m=calcMargin(totalQuoteValue(data),totalQuoteCost(data));return m?`${m.pct}% (£${m.profit.toLocaleString()})`:"—"})():"—"]].map(([icon,val])=>(
+                {[["📧",data.email],...(data.email2?[["📧 Secondary",data.email2]]:[]),["📞",data.phone],["🔗 Source",data.source],["🏷️ Sector",data.sector],...(data.windowcadStatus?[["🪟 WindowCAD7 Status",data.windowcadStatus]]:[]),["💰 Quote",totalQuoteValue(data)?`£${totalQuoteValue(data).toLocaleString()}`:"—"],["📊 Margin",totalQuoteValue(data)&&totalQuoteCost(data)?(()=>{const m=calcMargin(totalQuoteValue(data),totalQuoteCost(data));return m?`${m.pct}% (£${m.profit.toLocaleString()})`:"—"})():"—"]].map(([icon,val])=>(
                   <div key={icon} style={{fontSize:13,color:C.text,padding:"5px 0",borderBottom:`1px solid ${C.border}`,display:"flex",gap:8,alignItems:"center"}}>
                     <span style={{color:C.slate,minWidth:90,flexShrink:0}}>{icon}</span>
                     {icon==="🏷️ Sector"&&val&&SECTOR_META[val]?(
                       <span style={{fontWeight:700,fontSize:12,background:SECTOR_META[val].bg,color:SECTOR_META[val].text,padding:"3px 10px",borderRadius:10}}>{SECTOR_META[val].icon} {val}</span>
+                    ):icon==="🪟 WindowCAD7 Status"?(
+                      <span style={{fontWeight:700,fontSize:12,background:"#EEF2FF",color:"#4338CA",padding:"3px 10px",borderRadius:10}}>{val}</span>
                     ):(
                       <span style={{fontWeight:500}}>{val||"—"}</span>
                     )}
