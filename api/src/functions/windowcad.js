@@ -209,21 +209,17 @@ app.http('windowcadWebhook', {
       return { status: 404 };
     }
 
-    // Defensive about non-JSON bodies too - untested WindowCAD7 actions (e.g. the "Print to
-    // CRM" button) may send a document rather than JSON. Never fail outright on this; capture
-    // whatever it is so we can see the shape next time, same philosophy as the JSON path.
+    // Always try to parse as JSON first regardless of the declared Content-Type - WindowCAD7
+    // has been observed sending genuinely-JSON bodies labelled "text/plain", so trusting the
+    // header alone silently skipped real events. Only falls back to raw-text capture (for
+    // untested actions like the "Print to CRM" button, which may send an actual document)
+    // when the body truly isn't valid JSON.
     const contentType = request.headers.get('content-type') || '';
+    const rawText = await request.text().catch(() => '(unreadable body)');
     let payload;
-    let rawText = null;
-    if (contentType.includes('application/json')) {
-      try {
-        payload = await request.json();
-      } catch (err) {
-        rawText = await request.text().catch(() => '(unreadable body)');
-        payload = { _parseError: 'Invalid JSON', contentType, rawText: rawText.slice(0, 2000) };
-      }
-    } else {
-      rawText = await request.text().catch(() => '(unreadable body)');
+    try {
+      payload = JSON.parse(rawText);
+    } catch (err) {
       payload = { _nonJsonBody: true, contentType, rawText: rawText.slice(0, 2000) };
     }
 
