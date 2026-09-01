@@ -4208,7 +4208,7 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
                   <div style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em"}}>Site Photos</div>
                   <label style={{background:C.sky,color:"#fff",borderRadius:8,padding:"6px 14px",fontSize:13,fontWeight:600,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:6}}>
                     📷 Add Photo
-                    <input type="file" accept="image/*" multiple capture="environment" onChange={e=>addSurveyImage(e,job)} style={{display:"none"}}/>
+                    <input type="file" accept="image/*" multiple onChange={e=>addSurveyImage(e,job)} style={{display:"none"}}/>
                   </label>
                 </div>
                 {(job.tabs?.survey?.images||[]).length===0&&(
@@ -4272,7 +4272,7 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
                   <div style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em"}}>Installation Photos</div>
                   <label style={{background:C.mint,color:"#fff",borderRadius:8,padding:"6px 14px",fontSize:13,fontWeight:600,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:6}}>
                     📷 Add Photo
-                    <input type="file" accept="image/*" multiple capture="environment" onChange={e=>addInstallImage(e,job)} style={{display:"none"}}/>
+                    <input type="file" accept="image/*" multiple onChange={e=>addInstallImage(e,job)} style={{display:"none"}}/>
                   </label>
                 </div>
                 {(job.tabs?.installation?.installImages||[]).length===0&&(
@@ -4359,7 +4359,7 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
                   <div style={{fontSize:11,fontWeight:700,color:"#15803D",textTransform:"uppercase",letterSpacing:"0.08em"}}>📷 Fitter Photos</div>
                   <label style={{background:C.mint,color:"#fff",borderRadius:8,padding:"6px 14px",fontSize:13,fontWeight:600,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:6}}>
                     📷 Fitter Photos
-                    <input type="file" accept="image/*" multiple capture="environment" onChange={async(e)=>{
+                    <input type="file" accept="image/*" multiple onChange={async(e)=>{
                       const files=Array.from(e.target.files);
                       const datas=await Promise.all(files.map(f=>uploadFile(f,"photos")));
                       const updated={...job,tabs:{...job.tabs,serviceCall:{...job.tabs.serviceCall,fitterPhotos:[...(job.tabs.serviceCall?.fitterPhotos||[]),...datas]}}};
