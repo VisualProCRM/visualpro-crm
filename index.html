@@ -4431,10 +4431,12 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
     <div style={{display:"flex",flexDirection:"column",height:"100vh",background:C.slateLight,fontFamily:"'Inter','Segoe UI',sans-serif",maxWidth:430,margin:"0 auto"}}>
       {/* Header */}
       <div style={{background:C.navy,padding:"20px 16px 16px",color:"#fff",flexShrink:0}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-          <div>
-            <div style={{fontSize:12,opacity:.6,textTransform:"uppercase",letterSpacing:"0.1em"}}>Fitter Portal</div>
-            <div style={{fontSize:20,fontWeight:800}}>👷 {fitterName}</div>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div style={{display:"flex",alignItems:"center",gap:12}}>
+            <div style={{width:44,height:44,borderRadius:"50%",background:C.mint,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0,overflow:"hidden"}}>
+              {settings?.fitterPhotos?.[fitterName]?<img src={settings.fitterPhotos[fitterName]} alt={fitterName} style={{width:"100%",height:"100%",objectFit:"cover"}}/>:"👷"}
+            </div>
+            <div style={{fontSize:20,fontWeight:800}}>{fitterName}</div>
           </div>
           <button onClick={onLogout} style={{background:"rgba(255,255,255,0.15)",border:"none",color:"#fff",borderRadius:8,padding:"6px 12px",cursor:"pointer",fontSize:13}}>Log out</button>
         </div>
@@ -5714,7 +5716,9 @@ function App() {
       <div style={{minHeight:"100vh",background:C.navy,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Inter','Segoe UI',sans-serif",padding:20}}>
         <div style={{background:C.white,borderRadius:16,width:"100%",maxWidth:360,overflow:"hidden",boxShadow:"0 24px 64px rgba(0,0,0,0.3)"}}>
           <div style={{background:C.navy,padding:"28px 24px",textAlign:"center",borderBottom:`3px solid ${C.sky}`}}>
-            <div style={{width:60,height:60,borderRadius:"50%",background:C.mint,display:"flex",alignItems:"center",justifyContent:"center",fontSize:26,margin:"0 auto 12px"}}>👷</div>
+            <div style={{width:60,height:60,borderRadius:"50%",background:C.mint,display:"flex",alignItems:"center",justifyContent:"center",fontSize:26,margin:"0 auto 12px",overflow:"hidden"}}>
+              {settings.fitterPhotos?.[selectedFitter]?<img src={settings.fitterPhotos[selectedFitter]} alt={selectedFitter} style={{width:"100%",height:"100%",objectFit:"cover"}}/>:"👷"}
+            </div>
             <div style={{color:"#fff",fontWeight:800,fontSize:20}}>{selectedFitter}</div>
             <div style={{color:"rgba(255,255,255,0.5)",fontSize:13,marginTop:4}}>Fitter Portal</div>
           </div>
