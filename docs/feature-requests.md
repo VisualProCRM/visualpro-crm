@@ -113,6 +113,10 @@ A shared place for feature ideas, wherever they come from — the office, a fitt
 - **Second real bug found and fixed same day**: shortly after the fix above, a linked test customer's record regressed to an older price/status with no corresponding new webhook event in the captured audit trail — root cause not fully pinned down, but fixed regardless: WindowCAD7 includes its own `modifiedDate` on every payload, now stored as `windowcadModifiedAt` and checked before every update, so an update whose `modifiedDate` isn't newer than what's already stored is skipped rather than applied. Verified by deliberately replaying an old event afterward and confirming it was correctly rejected (`"skipped-stale"`).
 - **Not yet tested**: WindowCAD7's separate "Print to CRM" button / "Print document" option (seen in its CRM settings, currently off) — looks like it may send an actual generated document (e.g. the quote PDF) rather than JSON, which could enable auto-attaching the Quote/Survey/Order Confirmation documents the office currently attaches by hand. The receiver was made defensive about non-JSON bodies in anticipation of testing this next.
 
+### Fitter mobile: let photo uploads pick from library, not just camera — ✅ built 2026-08-19
+- Requested by: office (fitter feedback) — 2026-08-19
+- Survey, Installation, and the Fitter Photos upload buttons in the fitter mobile app all had `capture="environment"` set, which forces the phone's camera straight open instead of offering the native "Take Photo / Photo Library / Choose File" picker. Removed on all three so fitters can upload photos taken earlier instead of only being able to shoot one in the moment.
+
 ---
 
 ## Resolved / not needed
