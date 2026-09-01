@@ -4,7 +4,7 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <meta name="theme-color" content="#1B2B4B"/>
-  <title>VisualPro CRM</title>
+  <title>GlazeStream CRM</title>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"/>
   <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
@@ -24,7 +24,7 @@
 <body>
   <div id="loading">
     <div class="spinner"></div>
-    <h1>🪟 VisualPro CRM</h1>
+    <h1>🪟 GlazeStream CRM</h1>
     <p>Loading, please wait...</p>
   </div>
   <div id="root"></div>
@@ -2565,7 +2565,7 @@ const DEFAULT_SETTINGS = {
   fitters:[...DEFAULT_FITTERS],
   staff:[...DEFAULT_STAFF],
   suppliers:[...DEFAULT_SUPPLIERS],
-  companyName:"VisualPro",
+  companyName:"GlazeStream",
   companyPhone:"",
   companyEmail:"",
   companyWebsite:"",
@@ -2653,7 +2653,7 @@ const FeedbackFormModal = ({job,customers,settings,onSubmit,onClose}) => {
         <div style={{background:C.navy,padding:"20px 24px",color:"#fff",textAlign:"center"}}>
           <div style={{fontSize:24,marginBottom:6}}>⭐</div>
           <h2 style={{margin:0,fontSize:20,fontWeight:800}}>Customer Feedback Form</h2>
-          <p style={{margin:"6px 0 0",opacity:.7,fontSize:13}}>{settings?.companyName||"VisualPro"}</p>
+          <p style={{margin:"6px 0 0",opacity:.7,fontSize:13}}>{settings?.companyName||"GlazeStream"}</p>
         </div>
         {/* Questions */}
         <div style={{padding:20,maxHeight:"60vh",overflowY:"auto"}}>
@@ -2817,7 +2817,7 @@ const WebsiteEnquiryForm = ({companyName,onSubmit}) => {
       {/* Form header */}
       <div style={{background:C.navy,padding:"20px 24px",textAlign:"center"}}>
         <div style={{fontSize:22,marginBottom:4}}>🪟</div>
-        <div style={{color:"#fff",fontWeight:800,fontSize:18}}>{companyName||"VisualPro"}</div>
+        <div style={{color:"#fff",fontWeight:800,fontSize:18}}>{companyName||"GlazeStream"}</div>
         <div style={{color:"rgba(255,255,255,0.6)",fontSize:13,marginTop:3}}>Request a Free Quote</div>
       </div>
 
@@ -5759,7 +5759,7 @@ function App() {
             {settings.companyLogo
               ?<img src={settings.companyLogo} alt={settings.companyName||"Company logo"} style={{width:56,height:56,objectFit:"contain",marginBottom:8,borderRadius:8}}/>
               :<div style={{fontSize:40,marginBottom:8}}>🪟</div>}
-            <div style={{color:"#fff",fontWeight:800,fontSize:22}}>{settings.companyName||"VisualPro"}</div>
+            <div style={{color:"#fff",fontWeight:800,fontSize:22}}>{settings.companyName||"GlazeStream"}</div>
             <div style={{color:"rgba(255,255,255,0.5)",fontSize:13,marginTop:4}}>Select your name to continue</div>
           </div>
           <div style={{padding:20,display:"flex",flexDirection:"column",gap:8}}>
@@ -5853,7 +5853,7 @@ function App() {
               {settings.companyLogo?<img src={settings.companyLogo} alt={settings.companyName||"Logo"} style={{width:"100%",height:"100%",objectFit:"cover"}}/>:"🪟"}
             </div>
             <div>
-              <div style={{color:"#fff",fontWeight:800,fontSize:15,lineHeight:1.2}}>{settings.companyName||"VisualPro"}</div>
+              <div style={{color:"#fff",fontWeight:800,fontSize:15,lineHeight:1.2}}>{settings.companyName||"GlazeStream"}</div>
               <div style={{color:"rgba(255,255,255,0.5)",fontSize:11}}>CRM</div>
             </div>
           </div>
