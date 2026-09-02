@@ -11,7 +11,8 @@ A shared place for feature ideas, wherever they come from — the office, a fitt
 ### Trello-style to-do Kanban on the Dashboard
 - Requested by: office — 2026-08-19
 - A drag-and-drop to-do board (Trello-style columns/cards) shown underneath the main Dashboard view, for general internal task tracking — separate from the Sales/Installation Pipeline boards, which track customer deals/jobs specifically, not ad-hoc office to-dos.
-- Not yet scoped: column set (e.g. To Do / Doing / Done?), whether cards need due dates/assignees, whether this is shared across the whole office or per-person. Needs a quick design pass before building.
+- Column titles must be editable (not a fixed set like the Sales/Install pipeline stages).
+- Not yet scoped: default column set to start with, whether cards need due dates/assignees, whether this is shared across the whole office or per-person. Needs a quick design pass before building.
 
 ### Extend "Deal" tracking to span the whole lifecycle, not just post-Deal-Won (BIG — plan properly before building)
 - Raised by: office — 2026-08-07, following directly from investigating real duplicate-looking customer records
