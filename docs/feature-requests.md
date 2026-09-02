@@ -8,6 +8,11 @@ A shared place for feature ideas, wherever they come from — the office, a fitt
 
 ## Requested
 
+### Trello-style to-do Kanban on the Dashboard
+- Requested by: office — 2026-08-19
+- A drag-and-drop to-do board (Trello-style columns/cards) shown underneath the main Dashboard view, for general internal task tracking — separate from the Sales/Installation Pipeline boards, which track customer deals/jobs specifically, not ad-hoc office to-dos.
+- Not yet scoped: column set (e.g. To Do / Doing / Done?), whether cards need due dates/assignees, whether this is shared across the whole office or per-person. Needs a quick design pass before building.
+
 ### Extend "Deal" tracking to span the whole lifecycle, not just post-Deal-Won (BIG — plan properly before building)
 - Raised by: office — 2026-08-07, following directly from investigating real duplicate-looking customer records
 - **The actual problem found**: querying the live database turned up several genuine trade/commercial customers with 2-3 separate Customer records each — same name, same phone, different site addresses (e.g. "Conservatory Renovators" x3: Binfield/Tilehurst/Sandhurst, all still "Followed Up"; "Adam Slark" x2: one "Quoted", one "Deal Won" with a linked Job at a different address; also "Whitman Building Services" x2 and "New Richmond Developments" x2). These aren't data-entry mistakes — they're real concurrent quotes/jobs for the same repeat customer, entered as separate Customer records because **there was no other way to do it**: today's data model only lets a Customer have multiple linked *Jobs* after Deal Won (built earlier this session) — before that, a Customer can only be quoted for one thing at a time.
