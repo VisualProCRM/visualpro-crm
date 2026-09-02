@@ -14,6 +14,12 @@ A shared place for feature ideas, wherever they come from — the office, a fitt
 - Column titles must be editable (not a fixed set like the Sales/Install pipeline stages).
 - Not yet scoped: default column set to start with, whether cards need due dates/assignees, whether this is shared across the whole office or per-person. Needs a quick design pass before building.
 
+### General document storage area (Word/PDF/Excel/images, not tied to a specific customer record)
+- Requested by: office — 2026-08-19
+- A general storage/library area for customer-facing documents (Word docs, PDFs, Excel files, images) — distinct from the file-attachment fields already on individual Customer/Job tabs (Quote, Survey, Order Confirmation, Bills, Guarantee), which are always scoped to one specific record. This would be a standalone area, not tied to any single customer.
+- Business motivation: reduce reliance on external tools like OneDrive, and make the CRM "stickier" for customers if/when the business is sold — worth keeping in mind as this gets scoped, since it suggests the storage should feel like a first-class part of the product, not a bolted-on file dump.
+- Not yet scoped: folder/organisation structure, permissions (office-only vs fitters too), search/filtering, file size limits. Office has said they're not sure how this should look yet — needs a proper design conversation before building.
+
 ### Extend "Deal" tracking to span the whole lifecycle, not just post-Deal-Won (BIG — plan properly before building)
 - Raised by: office — 2026-08-07, following directly from investigating real duplicate-looking customer records
 - **The actual problem found**: querying the live database turned up several genuine trade/commercial customers with 2-3 separate Customer records each — same name, same phone, different site addresses (e.g. "Conservatory Renovators" x3: Binfield/Tilehurst/Sandhurst, all still "Followed Up"; "Adam Slark" x2: one "Quoted", one "Deal Won" with a linked Job at a different address; also "Whitman Building Services" x2 and "New Richmond Developments" x2). These aren't data-entry mistakes — they're real concurrent quotes/jobs for the same repeat customer, entered as separate Customer records because **there was no other way to do it**: today's data model only lets a Customer have multiple linked *Jobs* after Deal Won (built earlier this session) — before that, a Customer can only be quoted for one thing at a time.
