@@ -1,6 +1,6 @@
 const { app } = require('@azure/functions');
 const { getPool } = require('../db');
-const { sign } = require('../auth');
+const { sign, requireAuth } = require('../auth');
 
 // Issues a signed session token, required by every other endpoint (see auth.js). Two paths:
 //
@@ -40,6 +40,28 @@ app.http('login', {
     } catch (err) {
       context.error('login failed', err);
       return { status: 500, jsonBody: { error: err.message } };
+    }
+  },
+});
+
+// Silently renews a still-valid session token before it expires (default TTL is 12h) — the
+// frontend calls this periodically in the background while the app is open, for both office
+// and fitter sessions, so an active user never actually hits an expired-session error. Only
+// works on a token that's still valid (requireAuth throws 401 on an already-expired one) —
+// there's deliberately no separate "refresh token" concept, since re-signing the same
+// identity payload is enough for this app's needs and avoids a second secret to manage.
+app.http('loginRefresh', {
+  methods: ['POST'],
+  route: 'login/refresh',
+  authLevel: 'anonymous',
+  handler: async (request, context) => {
+    try {
+      const payload = requireAuth(request);
+      const { exp, ...identity } = payload;
+      return { jsonBody: { token: sign(identity) } };
+    } catch (err) {
+      context.error('loginRefresh failed', err);
+      return { status: err.status || 500, jsonBody: { error: err.message } };
     }
   },
 });

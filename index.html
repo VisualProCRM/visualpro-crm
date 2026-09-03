@@ -221,10 +221,18 @@ const API_BASE = "https://visualpro-crm-func.azurewebsites.net/api";
 let _authToken = null;
 const setGlobalAuthToken = (token) => { _authToken = token; };
 
+// Lets the App component show a friendly "please log back in" prompt the moment any call
+// comes back 401, instead of every individual save handler's own generic error alert
+// showing a raw "PUT /x failed: 401" message. Only fires when we actually thought we had a
+// token — a 401 with no token at all is a normal pre-login case, not an expired session.
+let _onSessionExpired = null;
+const setSessionExpiredHandler = (fn) => { _onSessionExpired = fn; };
+
 const apiRequest = async (path, options = {}) => {
   const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
   if (_authToken) headers["Authorization"] = `Bearer ${_authToken}`;
   const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  if (res.status === 401 && _authToken && _onSessionExpired) _onSessionExpired();
   if (!res.ok) throw new Error(`${options.method || "GET"} ${path} failed: ${res.status}`);
   if (res.status === 204) return null;
   return res.json();
@@ -248,6 +256,7 @@ const apiUpdateOrders = (data) => apiRequest("/orders", { method: "PUT", body: J
 const apiGetWindowcadEvents = () => apiRequest("/windowcad/events");
 
 const apiLogin = (role, password) => apiRequest("/login", { method: "POST", body: JSON.stringify({ role, password }) });
+const apiRefreshToken = () => apiRequest("/login/refresh", { method: "POST" });
 const apiSendReminder = (jobId, reminderKey) =>
   apiRequest("/send-reminder", { method: "POST", body: JSON.stringify({ jobId, reminderKey }) });
 
@@ -5692,6 +5701,26 @@ function App() {
       .catch(err=>console.error("Failed to refresh settings",err));
   },[authToken]);
 
+  // Silently renews the session token every 20 minutes (well inside the 12h server-side
+  // expiry) so an active session never actually goes stale — the tab-left-open-overnight
+  // scenario that caused a real "session expired" incident. Works for both office and
+  // fitter roles identically, since it's just re-signing whatever identity is already on
+  // the current token, no password re-entry needed.
+  const [sessionExpired,setSessionExpired]=useState(false);
+  useEffect(()=>{
+    setSessionExpiredHandler(()=>setSessionExpired(true));
+    return ()=>setSessionExpiredHandler(null);
+  },[]);
+  useEffect(()=>{
+    if(!authToken) return;
+    const timer=setInterval(()=>{
+      apiRefreshToken()
+        .then(({token})=>setAuthToken(token))
+        .catch(err=>console.error("Silent session refresh failed",err));
+    },20*60*1000);
+    return ()=>clearInterval(timer);
+  },[authToken]);
+
   const handleFitterLogin=()=>{
     apiLogin(selectedFitter,pwInput)
       .then(({token})=>{ setAuthToken(token); setUserRole(selectedFitter); })
@@ -5699,6 +5728,27 @@ function App() {
   };
 
   const resetLogin=()=>{setSelectedFitter(null);setPwInput("");setPwError(false);setShowPw(false);};
+
+  // ── Session expired: shown instead of whatever page was open, the moment any API call
+  // comes back 401 while logged in. The 20-minute silent refresh above should mean this is
+  // rare (only hit if the tab's been left open/asleep long enough to miss it, or the
+  // underlying Entra/fitter session was independently revoked) — but when it does happen,
+  // a clear prompt beats a raw "PUT /x failed: 401" alert on whatever was being saved. ──
+  if(sessionExpired){
+    return (
+      <div style={{minHeight:"100vh",background:C.navy,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Inter','Segoe UI',sans-serif",padding:20}}>
+        <div style={{background:C.white,borderRadius:16,width:"100%",maxWidth:380,padding:32,textAlign:"center",boxShadow:"0 24px 64px rgba(0,0,0,0.3)"}}>
+          <div style={{fontSize:40,marginBottom:12}}>🔒</div>
+          <h2 style={{margin:"0 0 8px",color:C.navy,fontSize:20,fontWeight:800}}>Your session has expired</h2>
+          <p style={{margin:"0 0 24px",color:C.slate,fontSize:14,lineHeight:1.6}}>For security, you get logged out after a period of inactivity. Please log back in to continue — anything that failed to save since will need re-entering.</p>
+          <button onClick={()=>{setSessionExpired(false);setAuthToken(null);setUserRole(null);resetLogin();}}
+            style={{width:"100%",background:C.sky,color:"#fff",border:"none",borderRadius:10,padding:"14px",fontSize:16,fontWeight:700,cursor:"pointer"}}>
+            Log In Again →
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // ── Login: waiting on the /.auth/me check and real Settings (fitters/passwords), before showing anything ──
   if(!userRole&&(!officeAuthChecked||!settingsLoaded)){
