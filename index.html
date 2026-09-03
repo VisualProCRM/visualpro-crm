@@ -12,19 +12,19 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
   <style>
     *{box-sizing:border-box;margin:0;padding:0;}
-    body{font-family:'Inter','Segoe UI',sans-serif;background:#1B2B4B;}
+    body{font-family:'Inter','Segoe UI',sans-serif;background:#FDFCFA;}
     #root{height:100vh;}
-    #loading{position:fixed;inset:0;background:#1B2B4B;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;color:#fff;}
-    #loading h1{font-size:28px;font-weight:800;margin-bottom:8px;}
+    #loading{position:fixed;inset:0;background:#FDFCFA;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;color:#1B2B4B;}
+    #loading img{max-width:min(420px,80vw);height:auto;margin-bottom:24px;}
     #loading p{font-size:14px;opacity:0.6;}
-    .spinner{width:40px;height:40px;border:3px solid rgba(255,255,255,0.2);border-top-color:#4A90D9;border-radius:50%;animation:spin 0.8s linear infinite;margin-bottom:20px;}
+    .spinner{width:40px;height:40px;border:3px solid rgba(27,43,75,0.15);border-top-color:#4A90D9;border-radius:50%;animation:spin 0.8s linear infinite;margin-bottom:20px;}
     @keyframes spin{to{transform:rotate(360deg)}}
   </style>
 </head>
 <body>
   <div id="loading">
+    <img src="/assets/logo-full.png" alt="GlazeStream"/>
     <div class="spinner"></div>
-    <h1>🪟 GlazeStream CRM</h1>
     <p>Loading, please wait...</p>
   </div>
   <div id="root"></div>
