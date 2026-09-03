@@ -8,6 +8,12 @@ A shared place for feature ideas, wherever they come from — the office, a fitt
 
 ## Requested
 
+### Apply GlazeStream brand colours consistently across the whole app
+- Requested by: office — 2026-09-03, as part of the wider GlazeStream branding pass (logo, favicon, loading screen)
+- Office has the official hex codes for the new GlazeStream brand (navy + blue, matching the logo lockup already shared) and wants the app's colour scheme brought in line with them everywhere — not just the logo/loading screen — so the product looks like one consistent, designed brand rather than a mix of the new logo next to old placeholder colours.
+- **Scoping note**: most of the app's colours already run through one central palette object near the top of `index.html` (navy/sky/mint/amber/red/slate/etc.), so re-pointing that at the real brand hex codes covers the bulk of it in one place. There are also a number of colours hardcoded inline outside that central palette (e.g. calendar event colours, sector badges, status pill colours) that would need finding and updating separately for full consistency.
+- **Not yet built**: waiting on office to actually provide the hex codes before this can be scoped precisely (which shade maps to which existing role — e.g. which blue replaces the current "sky", whether the sector/status accent colours change or stay as-is).
+
 ### Limitation: WindowCAD7 only syncs to the CRM on project creation or status change, not on a plain field edit
 - Raised by: office — 2026-09-03, after a Customer record named "Vicky" wasn't updated with her surname despite it being added in WindowCAD7
 - **Root cause (WindowCAD7's own limitation, not a bug in our integration)**: WindowCAD7's webhook "Events" trigger list only offers "Project created," "Project status changed," and per-designer-type "submitted" events — there is no generic "field edited"/"project updated" trigger. So editing a project's Name (or any other detail) with no accompanying status change never fires a webhook at all, and the CRM correctly has nothing new to process.
