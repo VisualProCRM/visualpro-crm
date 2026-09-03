@@ -2460,14 +2460,16 @@ const CalendarPage = ({customers,jobs,settings}) => {
       </div>
 
       {viewMode==="month"?(
-        /* Month grid */
+        /* Month grid — header and day cells are ONE grid (not two stacked grids), so their
+           column widths can never drift apart from independent sub-pixel rounding at
+           certain browser zoom levels (confirmed live: 100% zoom showed dates a whole
+           column out from their weekday header, 50% zoom was correct — classic symptom of
+           two separate `repeat(7,1fr)` grids rounding fractional pixels differently). */
         <div style={{background:C.white,borderRadius:10,border:`1px solid ${C.border}`,overflow:"hidden"}}>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",background:C.navy}}>
-            {["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map(d=>(
-              <div key={d} style={{padding:"10px 0",textAlign:"center",fontSize:12,fontWeight:700,color:"rgba(255,255,255,0.7)"}}>{d}</div>
-            ))}
-          </div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)"}}>
+            {["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map(d=>(
+              <div key={d} style={{padding:"10px 0",textAlign:"center",fontSize:12,fontWeight:700,color:"rgba(255,255,255,0.7)",background:C.navy}}>{d}</div>
+            ))}
             {days.map((d,i)=>{
               const events=d?eventsForDay(d):[];
               return (
@@ -4929,13 +4931,13 @@ const TrackOrdersPage = ({jobs,customers,settings}) => {
         </div>
 
         {viewMode==="month"?(
+          /* One unified grid for header + day cells (not two stacked grids) — avoids the
+             sub-pixel column-width rounding drift that showed up at 100% browser zoom. */
           <>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",background:C.navy}}>
-              {["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map(d=>(
-                <div key={d} style={{padding:"8px 0",textAlign:"center",fontSize:12,fontWeight:700,color:"rgba(255,255,255,0.6)"}}>{d}</div>
-              ))}
-            </div>
             <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)"}}>
+              {["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map(d=>(
+                <div key={d} style={{padding:"8px 0",textAlign:"center",fontSize:12,fontWeight:700,color:"rgba(255,255,255,0.6)",background:C.navy}}>{d}</div>
+              ))}
               {days.map((d,i)=>{
                 const dayOrders=d?ordersForDay(d):[];
                 const ds=d?fmtDate(year,month,d):"";
