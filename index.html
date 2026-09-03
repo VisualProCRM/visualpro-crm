@@ -424,8 +424,8 @@ const ImageGallery = ({images,onAdd,onRemove}) => {
 };
 
 // ── Card Detail Modal with Tabs ───────────────────────────────────────────────
-const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,settings,onOpenJob}) => {
-  const [activeTab,setActiveTab]=useState("Details");
+const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,settings,onOpenJob,initialTab}) => {
+  const [activeTab,setActiveTab]=useState(initialTab||"Details");
   const [data,setData]=useState({...record,_settings:settings});
   const [showFeedbackForm,setShowFeedbackForm]=useState(false);
   const customer=isJob?customers.find(c=>c.id===data.customerId):null;
@@ -1939,6 +1939,21 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
   const [viewingJob,setViewingJob]=useState(null);
   const [showConfetti,setShowConfetti]=useState(false);
   const [wonCustomer,setWonCustomer]=useState(null);
+  const [pendingTab,setPendingTab]=useState(null);
+
+  // Deep-link from the Fitter Calendar for a customer-level Survey booking (pre-Deal-Won —
+  // that data still lives on the Customer record, not a Job, so it opens here rather than
+  // in Customer Directory's Job modal). Mirrors CustomerDirectoryPage's own window._gs*
+  // pickup for the global search bar.
+  useState(()=>{
+    if(window._gsCustId){
+      const c=customers.find(x=>x.id===window._gsCustId);
+      if(c) setDetailRecord(c);
+      if(window._gsTab) setPendingTab(window._gsTab);
+      window._gsCustId=null;
+      window._gsTab=null;
+    }
+  });
 
   const filtered=useMemo(()=>{
     const q=search.toLowerCase();
@@ -2101,8 +2116,9 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
       {modal==="add"&&<Modal title="New Customer" onClose={()=>setModal(null)}><CustomerForm initial={{stage:defaultStage}} onSave={saveCustomer} onCancel={()=>setModal(null)}/></Modal>}
       {modal==="addJob"&&<Modal title="New Job for Existing Customer" onClose={()=>setModal(null)}><JobForm customers={customers} onSave={saveJob} onCancel={()=>setModal(null)}/></Modal>}
       {detailRecord&&<CardDetailModal record={customers.find(c=>c.id===detailRecord.id)||detailRecord} customers={customers} jobs={jobs} isJob={false} settings={settings}
+        initialTab={pendingTab}
         onSave={handleCardSave}
-        onDelete={deleteCustomer} onClose={()=>setDetailRecord(null)} onOpenJob={setViewingJob}/>}
+        onDelete={deleteCustomer} onClose={()=>{setDetailRecord(null);setPendingTab(null);}} onOpenJob={setViewingJob}/>}
       {viewingJob&&<CardDetailModal record={jobs.find(j=>j.id===viewingJob.id)||viewingJob} customers={customers} jobs={jobs} isJob={true} settings={settings}
         onSave={updated=>apiUpdateJob(updated).then(saved=>setJobs(js=>js.map(j=>j.id===saved.id?saved:j))).catch(err=>window.alert("Failed to save job: "+err.message))}
         onDelete={id=>{if(!window.confirm("Delete this job?"))return;apiDeleteJob(id).then(()=>{setJobs(js=>js.filter(j=>j.id!==id));setViewingJob(null);}).catch(err=>window.alert("Failed to delete job: "+err.message));}}
@@ -2265,7 +2281,29 @@ const InstallPipelinePage = ({jobs,setJobs,customers,settings}) => {
 };
 
 // ── Calendar Page ─────────────────────────────────────────────────────────────
-const CalendarPage = ({customers,jobs,settings}) => {
+const CalendarPage = ({customers,jobs,settings,onNavigate}) => {
+  // Clicking an event jumps straight to that customer/job's booking tab — Installs and
+  // job-linked Surveys/Service Calls open via Customer Directory's Job modal; a Survey still
+  // sitting on the Customer record (pre-Deal-Won, no Job yet) opens via the Sales Pipeline's
+  // customer modal instead, since that's the only place that data is still editable. Reuses
+  // the same window._gs* handoff the global search bar already uses to deep-link a page.
+  // Set the handoff globals BEFORE navigating (not after, like the search bar's own delayed
+  // set) so they're already in place the instant the target page mounts and reads them —
+  // no race against a timer.
+  const TAB_FOR_TYPE={Install:"Installation",Survey:"Survey","Service Call":"Service Call"};
+  const openEvent=(ev)=>{
+    const tab=TAB_FOR_TYPE[ev.type]||"Details";
+    if(ev.job){
+      window._gsCustId=ev.job.customerId;
+      window._gsJobId=ev.job.id;
+      window._gsTab=tab;
+      onNavigate("customers");
+    } else if(ev.customerId){
+      window._gsCustId=ev.customerId;
+      window._gsTab=tab;
+      onNavigate("pipeline");
+    }
+  };
   const [viewDate,setViewDate]=useState(new Date());
   const [filterFitter,setFilterFitter]=useState("All");
   const [viewMode,setViewMode]=useState("workingWeek"); // "workingWeek" | "week" | "month"
@@ -2288,13 +2326,13 @@ const CalendarPage = ({customers,jobs,settings}) => {
     ...customers.filter(c=>c.stage!=="Deal Won").flatMap(c=>{
       const s=c.tabs?.survey;
       if(!s?.date||!s?.fitter) return [];
-      return [{date:s.date,fitter:s.fitter,label:c.name,type:"Survey",color:"#4A90D9",time:s.time||"",endTime:s.endTime||""}];
+      return [{date:s.date,fitter:s.fitter,label:c.name,type:"Survey",color:"#4A90D9",time:s.time||"",endTime:s.endTime||"",customerId:c.id}];
     }),
     ...jobs.flatMap(j=>{
       const s=j.tabs?.survey;
       if(!s?.date||!s?.fitter) return [];
       const cust=customers.find(c=>c.id===j.customerId);
-      return [{date:s.date,fitter:s.fitter,label:cust?.name||j.title,type:"Survey",color:"#4A90D9",time:s.time||"",endTime:s.endTime||"",notes:s.notes||""}];
+      return [{date:s.date,fitter:s.fitter,label:cust?.name||j.title,type:"Survey",color:"#4A90D9",time:s.time||"",endTime:s.endTime||"",notes:s.notes||"",job:j}];
     }),
   ];
   // Installation bookings from job installation tab — expanded across working days
@@ -2324,13 +2362,14 @@ const CalendarPage = ({customers,jobs,settings}) => {
         isMultiDay:workingDays.length>1,
         dayIndex:workingDays.indexOf(date)+1,
         totalDays:workingDays.length,
+        job:j,
       }))
     );
   });
   // Fallback: job installDate field
   const installFieldEvents=jobs.flatMap(j=>{
     if(!j.installDate||(j.tabs?.installation?.date)) return [];
-    return [{date:j.installDate,fitter:j.installers||"Unassigned",label:j.title,type:"Install",color:C.mint}];
+    return [{date:j.installDate,fitter:j.installers||"Unassigned",label:j.title,type:"Install",color:C.mint,job:j}];
   });
   // Service call bookings from job cards
   const serviceCallEvents=jobs.flatMap(j=>{
@@ -2479,7 +2518,7 @@ const CalendarPage = ({customers,jobs,settings}) => {
                 <div key={i} style={{minHeight:90,minWidth:0,borderRight:`1px solid ${C.border}`,borderBottom:`1px solid ${C.border}`,padding:"6px 8px",background:d?C.white:"#FAFAFA"}}>
                   {d&&<div style={{fontSize:13,fontWeight:isToday(d)?800:500,color:isToday(d)?C.sky:C.text,marginBottom:4,width:24,height:24,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:"50%",background:isToday(d)?C.skyLight:"transparent"}}>{d}</div>}
                   {events.map((ev,ei)=>(
-                    <div key={ei} style={{background:ev.color,color:"#fff",borderRadius:4,padding:"3px 6px",fontSize:11,marginBottom:3,lineHeight:1.4}}>
+                    <div key={ei} onClick={()=>openEvent(ev)} style={{background:ev.color,color:"#fff",borderRadius:4,padding:"3px 6px",fontSize:11,marginBottom:3,lineHeight:1.4,cursor:(ev.job||ev.customerId)?"pointer":"default"}}>
                       <div style={{fontWeight:700}}>{ev.type}{ev.time?` · ${ev.time}`:""}{ev.isMultiDay?` (Day ${ev.dayIndex}/${ev.totalDays})`:""}</div>
                       <div style={{opacity:.9,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ev.label}</div>
                       <div style={{opacity:.75,fontSize:10}}>{ev.fitter}</div>
@@ -2523,7 +2562,7 @@ const CalendarPage = ({customers,jobs,settings}) => {
                     {allDayHeight>0&&(
                       <div style={{height:allDayHeight,borderBottom:`1px solid ${C.border}`,padding:"4px",overflow:"hidden"}}>
                         {di.untimed.map((ev,i)=>(
-                          <div key={i} title={`${ev.type} · ${ev.label} · ${ev.fitter}`} style={{background:ev.color,color:"#fff",borderRadius:3,padding:"1px 5px",fontSize:10,marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                          <div key={i} onClick={()=>openEvent(ev)} title={`${ev.type} · ${ev.label} · ${ev.fitter}`} style={{background:ev.color,color:"#fff",borderRadius:3,padding:"1px 5px",fontSize:10,marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",cursor:(ev.job||ev.customerId)?"pointer":"default"}}>
                             {ev.type}: {ev.label}
                           </div>
                         ))}
@@ -2539,8 +2578,8 @@ const CalendarPage = ({customers,jobs,settings}) => {
                         const width=100/ev.totalLanes;
                         const left=ev.lane*width;
                         return (
-                          <div key={i} title={`${ev.type} · ${ev.label} · ${ev.fitter}${ev.notes?" · "+ev.notes:""}`}
-                            style={{position:"absolute",top,height,left:`calc(${left}% + 2px)`,width:`calc(${width}% - 4px)`,background:ev.color,color:"#fff",borderRadius:4,padding:"2px 5px",fontSize:10,overflow:"hidden",boxShadow:"0 1px 2px rgba(0,0,0,0.15)"}}>
+                          <div key={i} onClick={()=>openEvent(ev)} title={`${ev.type} · ${ev.label} · ${ev.fitter}${ev.notes?" · "+ev.notes:""}`}
+                            style={{position:"absolute",top,height,left:`calc(${left}% + 2px)`,width:`calc(${width}% - 4px)`,background:ev.color,color:"#fff",borderRadius:4,padding:"2px 5px",fontSize:10,overflow:"hidden",boxShadow:"0 1px 2px rgba(0,0,0,0.15)",cursor:(ev.job||ev.customerId)?"pointer":"default"}}>
                             <div style={{fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{ev.time}{ev.endTime?`–${ev.endTime}`:""} {ev.type}</div>
                             <div style={{opacity:.9,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{ev.label}</div>
                             {height>44&&<div style={{opacity:.75,fontSize:9,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{ev.fitter}</div>}
@@ -5166,6 +5205,7 @@ const CustomerDirectoryPage = ({customers,setCustomers,jobs,setJobs,settings,onN
   const [editModal,setEditModal]=useState(false);
   const [selectedJob,setSelectedJob]=useState(null);
   const [addJobModal,setAddJobModal]=useState(false);
+  const [pendingTab,setPendingTab]=useState(null);
 
   // Sector counts for the empty-state mini dashboard — reuses the same SECTOR_META already
   // used for the badges shown elsewhere, so this stays visually consistent with them.
@@ -5184,8 +5224,10 @@ const CustomerDirectoryPage = ({customers,setCustomers,jobs,setJobs,settings,onN
         const j=jobs.find(x=>x.id===window._gsJobId);
         if(j) setTimeout(()=>setSelectedJob(j),100);
       }
+      if(window._gsTab) setPendingTab(window._gsTab);
       window._gsCustId=null;
       window._gsJobId=null;
+      window._gsTab=null;
     }
   });
 
@@ -5458,9 +5500,10 @@ const CustomerDirectoryPage = ({customers,setCustomers,jobs,setJobs,settings,onN
       {selectedJob&&<CardDetailModal
         record={jobs.find(j=>j.id===selectedJob.id)||selectedJob}
         customers={customers} isJob={true} settings={settings}
+        initialTab={pendingTab}
         onSave={updated=>apiUpdateJob(updated).then(saved=>setJobs(js=>js.map(j=>j.id===saved.id?saved:j))).catch(err=>window.alert("Failed to save job: "+err.message))}
         onDelete={id=>{if(!window.confirm("Delete this job?"))return;apiDeleteJob(id).then(()=>{setJobs(js=>js.filter(j=>j.id!==id));setSelectedJob(null);}).catch(err=>window.alert("Failed to delete job: "+err.message));}}
-        onClose={()=>setSelectedJob(null)}
+        onClose={()=>{setSelectedJob(null);setPendingTab(null);}}
       />}
     </div>
   );
@@ -6006,7 +6049,7 @@ function App() {
           {page==="dashboard"&&<Dashboard customers={customers} jobs={jobs}/>}
           {page==="pipeline"&&<SalesPipelinePage customers={customers} setCustomers={setCustomers} jobs={jobs} setJobs={setJobs} settings={settings}/>}
           {page==="jobs"&&<InstallPipelinePage jobs={jobs} setJobs={setJobs} customers={customers} settings={settings}/>}
-          {page==="calendar"&&<CalendarPage customers={customers} jobs={jobs} settings={settings}/>}
+          {page==="calendar"&&<CalendarPage customers={customers} jobs={jobs} settings={settings} onNavigate={setPage}/>}
           {page==="orders"&&<TrackOrdersPage jobs={jobs} customers={customers} settings={settings}/>}
           {page==="mileage"&&<MileagePage jobs={jobs} customers={customers} settings={settings}/>}
           {page==="customers"&&<CustomerDirectoryPage customers={customers} setCustomers={setCustomers} jobs={jobs} setJobs={setJobs} settings={settings} onNavigate={setPage}/>}
