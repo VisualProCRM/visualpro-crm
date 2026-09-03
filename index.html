@@ -2473,7 +2473,7 @@ const CalendarPage = ({customers,jobs,settings}) => {
             {days.map((d,i)=>{
               const events=d?eventsForDay(d):[];
               return (
-                <div key={i} style={{minHeight:90,borderRight:`1px solid ${C.border}`,borderBottom:`1px solid ${C.border}`,padding:"6px 8px",background:d?C.white:"#FAFAFA"}}>
+                <div key={i} style={{minHeight:90,minWidth:0,borderRight:`1px solid ${C.border}`,borderBottom:`1px solid ${C.border}`,padding:"6px 8px",background:d?C.white:"#FAFAFA"}}>
                   {d&&<div style={{fontSize:13,fontWeight:isToday(d)?800:500,color:isToday(d)?C.sky:C.text,marginBottom:4,width:24,height:24,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:"50%",background:isToday(d)?C.skyLight:"transparent"}}>{d}</div>}
                   {events.map((ev,ei)=>(
                     <div key={ei} style={{background:ev.color,color:"#fff",borderRadius:4,padding:"3px 6px",fontSize:11,marginBottom:3,lineHeight:1.4}}>
@@ -4943,7 +4943,7 @@ const TrackOrdersPage = ({jobs,customers,settings}) => {
                 const ds=d?fmtDate(year,month,d):"";
                 const isToday=ds===today;
                 return (
-                  <div key={i} style={{minHeight:100,borderRight:`1px solid ${C.border}`,borderBottom:`1px solid ${C.border}`,padding:"6px 6px",background:d?C.white:"#FAFAFA",verticalAlign:"top"}}>
+                  <div key={i} style={{height:110,minWidth:0,overflowY:"auto",borderRight:`1px solid ${C.border}`,borderBottom:`1px solid ${C.border}`,padding:"6px 6px",background:d?C.white:"#FAFAFA"}}>
                     {d&&(
                       <>
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
