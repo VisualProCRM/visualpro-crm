@@ -4943,7 +4943,7 @@ const TrackOrdersPage = ({jobs,customers,settings}) => {
                 const ds=d?fmtDate(year,month,d):"";
                 const isToday=ds===today;
                 return (
-                  <div key={i} style={{height:110,minWidth:0,overflowY:"auto",borderRight:`1px solid ${C.border}`,borderBottom:`1px solid ${C.border}`,padding:"6px 6px",background:d?C.white:"#FAFAFA"}}>
+                  <div key={i} style={{minHeight:100,minWidth:0,borderRight:`1px solid ${C.border}`,borderBottom:`1px solid ${C.border}`,padding:"6px 6px",background:d?C.white:"#FAFAFA"}}>
                     {d&&(
                       <>
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
