@@ -1004,9 +1004,10 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
             return (
               <div style={{background:C.slateLight,borderRadius:8,padding:14}}>
                 <div style={{fontSize:12,fontWeight:700,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:12}}>📅 Book Installation</div>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:12,marginBottom:12}}>
                   <Inp label="Start Date" type="date" value={data.tabs.installation.date||""} onChange={e=>setTab("installation",{date:e.target.value})}/>
                   <Inp label="Start Time" type="time" value={data.tabs.installation.startTime||""} onChange={e=>setTab("installation",{startTime:e.target.value})}/>
+                  <Inp label="End Time" type="time" value={data.tabs.installation.endTime||""} onChange={e=>setTab("installation",{endTime:e.target.value})}/>
                   <Sel label="Duration" value={duration} onChange={e=>setTab("installation",{duration:e.target.value})}>
                     {DURATION_OPTIONS.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
                   </Sel>
@@ -1079,6 +1080,7 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
                 <div style={{fontSize:13,color:"#166534",marginBottom:3}}>
                   🗓️ <strong>Start:</strong> {new Date(data.tabs.installation.date).toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}
                   {data.tabs.installation.startTime&&` at ${data.tabs.installation.startTime}`}
+                  {data.tabs.installation.endTime&&` – ${data.tabs.installation.endTime}`}
                 </div>
                 {!sameDay&&(
                   <div style={{fontSize:13,color:"#166534",marginBottom:3}}>
@@ -2317,7 +2319,8 @@ const CalendarPage = ({customers,jobs,settings}) => {
       (inst.fitters||[]).map(fitter=>({
         date,fitter,label:j.title,type:"Install",color:C.mint,
         notes:inst.fittersNotes,
-        time:date===inst.date?(inst.startTime||""):"",
+        time:inst.startTime||"",
+        endTime:inst.endTime||"",
         isMultiDay:workingDays.length>1,
         dayIndex:workingDays.indexOf(date)+1,
         totalDays:workingDays.length,
@@ -3984,7 +3987,7 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
         while(remaining>0){
           const dow=current.getDay();
           if(dow!==0&&dow!==6){
-            evts.push({type:"Install",date:current.toISOString().slice(0,10),time:dayIndex===1?(inst.startTime||""):"",job:j,dayIndex,totalDays:Math.ceil(duration/2)});
+            evts.push({type:"Install",date:current.toISOString().slice(0,10),time:inst.startTime||"",endTime:inst.endTime||"",job:j,dayIndex,totalDays:Math.ceil(duration/2)});
             remaining-=remaining>=2?2:remaining;
             dayIndex++;
           }
