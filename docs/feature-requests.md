@@ -8,11 +8,11 @@ A shared place for feature ideas, wherever they come from — the office, a fitt
 
 ## Requested
 
-### Apply GlazeStream brand colours consistently across the whole app
+### Apply GlazeStream brand colours consistently across the whole app — ✅ built 2026-09-04
 - Requested by: office — 2026-09-03, as part of the wider GlazeStream branding pass (logo, favicon, loading screen)
-- Office has the official hex codes for the new GlazeStream brand (navy + blue, matching the logo lockup already shared) and wants the app's colour scheme brought in line with them everywhere — not just the logo/loading screen — so the product looks like one consistent, designed brand rather than a mix of the new logo next to old placeholder colours.
-- **Scoping note**: most of the app's colours already run through one central palette object near the top of `index.html` (navy/sky/mint/amber/red/slate/etc.), so re-pointing that at the real brand hex codes covers the bulk of it in one place. There are also a number of colours hardcoded inline outside that central palette (e.g. calendar event colours, sector badges, status pill colours) that would need finding and updating separately for full consistency.
-- **Not yet built**: waiting on office to actually provide the hex codes before this can be scoped precisely (which shade maps to which existing role — e.g. which blue replaces the current "sky", whether the sector/status accent colours change or stay as-is).
+- Office supplied a colour-board SVG with final hex codes (2026-09-04): navy `#022146`, stream blue `#0061FC`, slate `#263746`, ice blue `#F3F8FC` (background), success green `#27AE60`. Applied across the app's central colour palette plus the handful of places that had duplicated a colour as a literal hex instead of referencing it. Sector badges, status pills, and confetti kept their own distinct colours — not part of the core brand identity.
+- Also fixed the sidebar logo, which had a visible seam against the app's background — root cause was an interim navy guess (`#102A43`) not quite matching the logo file's actual background; the colour board's exact hex resolved it.
+- **Not used yet**: the board's "Aqua" (`#19C6B3`, progress/charts/highlights) has no obvious slot in the app today — left available for a future progress-bar/chart feature rather than force-fitting it somewhere.
 
 ### Limitation: WindowCAD7 only syncs to the CRM on project creation or status change, not on a plain field edit
 - Raised by: office — 2026-09-03, after a Customer record named "Vicky" wasn't updated with her surname despite it being added in WindowCAD7
