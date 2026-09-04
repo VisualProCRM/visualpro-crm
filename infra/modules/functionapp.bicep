@@ -38,9 +38,10 @@ param sessionTokenSecret string
 @secure()
 param windowcadWebhookSecret string
 
-@description('Origins allowed to call this API cross-origin (the frontend Static Web App, plus localhost for local dev, plus the Azure Portal so its built-in Test/Run feature works for manually invoking functions like the timer trigger). Note: the SWA hostname changed after upgrading from Free to Standard tier — this is the post-upgrade hostname, not the original.')
+@description('Origins allowed to call this API cross-origin (the frontend Static Web App, plus localhost for local dev, plus the Azure Portal so its built-in Test/Run feature works for manually invoking functions like the timer trigger). Note: the SWA hostname changed after upgrading from Free to Standard tier — this is the post-upgrade hostname, not the original. crm.glazestream.co.uk added ahead of the custom domain going live (see infra/BOOTSTRAP.md) — harmless to have listed before DNS/custom domain setup is finished.')
 param corsAllowedOrigins array = [
   'https://mango-beach-0c25f8610.7.azurestaticapps.net'
+  'https://crm.glazestream.co.uk'
   'http://localhost:3000'
   'https://portal.azure.com'
 ]
