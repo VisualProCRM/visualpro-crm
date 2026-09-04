@@ -8,6 +8,12 @@ A shared place for feature ideas, wherever they come from — the office, a fitt
 
 ## Requested
 
+### Replace the default azurestaticapps.net URL with a proper GlazeStream domain
+- Requested by: office — 2026-09-03, raised while looking at the branding pass; picked back up 2026-09-04
+- The live app currently sits at `mango-beach-0c25f8610.7.azurestaticapps.net` — office wants something on their own domain instead. They already own `glazestream.co.uk`; buying a separate `glazestream.app` isn't needed, a subdomain of the domain they already have (e.g. `crm.glazestream.co.uk` or `app.glazestream.co.uk`) is the free, recommended option.
+- **Needs office input to proceed**: which subdomain name to use, and access to add a DNS record at wherever `glazestream.co.uk` is registered/managed.
+- **Technical follow-on once a domain is chosen**: add the custom domain to the Azure Static Web App (DNS validation via CNAME/TXT record), update the Function App's CORS allowed origins to include the new domain, and update the Entra ID app registration's redirect URIs — login goes through `/.auth/me` + Entra ID, so the new domain needs to be trusted there too or login will break on it.
+
 ### Apply GlazeStream brand colours consistently across the whole app — ✅ built 2026-09-04
 - Requested by: office — 2026-09-03, as part of the wider GlazeStream branding pass (logo, favicon, loading screen)
 - Office supplied a colour-board SVG with final hex codes (2026-09-04): navy `#022146`, stream blue `#0061FC`, slate `#263746`, ice blue `#F3F8FC` (background), success green `#27AE60`. Applied across the app's central colour palette plus the handful of places that had duplicated a colour as a literal hex instead of referencing it. Sector badges, status pills, and confetti kept their own distinct colours — not part of the core brand identity.
