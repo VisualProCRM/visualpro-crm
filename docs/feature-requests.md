@@ -8,6 +8,15 @@ A shared place for feature ideas, wherever they come from — the office, a fitt
 
 ## Requested
 
+### Turn the Fitter view into an installable PWA, with voice-to-text survey filling
+- Requested by: office — 2026-09-05
+- **Two related but separable ideas raised together**:
+  1. Turn the existing Fitter mobile view into a real installable Progressive Web App (home-screen icon, splash screen, offline-ish caching via a service worker) — a relatively small, low-risk step since it's the same single-file architecture, no rewrite. Discussed as one of three options (PWA / native-wrapped via Capacitor for App Store presence / full native rewrite) — PWA recommended as the sensible starting point, full native rewrite explicitly not recommended given how this app is built.
+  2. Let fitters **talk through survey measurements** instead of typing them, with the app transcribing and filling in the actual form fields — envisioned as an alternate input method for the (separately backlogged) digitised-PDF-survey fillable form, not a replacement for it.
+- **Feasibility for voice input**: Azure AI Speech (Cognitive Services) has a browser-compatible JS SDK that would plug into the PWA using the same Azure subscription already in place — no new backend service beyond issuing a short-lived auth token. Two real design considerations, not yet decided: (a) speech-to-text only produces a raw transcript, so a second parsing step is needed to map spoken phrases onto actual form fields — either pattern-matching (cheap, predictable, but needs fairly structured phrasing from fitters) or an LLM-based extraction step (more forgiving of natural speech, more moving parts/cost); (b) this is a genuine new per-use Azure cost (~$1/hour of audio) and needs a live internet connection on-site, which may be unreliable in some customers' homes — the free browser-only Web Speech API was considered as a no-cost alternative but is unreliable on iOS (works well on Android), so it depends on what phones fitters actually use.
+- **Not yet built, needs a proper scoping/planning pass**: PWA manifest + icon set + service worker scope (how much should actually work offline vs just look installed); the parsing-approach decision above; whether voice input targets the whole digitised survey form or starts smaller (e.g. one field/section at a time); cost estimate once real usage patterns are known.
+- User explicitly asked for this to be logged for a future session, not started now.
+
 ### Replace the default azurestaticapps.net URL with a proper GlazeStream domain
 - Requested by: office — 2026-09-03, raised while looking at the branding pass; picked back up 2026-09-04
 - The live app currently sits at `mango-beach-0c25f8610.7.azurestaticapps.net` — office wants something on their own domain instead. They already own `glazestream.co.uk`; buying a separate `glazestream.app` isn't needed, a subdomain of the domain they already have (e.g. `crm.glazestream.co.uk` or `app.glazestream.co.uk`) is the free, recommended option.
