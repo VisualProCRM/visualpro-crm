@@ -346,50 +346,40 @@ const SURVEY_FIELD_CHOICES = {
   addOn: { label: "Add-On", options: ["Top", "Left", "Right", "Bottom"] },
 };
 
-// Reconstructs reading-order lines from pdf.js's raw positioned text items (which arrive
-// as individual fragments with x/y coordinates, not pre-joined lines) — groups items whose
-// y-position falls within a small tolerance of each other into one line, sorted left-to-right.
-const groupPdfTextIntoLines = (items, yTolerance = 2) => {
-  const sorted = [...items].sort((a, b) => b.transform[5] - a.transform[5]); // top to bottom
-  const lines = [];
-  let current = null, currentY = null;
-  sorted.forEach((item) => {
-    const y = item.transform[5];
-    if (current && Math.abs(y - currentY) <= yTolerance) {
-      current.push(item);
-    } else {
-      current = [item];
-      currentY = y;
-      lines.push(current);
-    }
-  });
-  return lines.map((line) => line.sort((a, b) => a.transform[4] - b.transform[4]).map((it) => it.str).join(" "));
-};
+// Works directly from pdf.js's positioned text items rather than joining them into plain
+// lines first — verified necessary against two real sample PDFs. The real geometry: a
+// "label column" (x<100: company letterhead, room label, quoted size, an optional
+// "Comments" label, and the 14 fixed field labels — some wrap across 2 lines, e.g.
+// "External"/"Aperture Sizes", with their blank value sitting vertically CENTERED between
+// the two sub-lines, which breaks any naive top-to-bottom join); a "value column"
+// (100<=x<200: the blank fillable values — never read, since the choice-lists are already
+// hardcoded above and this template's values are always blank — except "Comments", the one
+// label whose value is real per-item office-written data); and a "meta column" (x>=200:
+// page/date/items counters + customer Reference/Email/Phone/Address/Postcode).
+const SURVEY_LABEL_MAX_X = 100;
+const SURVEY_VALUE_MAX_X = 200;
 
-const extractSurveyPdfPageTexts = async (fileUrl) => {
-  const resp = await fetch(fileUrl);
-  const buf = await resp.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
-  const pageTexts = [];
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i);
-    const content = await page.getTextContent();
-    pageTexts.push(groupPdfTextIntoLines(content.items).join("\n"));
+const surveyItemsByYDesc = (items) => [...items].sort((a, b) => b.transform[5] - a.transform[5]);
+
+// The letterhead's little location-pin/phone/envelope icons come through as real text items
+// (invisible Private Use Area glyphs, not whitespace) sitting between the address lines —
+// they pass a plain .trim() truthiness check, so filter them out explicitly or they show up
+// as extra blank-looking lines and break strict boilerplate-stripping regexes.
+const isSurveyIconGlyph = (s) => {
+  for (const ch of s) {
+    const cp = ch.codePointAt(0);
+    if (cp < 0xE000 || cp > 0xF8FF) return false;
   }
-  return pageTexts;
+  return true;
 };
 
-const SURVEY_ITEM_ANCHOR = /External\s*\n?\s*Aperture\s*Sizes\s*W:/;
-const SURVEY_POSTCODE_LINE = /^Postcode\s+.+$/m;
-const SURVEY_QUOTED_SIZE_LINE = /^(?:\d+\s*x\s*\d+|External:\s*\d+\s*x\s*\d+.*)$/m;
-const SURVEY_COMMENTS_LINE = /^Comments\s+(.+)$/m;
-// WindowCAD7's own fixed page-1 cover-letter boilerplate — stripped as a whole known block
-// (customer name/reference vary, the wording around them doesn't) rather than trying to
-// distinguish "greeting sentence" from "room label" line-by-line.
-const SURVEY_INTRO_PARAGRAPH = /Dear\s[\s\S]*?has been completed\.\s*/;
+const surveyLineTextsFromItems = (items) =>
+  surveyItemsByYDesc(items).map((it) => it.str.trim()).filter((s) => s && !isSurveyIconGlyph(s));
 
-const parseSurveyPdfHeader = (firstPageText) => {
-  const grab = (re) => { const m = firstPageText.match(re); return m ? m[1].trim() : ""; };
+const parseSurveyPdfHeader = (pageItems) => {
+  const metaItems = pageItems.filter((it) => it.transform[4] >= SURVEY_VALUE_MAX_X);
+  const text = surveyLineTextsFromItems(metaItems).join("\n");
+  const grab = (re) => { const m = text.match(re); return m ? m[1].trim() : ""; };
   return {
     reference: grab(/Reference\s+(.+)/),
     email: grab(/Email\s+(.+)/),
@@ -400,43 +390,75 @@ const parseSurveyPdfHeader = (firstPageText) => {
   };
 };
 
-const parseSurveyPdfPreamble = (preamble) => {
-  const sizeMatch = preamble.match(SURVEY_QUOTED_SIZE_LINE);
-  if (!sizeMatch) return null;
-  const beforeSize = preamble.slice(0, sizeMatch.index);
-  const afterSize = preamble.slice(sizeMatch.index + sizeMatch[0].length);
-  const label = beforeSize.split("\n").map((l) => l.trim())
-    .filter((l) => l && !l.startsWith("Dear ") && !l.startsWith("I am pleased"))
-    .join(" ").trim();
-  const commentMatch = afterSize.match(SURVEY_COMMENTS_LINE);
-  return { label, quotedSize: sizeMatch[0].trim(), officeComment: commentMatch ? commentMatch[1].trim() : "" };
+// Strip in two small, targeted steps rather than one long regex, since an icon-glyph line
+// can otherwise land between "www.visualglazing.co.uk" and the trailing company ID number.
+const SURVEY_LETTERHEAD = /Markham House,[\s\S]*?www\.visualglazing\.co\.uk\s*/;
+const SURVEY_TRAILING_ID_LINE = /^\n?\d+\n/;
+// WindowCAD7's own fixed page-1 cover-letter boilerplate — stripped as a whole known block
+// (customer name/reference vary, the wording around them doesn't) rather than trying to
+// distinguish "greeting sentence" from "room label" line-by-line.
+const SURVEY_INTRO_PARAGRAPH = /Dear\s[\s\S]*?has been completed\.\s*/;
+
+// Finds a value-column item sitting at (roughly) the same y as a given label item — used
+// only for "Comments", the sole label in this template whose value is real per-item data.
+const findSurveyValueNear = (pageItems, y, tolerance = 3) => {
+  const hit = pageItems.find(
+    (it) => it.transform[4] >= SURVEY_LABEL_MAX_X && it.transform[4] < SURVEY_VALUE_MAX_X &&
+      Math.abs(it.transform[5] - y) <= tolerance && it.str.trim()
+  );
+  return hit ? hit.str.trim() : "";
 };
 
-// Pure text-in, structured-data-out — takes the per-page reconstructed text (from
-// extractSurveyPdfPageTexts) and returns the document header plus every real fillable item,
-// silently skipping pages with no fillable fields (product render pages, per-sub-frame spec
-// breakdowns) since they simply never match the aperture-sizes anchor.
-const parseSurveyPdfText = (pageTexts) => {
-  const header = parseSurveyPdfHeader(pageTexts[0] || "");
-  const items = [];
-  pageTexts.forEach((pageText, pageIndex) => {
-    if (!SURVEY_ITEM_ANCHOR.test(pageText)) return;
-    const postcodeMatch = pageText.match(SURVEY_POSTCODE_LINE);
-    const anchorMatch = pageText.match(SURVEY_ITEM_ANCHOR);
-    if (!postcodeMatch || !anchorMatch) return;
-    const preamble = pageText
-      .slice(postcodeMatch.index + postcodeMatch[0].length, anchorMatch.index)
-      .replace(SURVEY_INTRO_PARAGRAPH, "");
-    const parsed = parseSurveyPdfPreamble(preamble);
-    if (!parsed || !parsed.label) return;
-    items.push({ page: pageIndex + 1, label: parsed.label, quotedSize: parsed.quotedSize, officeComment: parsed.officeComment });
-  });
-  return { header, items };
+const extractSurveyItemFromPage = (pageItems, pageNumber) => {
+  const labelItems = surveyItemsByYDesc(pageItems.filter((it) => {
+    const s = it.str.trim();
+    return it.transform[4] < SURVEY_LABEL_MAX_X && s && !isSurveyIconGlyph(s);
+  }));
+  let text = labelItems.map((it) => it.str.trim()).join("\n");
+  text = text.replace(SURVEY_LETTERHEAD, "").replace(SURVEY_TRAILING_ID_LINE, "").replace(SURVEY_INTRO_PARAGRAPH, "");
+
+  const anchorMatch = text.match(/External\s*\n?\s*Aperture\s*Sizes/);
+  if (!anchorMatch) return null; // no fillable item on this page — render/sub-frame pages etc.
+
+  const preamble = text.slice(0, anchorMatch.index);
+  const lines = preamble.split("\n").map((l) => l.trim()).filter(Boolean);
+
+  // Last line matching a size pattern ("1300 x 1600" or "External: 2254 x 523, Internal:
+  // ...") is the quoted size; a "Comments" line (if present) always comes after it;
+  // everything before is the room/elevation label (possibly itself wrapped across >1 line).
+  const sizeIdx = lines.findIndex((l) => /^\d+\s*x\s*\d+/.test(l) || /^External:\s*\d+\s*x\s*\d+/.test(l));
+  if (sizeIdx === -1) return null;
+
+  const label = lines.slice(0, sizeIdx).join(" ").trim();
+  if (!label) return null;
+  const quotedSize = lines[sizeIdx];
+  const hasComments = lines.some((l, i) => i > sizeIdx && l === "Comments");
+  let officeComment = "";
+  if (hasComments) {
+    const labelItem = labelItems.find((it) => it.str.trim() === "Comments");
+    if (labelItem) officeComment = findSurveyValueNear(pageItems, labelItem.transform[5]);
+  }
+
+  return { page: pageNumber, label, quotedSize, officeComment };
 };
 
 const digitiseSurveyPdf = async (fileUrl) => {
-  const pageTexts = await extractSurveyPdfPageTexts(fileUrl);
-  return parseSurveyPdfText(pageTexts);
+  const resp = await fetch(fileUrl);
+  const buf = await resp.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  const pagesItems = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    pagesItems.push(content.items);
+  }
+  const header = parseSurveyPdfHeader(pagesItems[0] || []);
+  const items = [];
+  pagesItems.forEach((pageItems, i) => {
+    const item = extractSurveyItemFromPage(pageItems, i + 1);
+    if (item) items.push(item);
+  });
+  return { header, items };
 };
 
 // ── Primitives ────────────────────────────────────────────────────────────────
