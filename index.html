@@ -10,6 +10,7 @@
   <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <style>
     *{box-sizing:border-box;margin:0;padding:0;}
     body{font-family:'Inter','Segoe UI',sans-serif;background:#FDFCFA;}
@@ -322,6 +323,122 @@ const uploadFile = async (file, container) => {
   return saved;
 };
 
+// ── WindowCAD7 survey PDF digitisation ─────────────────────────────────────────
+// Turns an uploaded "Print to PDF" Survey document (WindowCAD7's own fixed template)
+// into a structured, fillable item list for the fitter app. Every real fillable item on
+// the PDF carries this exact same 14-field template — only the room label, quoted size,
+// and (sometimes) an office comment vary per item — so the choice-field options below are
+// hardcoded once rather than re-extracted per item. Confirmed against a real 36-page/
+// 30-item sample survey before writing any UI around it.
+if (window.pdfjsLib) {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+}
+
+const SURVEY_FIELD_CHOICES = {
+  outerFrame: { label: "Outer Frame", options: ["Standard", "Large"] },
+  cillSize: { label: "Cill Size", options: ["No Cill", "Stub", "150mm", "180mm", "225mm"] },
+  hingeType: { label: "Hinge Type", options: ["Egress", "Restrictor", "Easy Clean"] },
+  opening: { label: "Opening", options: ["In", "Out"] },
+  hinged: { label: "Hinged", options: ["Left", "Right"] },
+  drainage: { label: "Drainage", options: ["Face", "Concealed"] },
+  threshold: { label: "Threshold", options: ["Low Aluminium", "Low UPVC", "Standard UPVC"] },
+  handleColour: { label: "Handle Colour", options: ["White", "Chrome", "Graphite", "Gold", "Satin", "Black"] },
+  addOn: { label: "Add-On", options: ["Top", "Left", "Right", "Bottom"] },
+};
+
+// Reconstructs reading-order lines from pdf.js's raw positioned text items (which arrive
+// as individual fragments with x/y coordinates, not pre-joined lines) — groups items whose
+// y-position falls within a small tolerance of each other into one line, sorted left-to-right.
+const groupPdfTextIntoLines = (items, yTolerance = 2) => {
+  const sorted = [...items].sort((a, b) => b.transform[5] - a.transform[5]); // top to bottom
+  const lines = [];
+  let current = null, currentY = null;
+  sorted.forEach((item) => {
+    const y = item.transform[5];
+    if (current && Math.abs(y - currentY) <= yTolerance) {
+      current.push(item);
+    } else {
+      current = [item];
+      currentY = y;
+      lines.push(current);
+    }
+  });
+  return lines.map((line) => line.sort((a, b) => a.transform[4] - b.transform[4]).map((it) => it.str).join(" "));
+};
+
+const extractSurveyPdfPageTexts = async (fileUrl) => {
+  const resp = await fetch(fileUrl);
+  const buf = await resp.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  const pageTexts = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    pageTexts.push(groupPdfTextIntoLines(content.items).join("\n"));
+  }
+  return pageTexts;
+};
+
+const SURVEY_ITEM_ANCHOR = /External\s*\n?\s*Aperture\s*Sizes\s*W:/;
+const SURVEY_POSTCODE_LINE = /^Postcode\s+.+$/m;
+const SURVEY_QUOTED_SIZE_LINE = /^(?:\d+\s*x\s*\d+|External:\s*\d+\s*x\s*\d+.*)$/m;
+const SURVEY_COMMENTS_LINE = /^Comments\s+(.+)$/m;
+// WindowCAD7's own fixed page-1 cover-letter boilerplate — stripped as a whole known block
+// (customer name/reference vary, the wording around them doesn't) rather than trying to
+// distinguish "greeting sentence" from "room label" line-by-line.
+const SURVEY_INTRO_PARAGRAPH = /Dear\s[\s\S]*?has been completed\.\s*/;
+
+const parseSurveyPdfHeader = (firstPageText) => {
+  const grab = (re) => { const m = firstPageText.match(re); return m ? m[1].trim() : ""; };
+  return {
+    reference: grab(/Reference\s+(.+)/),
+    email: grab(/Email\s+(.+)/),
+    phone: grab(/Phone\s+(.+)/),
+    address: grab(/Address\s+(.+)/),
+    postcode: grab(/Postcode\s+(.+)/),
+    itemsExpected: Number(grab(/Items\s+(\d+)/)) || null,
+  };
+};
+
+const parseSurveyPdfPreamble = (preamble) => {
+  const sizeMatch = preamble.match(SURVEY_QUOTED_SIZE_LINE);
+  if (!sizeMatch) return null;
+  const beforeSize = preamble.slice(0, sizeMatch.index);
+  const afterSize = preamble.slice(sizeMatch.index + sizeMatch[0].length);
+  const label = beforeSize.split("\n").map((l) => l.trim())
+    .filter((l) => l && !l.startsWith("Dear ") && !l.startsWith("I am pleased"))
+    .join(" ").trim();
+  const commentMatch = afterSize.match(SURVEY_COMMENTS_LINE);
+  return { label, quotedSize: sizeMatch[0].trim(), officeComment: commentMatch ? commentMatch[1].trim() : "" };
+};
+
+// Pure text-in, structured-data-out — takes the per-page reconstructed text (from
+// extractSurveyPdfPageTexts) and returns the document header plus every real fillable item,
+// silently skipping pages with no fillable fields (product render pages, per-sub-frame spec
+// breakdowns) since they simply never match the aperture-sizes anchor.
+const parseSurveyPdfText = (pageTexts) => {
+  const header = parseSurveyPdfHeader(pageTexts[0] || "");
+  const items = [];
+  pageTexts.forEach((pageText, pageIndex) => {
+    if (!SURVEY_ITEM_ANCHOR.test(pageText)) return;
+    const postcodeMatch = pageText.match(SURVEY_POSTCODE_LINE);
+    const anchorMatch = pageText.match(SURVEY_ITEM_ANCHOR);
+    if (!postcodeMatch || !anchorMatch) return;
+    const preamble = pageText
+      .slice(postcodeMatch.index + postcodeMatch[0].length, anchorMatch.index)
+      .replace(SURVEY_INTRO_PARAGRAPH, "");
+    const parsed = parseSurveyPdfPreamble(preamble);
+    if (!parsed || !parsed.label) return;
+    items.push({ page: pageIndex + 1, label: parsed.label, quotedSize: parsed.quotedSize, officeComment: parsed.officeComment });
+  });
+  return { header, items };
+};
+
+const digitiseSurveyPdf = async (fileUrl) => {
+  const pageTexts = await extractSurveyPdfPageTexts(fileUrl);
+  return parseSurveyPdfText(pageTexts);
+};
+
 // ── Primitives ────────────────────────────────────────────────────────────────
 const Badge = ({label}) => {
   const c=STATUS_COLORS[label]||{bg:C.slateLight,text:C.slate};
@@ -428,6 +545,9 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
   const [activeTab,setActiveTab]=useState(initialTab||"Details");
   const [data,setData]=useState({...record,_settings:settings});
   const [showFeedbackForm,setShowFeedbackForm]=useState(false);
+  const [digitising,setDigitising]=useState(false);
+  const [digitiseError,setDigitiseError]=useState("");
+  const [digitisePreview,setDigitisePreview]=useState(null);
   const customer=isJob?customers.find(c=>c.id===data.customerId):null;
 
   // Once a Customer has one or more linked Jobs, their own Quote/Notes/Survey/etc. tabs are
@@ -447,6 +567,34 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
   const removeFile=(tabKey,i)=>setData(d=>({...d,tabs:{...d.tabs,[tabKey]:{...d.tabs[tabKey],files:d.tabs[tabKey].files.filter((_,idx)=>idx!==i)}}}));
   const addImage=(file)=>setData(d=>({...d,tabs:{...d.tabs,survey:{...d.tabs.survey,images:[...d.tabs.survey.images,file]}}}));
   const removeImage=(i)=>setData(d=>({...d,tabs:{...d.tabs,survey:{...d.tabs.survey,images:d.tabs.survey.images.filter((_,idx)=>idx!==i)}}}));
+
+  const runDigitiseSurvey=async(pdfFile)=>{
+    setDigitising(true);setDigitiseError("");setDigitisePreview(null);
+    try{
+      const result=await digitiseSurveyPdf(pdfFile.data);
+      if(result.items.length===0) throw new Error("No fillable survey items were found in this PDF — it may not match the expected WindowCAD7 Survey layout.");
+      setDigitisePreview({...result,sourceFileName:pdfFile.name});
+    }catch(err){
+      setDigitiseError(err.message||"Failed to read this PDF.");
+    }finally{
+      setDigitising(false);
+    }
+  };
+  const confirmDigitisePreview=()=>{
+    if(!digitisePreview) return;
+    setTab("survey",{digitised:{
+      ...digitisePreview.header,
+      sourceFileName:digitisePreview.sourceFileName,
+      extractedAt:new Date().toISOString(),
+      items:digitisePreview.items.map(it=>({
+        id:uid(),label:it.label,quotedSize:it.quotedSize,officeComment:it.officeComment,
+        apertureW:"",apertureH:"",makeW:"",makeH:"",internalW:"",internalH:"",
+        outerFrame:"",cillSize:"",hingeType:"",opening:"",hinged:"",drainage:"",threshold:"",handleColour:"",addOn:"",
+        notes:"",completed:false,
+      })),
+    }});
+    setDigitisePreview(null);
+  };
 
   const margin=calcMargin(totalQuoteValue(data),totalQuoteCost(data));
   const tabStyle=(t)=>({
@@ -917,6 +1065,48 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
             <div style={{fontSize:12,fontWeight:600,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Survey Documents</div>
             <FileAttach files={data.tabs.survey.files} onAdd={f=>addFile("survey",f)} onRemove={i=>removeFile("survey",i)} accept=".pdf,.doc,.docx" label="Attach Survey Document"/>
           </div>
+          {(data.tabs.survey.files||[]).some(f=>f.type==="application/pdf")&&(
+            <div style={{background:C.slateLight,borderRadius:8,padding:14}}>
+              <div style={{fontSize:12,fontWeight:600,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Digital Survey Form</div>
+              {data.tabs.survey.digitised&&!digitisePreview&&(
+                <div style={{fontSize:13,color:C.text,marginBottom:10}}>
+                  ✅ Digitised — <strong>{data.tabs.survey.digitised.items.length} items</strong> from {data.tabs.survey.digitised.sourceFileName}, {new Date(data.tabs.survey.digitised.extractedAt).toLocaleDateString("en-GB")}
+                </div>
+              )}
+              {digitiseError&&<div style={{fontSize:13,color:C.red,marginBottom:10}}>⚠ {digitiseError}</div>}
+              {!digitisePreview&&(
+                <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+                  {data.tabs.survey.files.filter(f=>f.type==="application/pdf").map((f,i)=>(
+                    <Btn key={i} variant="secondary" disabled={digitising} onClick={()=>runDigitiseSurvey(f)} style={{fontSize:12,padding:"7px 14px"}}>
+                      {digitising?"Reading PDF…":`🔍 ${data.tabs.survey.digitised?"Re-digitise":"Digitise"} "${f.name}"`}
+                    </Btn>
+                  ))}
+                </div>
+              )}
+              {digitisePreview&&(
+                <div>
+                  <div style={{fontSize:13,color:C.text,marginBottom:10}}>
+                    Found <strong>{digitisePreview.items.length} items</strong> in {digitisePreview.sourceFileName}
+                    {digitisePreview.header.itemsExpected&&digitisePreview.header.itemsExpected!==digitisePreview.items.length&&(
+                      <span style={{color:C.amber,fontWeight:600}}> — the PDF itself states {digitisePreview.header.itemsExpected}, double-check the list below before confirming.</span>
+                    )}
+                  </div>
+                  <div style={{maxHeight:260,overflowY:"auto",display:"flex",flexDirection:"column",gap:6,marginBottom:12,background:C.white,borderRadius:6,padding:8,border:`1px solid ${C.border}`}}>
+                    {digitisePreview.items.map((it,i)=>(
+                      <div key={i} style={{display:"flex",justifyContent:"space-between",gap:10,padding:"6px 8px",borderBottom:i<digitisePreview.items.length-1?`1px solid ${C.border}`:"none",fontSize:13}}>
+                        <div><strong>{i+1}. {it.label}</strong>{it.officeComment&&<span style={{color:C.amber}}> — {it.officeComment}</span>}</div>
+                        <div style={{color:C.slate,flexShrink:0}}>{it.quotedSize}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{display:"flex",gap:8}}>
+                    <Btn onClick={confirmDigitisePreview} style={{fontSize:12,padding:"7px 14px"}}>Confirm & Save</Btn>
+                    <Btn variant="secondary" onClick={()=>setDigitisePreview(null)} style={{fontSize:12,padding:"7px 14px"}}>Cancel</Btn>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
           <div>
             <div style={{fontSize:12,fontWeight:600,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Site Photos</div>
             <ImageGallery images={data.tabs.survey.images} onAdd={addImage} onRemove={removeImage}/>
