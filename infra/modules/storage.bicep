@@ -20,9 +20,38 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
   }
 }
 
+// Needed so the browser can fetch() a blob's raw bytes client-side (e.g. pdf.js reading an
+// uploaded Survey PDF to digitise it) — opening a file via a plain <a href>/<img src> never
+// needed this, since CORS only governs JS-initiated cross-origin requests, not normal
+// browser navigation/resource loading. Without this, fetch() fails with an opaque "Failed to
+// fetch" and no other diagnostic.
 resource blobServices 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01' = {
   parent: storageAccount
   name: 'default'
+  properties: {
+    cors: {
+      corsRules: [
+        {
+          allowedOrigins: [
+            'https://mango-beach-0c25f8610.7.azurestaticapps.net'
+            'https://crm.glazestream.co.uk'
+            'http://localhost:3000'
+          ]
+          allowedMethods: [
+            'GET'
+            'HEAD'
+          ]
+          allowedHeaders: [
+            '*'
+          ]
+          exposedHeaders: [
+            '*'
+          ]
+          maxAgeInSeconds: 3600
+        }
+      ]
+    }
+  }
 }
 
 resource documentsContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
