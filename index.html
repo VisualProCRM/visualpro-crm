@@ -3037,6 +3037,117 @@ const ChecklistModal = ({job,settings,onSubmit,onClose}) => {
   );
 };
 
+// ── Digital Survey (fitter step-through form) ──────────────────────────────────
+// Fills in the digitised item list built from an office-uploaded WindowCAD7 survey PDF
+// (see digitiseSurveyPdf / SURVEY_FIELD_CHOICES above). One item on screen at a time, since
+// a real survey runs to dozens of items — a single long scrolling form would be unusable on
+// a phone. Saves as the fitter goes (immediate for dropdown picks, debounced for typed
+// fields) via the same onUpdateJob/onUpdateJobDebounced the rest of the fitter app already
+// uses for notes — never waits for a final "submit" the way the Checklist/Feedback modals
+// do, since losing a half-completed 30-item survey would be a real problem.
+const DIGITAL_SURVEY_SIZE_FIELDS = [
+  { wKey: "apertureW", hKey: "apertureH", label: "External Aperture Size" },
+  { wKey: "makeW", hKey: "makeH", label: "External Make Size" },
+  { wKey: "internalW", hKey: "internalH", label: "Internal Size" },
+];
+
+const DigitalSurveyModal = ({job,onUpdateJob,onUpdateJobDebounced,onClose}) => {
+  const digitised=job.tabs?.survey?.digitised;
+  const items=digitised?.items||[];
+  const total=items.length;
+  const [itemIndex,setItemIndex]=useState(()=>{
+    const firstIncomplete=items.findIndex(it=>!it.completed);
+    return firstIncomplete===-1?0:firstIncomplete;
+  });
+  const item=items[itemIndex];
+  const completedCount=items.filter(it=>it.completed).length;
+
+  if(!item) return null; // digitised list is empty — shouldn't happen if the Start Survey button is gated correctly
+
+  const patchItem=(patch,{debounce=false}={})=>{
+    const newItems=items.map((it,i)=>i===itemIndex?{...it,...patch}:it);
+    const updatedJob={...job,tabs:{...job.tabs,survey:{...job.tabs.survey,digitised:{...digitised,items:newItems}}}};
+    (debounce?onUpdateJobDebounced:onUpdateJob)(updatedJob);
+  };
+
+  const goToIndex=(i)=>setItemIndex(Math.max(0,Math.min(total-1,i)));
+
+  const markCompleteAndAdvance=()=>{
+    const newItems=items.map((it,i)=>i===itemIndex?{...it,completed:true}:it);
+    const allDone=newItems.every(it=>it.completed);
+    const updatedDigitised={...digitised,items:newItems,...(allDone&&!digitised.completedAt?{completedAt:new Date().toISOString()}:{})};
+    const updatedJob={...job,tabs:{...job.tabs,survey:{...job.tabs.survey,digitised:updatedDigitised}}};
+    onUpdateJob(updatedJob);
+    if(itemIndex<total-1) goToIndex(itemIndex+1);
+  };
+
+  const allComplete=digitised.completedAt&&items.every(it=>it.completed);
+
+  return (
+    <div style={{position:"fixed",inset:0,background:C.white,zIndex:1000,display:"flex",flexDirection:"column"}}>
+      {/* Header */}
+      <div style={{background:C.navy,padding:"16px 16px 14px",color:"#fff",flexShrink:0}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+          <button onClick={onClose} style={{background:"rgba(255,255,255,0.15)",border:"none",color:"#fff",borderRadius:8,padding:"6px 12px",cursor:"pointer",fontSize:14}}>‹ Exit</button>
+          <div style={{fontSize:13,fontWeight:700}}>{completedCount} / {total} completed</div>
+        </div>
+        <div style={{height:6,borderRadius:3,background:"rgba(255,255,255,0.2)",overflow:"hidden"}}>
+          <div style={{height:"100%",width:`${(completedCount/total)*100}%`,background:C.mint,transition:"width 0.2s"}}/>
+        </div>
+      </div>
+
+      {/* Item context */}
+      <div style={{padding:"16px",background:C.slateLight,flexShrink:0,borderBottom:`1px solid ${C.border}`}}>
+        <div style={{fontSize:11,fontWeight:700,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em"}}>Item {itemIndex+1} of {total}</div>
+        <div style={{fontSize:19,fontWeight:800,color:C.navy,marginTop:2}}>{item.label}</div>
+        {item.quotedSize&&<div style={{fontSize:13,color:C.slate,marginTop:2}}>Quoted size: {item.quotedSize}</div>}
+        {item.officeComment&&<div style={{fontSize:13,color:"#92400E",background:"#FFFBEB",border:"1px solid #FDE68A",borderRadius:6,padding:"6px 10px",marginTop:8}}>⚠ {item.officeComment}</div>}
+      </div>
+
+      {/* Form */}
+      <div style={{flex:1,overflowY:"auto",padding:16,display:"flex",flexDirection:"column",gap:14}}>
+        {DIGITAL_SURVEY_SIZE_FIELDS.map(({wKey,hKey,label})=>(
+          <div key={wKey}>
+            <label style={{fontSize:12,fontWeight:600,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",display:"block",marginBottom:6}}>{label} (mm)</label>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              <input type="number" inputMode="numeric" value={item[wKey]||""} onChange={e=>patchItem({[wKey]:e.target.value},{debounce:true})} placeholder="W"
+                style={{flex:1,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:16,outline:"none",boxSizing:"border-box"}}/>
+              <span style={{color:C.muted,fontWeight:600}}>×</span>
+              <input type="number" inputMode="numeric" value={item[hKey]||""} onChange={e=>patchItem({[hKey]:e.target.value},{debounce:true})} placeholder="H"
+                style={{flex:1,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:16,outline:"none",boxSizing:"border-box"}}/>
+            </div>
+          </div>
+        ))}
+        {Object.entries(SURVEY_FIELD_CHOICES).map(([key,{label,options}])=>(
+          <Sel key={key} label={label} value={item[key]||""} onChange={e=>patchItem({[key]:e.target.value})} style={{fontSize:16,padding:"10px 12px"}}>
+            <option value="">— Select —</option>
+            {options.map(o=><option key={o} value={o}>{o}</option>)}
+          </Sel>
+        ))}
+        <TA label="Notes (Trims Needed / Surveyor Comments)" value={item.notes||""} onChange={e=>patchItem({notes:e.target.value},{debounce:true})}
+          placeholder="Any trims needed, access notes, or other comments for this item..." style={{minHeight:90,fontSize:15}}/>
+      </div>
+
+      {/* Nav */}
+      <div style={{padding:16,borderTop:`1px solid ${C.border}`,background:C.white,flexShrink:0,display:"flex",gap:10}}>
+        <button onClick={()=>goToIndex(itemIndex-1)} disabled={itemIndex===0}
+          style={{flex:1,background:C.white,color:itemIndex===0?C.muted:C.navy,border:`1px solid ${C.border}`,borderRadius:10,padding:"14px",fontSize:15,fontWeight:700,cursor:itemIndex===0?"not-allowed":"pointer"}}>
+          ‹ Previous
+        </button>
+        {allComplete&&itemIndex===total-1?(
+          <button onClick={onClose} style={{flex:2,background:C.mint,color:"#fff",border:"none",borderRadius:10,padding:"14px",fontSize:15,fontWeight:700,cursor:"pointer"}}>
+            ✓ Survey Complete — Close
+          </button>
+        ):(
+          <button onClick={markCompleteAndAdvance} style={{flex:2,background:C.sky,color:"#fff",border:"none",borderRadius:10,padding:"14px",fontSize:15,fontWeight:700,cursor:"pointer"}}>
+            {item.completed?"Saved ✓ — Next ›":itemIndex===total-1?"Mark Complete & Finish":"Mark Complete & Next ›"}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
+
 // ── Website Enquiry Form (embeddable) ─────────────────────────────────────────
 const WebsiteEnquiryForm = ({companyName,onSubmit}) => {
   const [form,setForm]=useState({name:"",email:"",phone:"",address:"",message:"",products:[],source:"Website"});
@@ -4176,6 +4287,7 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
   const [activeTab,setActiveTab]=useState("details");
   const [showFeedback,setShowFeedback]=useState(false);
   const [showChecklist,setShowChecklist]=useState(false);
+  const [showDigitalSurvey,setShowDigitalSurvey]=useState(false);
   const [viewDate,setViewDate]=useState(new Date());
   // Each fitter can hold down a view button to pin it as their default, so the calendar
   // opens straight into whichever view they actually use — stored per-fitter in
@@ -4439,6 +4551,25 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
                 </div>
               </div>
 
+              {/* Digital survey — office has digitised an uploaded WindowCAD7 PDF into a
+                  fillable item list (see Survey tab, office side) */}
+              {(job.tabs?.survey?.digitised?.items||[]).length>0&&(()=>{
+                const dItems=job.tabs.survey.digitised.items;
+                const done=dItems.filter(it=>it.completed).length;
+                const allDone=dItems.every(it=>it.completed);
+                return (
+                  <div style={{background:allDone?"#F0FDF4":C.white,borderRadius:12,padding:16,border:`1px solid ${allDone?"#86EFAC":C.border}`}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                      <div style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em"}}>📝 Digital Survey</div>
+                      <div style={{fontSize:12,fontWeight:700,color:allDone?"#15803D":C.slate}}>{done} / {dItems.length}{allDone?" ✓":""}</div>
+                    </div>
+                    <button onClick={()=>setShowDigitalSurvey(true)}
+                      style={{width:"100%",background:allDone?C.mint:C.sky,color:"#fff",border:"none",borderRadius:10,padding:"12px",fontSize:15,fontWeight:700,cursor:"pointer"}}>
+                      {done===0?"Start Survey":allDone?"✓ Review Completed Survey":"Continue Survey"}
+                    </button>
+                  </div>
+                );
+              })()}
               {/* Survey documents from office */}
               {(job.tabs?.survey?.files||[]).length>0&&(
                 <div style={{background:C.white,borderRadius:12,padding:16,border:`1px solid ${C.border}`}}>
@@ -4686,6 +4817,13 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
               updateJob(updated); setSelectedJob(updated); setShowChecklist(false);
             }}
             onClose={()=>setShowChecklist(false)}/>
+        )}
+        {/* Digital survey modal */}
+        {showDigitalSurvey&&(
+          <DigitalSurveyModal job={job}
+            onUpdateJob={updated=>{updateJob(updated);setSelectedJob(updated);}}
+            onUpdateJobDebounced={updateJobDebounced}
+            onClose={()=>setShowDigitalSurvey(false)}/>
         )}
       </div>
     );
