@@ -3139,10 +3139,10 @@ const DigitalSurveyModal = ({job,onUpdateJob,onUpdateJobDebounced,onClose}) => {
             <label style={{fontSize:12,fontWeight:600,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",display:"block",marginBottom:6}}>{label} (mm)</label>
             <div style={{display:"flex",alignItems:"center",gap:8}}>
               <input type="number" inputMode="numeric" value={item[wKey]||""} onChange={e=>patchItem({[wKey]:e.target.value},{debounce:true})} placeholder="W"
-                style={{flex:1,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:16,outline:"none",boxSizing:"border-box"}}/>
+                style={{width:110,flexShrink:0,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:16,outline:"none",boxSizing:"border-box"}}/>
               <span style={{color:C.muted,fontWeight:600}}>×</span>
               <input type="number" inputMode="numeric" value={item[hKey]||""} onChange={e=>patchItem({[hKey]:e.target.value},{debounce:true})} placeholder="H"
-                style={{flex:1,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:16,outline:"none",boxSizing:"border-box"}}/>
+                style={{width:110,flexShrink:0,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:16,outline:"none",boxSizing:"border-box"}}/>
             </div>
           </div>
         ))}
