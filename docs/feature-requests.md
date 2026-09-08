@@ -8,6 +8,19 @@ A shared place for feature ideas, wherever they come from — the office, a fitt
 
 ## Requested
 
+### Auto-parse supplier delivery PDFs from an inbound email into Track Orders
+- Requested by: office — 2026-09-08
+- **Workflow wanted**: office forwards (or suppliers directly send) a delivery-confirmation PDF to a dedicated address (e.g. `expecteddeliveries@glazestream.co.uk`) → the CRM automatically scans the PDF and pulls out the delivery date, product(s), and quantities → these land in Track Orders without manual entry.
+- **Why this is a different shape of problem than the WindowCAD7 survey PDF digitisation** (built 2026-09-06): that feature could rely on exact text positions because every PDF comes from one company's own fixed template generator. Delivery notes come from many different suppliers, each with their own layout — a position-based parser won't generalise. Recommended approach: feed each PDF's text to an LLM to extract structured data (date/product/quantity/supplier), which handles varied real-world layouts far better than hand-written per-supplier rules — but that's a new AI-API dependency with its own small per-use cost, not something already in this app.
+- **Also needs new infrastructure, not just a frontend addition**: Azure Communication Services (already used for outbound email) can't receive mail. Since the business is already on Microsoft 365, the natural approach is a real shared mailbox in that tenant, polled by a new Azure Function via the Microsoft Graph API (similar pattern to the existing daily reminder-email timer) — needs an app registration with mail-read permission granted, a similar one-time setup step to the existing office-login app registration.
+- **Confirmed direction**: extracted deliveries should land as a **pending review** item in Track Orders for the office to confirm/edit, not write in automatically and silently — AI extraction won't be 100% reliable on every supplier's PDF.
+- **Not yet built, needs a proper scoping pass**: which suppliers to design/test against first, how often the Function polls (timer vs. more immediate), what the pending-review UI looks like, and — blocking everything else — office needs to actually create the shared mailbox and grant the Graph API permission before any of this can start (same kind of blocker as the mileage tracker's OpenRouteService signup). Rough estimate given: ~2-3 sessions once unblocked.
+
+### Delivery-due-today reminder email to the office
+- Requested by: office — 2026-09-08, raised alongside the delivery-PDF-parsing idea above but independent of it
+- Same daily-timer mechanism already sending install/survey/service-call reminders (`reminderTimer.js`) — but unlike those, which remind the *customer* of an upcoming appointment, this one reminds the *office* internally that a delivery is due that day. Doesn't need to wait on the PDF-parsing feature above — Track Orders already has delivery-date data today regardless of how it was entered (manual or, eventually, auto-extracted).
+- **Not yet built**: needs a new email template and a small extension to the existing daily timer's scan logic, plus deciding who internally receives it (a fixed office address, or something configurable). Small — well under a session.
+
 ### Turn the Fitter view into an installable PWA, with voice-to-text survey filling
 - Requested by: office — 2026-09-05
 - **Two related but separable ideas raised together**:
