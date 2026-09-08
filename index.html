@@ -3070,6 +3070,15 @@ const DigitalSurveyModal = ({job,onUpdateJob,onUpdateJobDebounced,onClose}) => {
     (debounce?onUpdateJobDebounced:onUpdateJob)(updatedJob);
   };
 
+  const itemPhotos=item.images||[];
+  const addItemPhoto=async(e)=>{
+    const files=Array.from(e.target.files);
+    const datas=await Promise.all(files.map(f=>uploadFile(f,"photos")));
+    patchItem({images:[...itemPhotos,...datas]});
+    e.target.value="";
+  };
+  const removeItemPhoto=(photoIdx)=>patchItem({images:itemPhotos.filter((_,i)=>i!==photoIdx)});
+
   const goToIndex=(i)=>setItemIndex(Math.max(0,Math.min(total-1,i)));
 
   const markCompleteAndAdvance=()=>{
@@ -3106,6 +3115,25 @@ const DigitalSurveyModal = ({job,onUpdateJob,onUpdateJobDebounced,onClose}) => {
 
       {/* Form */}
       <div style={{flex:1,overflowY:"auto",padding:16,display:"flex",flexDirection:"column",gap:14}}>
+        {/* Item photo — required before this item can be marked complete */}
+        <div>
+          <label style={{fontSize:12,fontWeight:600,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",display:"block",marginBottom:6}}>
+            Photo of this item {itemPhotos.length===0&&<span style={{color:C.red}}>· required</span>}
+          </label>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
+            {itemPhotos.map((img,i)=>(
+              <div key={i} style={{position:"relative",borderRadius:8,overflow:"hidden",aspectRatio:"1",border:`1px solid ${C.border}`}}>
+                <img src={img.data} alt={img.name} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                <button onClick={()=>removeItemPhoto(i)} style={{position:"absolute",top:4,right:4,background:"rgba(0,0,0,0.6)",border:"none",color:"#fff",borderRadius:"50%",width:22,height:22,cursor:"pointer",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+              </div>
+            ))}
+            <label style={{aspectRatio:"1",borderRadius:8,border:`2px dashed ${itemPhotos.length===0?C.red:C.border}`,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",cursor:"pointer",gap:4,color:C.slate,background:C.slateLight}}>
+              <span style={{fontSize:22}}>📷</span>
+              <span style={{fontSize:11,fontWeight:600}}>Add Photo</span>
+              <input type="file" accept="image/*" multiple onChange={addItemPhoto} style={{display:"none"}}/>
+            </label>
+          </div>
+        </div>
         {DIGITAL_SURVEY_SIZE_FIELDS.map(({wKey,hKey,label})=>(
           <div key={wKey}>
             <label style={{fontSize:12,fontWeight:600,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",display:"block",marginBottom:6}}>{label} (mm)</label>
@@ -3139,9 +3167,13 @@ const DigitalSurveyModal = ({job,onUpdateJob,onUpdateJobDebounced,onClose}) => {
             ✓ Survey Complete — Close
           </button>
         ):(
-          <button onClick={markCompleteAndAdvance} style={{flex:2,background:C.sky,color:"#fff",border:"none",borderRadius:10,padding:"14px",fontSize:15,fontWeight:700,cursor:"pointer"}}>
-            {item.completed?"Saved ✓ — Next ›":itemIndex===total-1?"Mark Complete & Finish":"Mark Complete & Next ›"}
-          </button>
+          <div style={{flex:2,display:"flex",flexDirection:"column",gap:4}}>
+            <button onClick={markCompleteAndAdvance} disabled={itemPhotos.length===0}
+              style={{width:"100%",background:itemPhotos.length===0?"#CBD5E1":C.sky,color:"#fff",border:"none",borderRadius:10,padding:"14px",fontSize:15,fontWeight:700,cursor:itemPhotos.length===0?"not-allowed":"pointer"}}>
+              {item.completed?"Saved ✓ — Next ›":itemIndex===total-1?"Mark Complete & Finish":"Mark Complete & Next ›"}
+            </button>
+            {itemPhotos.length===0&&<div style={{textAlign:"center",fontSize:11,color:C.red,fontWeight:600}}>Add a photo of this item to continue</div>}
+          </div>
         )}
       </div>
     </div>
