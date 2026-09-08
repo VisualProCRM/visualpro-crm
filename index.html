@@ -3118,7 +3118,7 @@ const DigitalSurveyModal = ({job,onUpdateJob,onUpdateJobDebounced,onClose}) => {
         {/* Item photo — required before this item can be marked complete */}
         <div>
           <label style={{fontSize:12,fontWeight:600,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",display:"block",marginBottom:6}}>
-            Photo of this item {itemPhotos.length===0&&<span style={{color:C.red}}>· required</span>}
+            Photo of this item — take a photo of the existing door/window before completing measurements {itemPhotos.length===0&&<span style={{color:C.red}}>— required</span>}
           </label>
           <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
             {itemPhotos.map((img,i)=>(
