@@ -3467,14 +3467,16 @@ const SupplierRow = ({supplier,index,settings,setSettings}) => {
 // editable here rather than hardcoded, since the office plans to add more suppliers over
 // time — each row's own "length" (stock length in mm) drives the auto-calculated trim-count
 // field on the survey form, so a future supplier stocking a different length just works.
+const TRIM_ROW_COLUMNS="1.2fr 1.6fr 1fr 0.9fr 1fr auto";
+const trimInputStyle={width:"100%",minWidth:0,boxSizing:"border-box",border:`1px solid ${C.border}`,borderRadius:6,padding:"7px 8px",fontSize:12,outline:"none"};
 const TrimRow = ({trim,onChange,onRemove}) => (
-  <div style={{display:"grid",gridTemplateColumns:"1.2fr 1.6fr 1fr 0.9fr 1fr auto",gap:8,marginBottom:8,alignItems:"center"}}>
-    <input value={trim.category} onChange={e=>onChange({category:e.target.value})} placeholder="Category e.g. Flat" style={{border:`1px solid ${C.border}`,borderRadius:6,padding:"7px 10px",fontSize:13,outline:"none"}}/>
-    <input value={trim.name} onChange={e=>onChange({name:e.target.value})} placeholder="Trim name e.g. D-moulding" style={{border:`1px solid ${C.border}`,borderRadius:6,padding:"7px 10px",fontSize:13,outline:"none"}}/>
-    <input value={trim.width} onChange={e=>onChange({width:e.target.value})} placeholder="Width e.g. 25mm" style={{border:`1px solid ${C.border}`,borderRadius:6,padding:"7px 10px",fontSize:13,outline:"none"}}/>
-    <input type="number" value={trim.length} onChange={e=>onChange({length:Number(e.target.value)||0})} placeholder="Length mm" style={{border:`1px solid ${C.border}`,borderRadius:6,padding:"7px 10px",fontSize:13,outline:"none"}}/>
-    <input value={trim.supplier} onChange={e=>onChange({supplier:e.target.value})} placeholder="Supplier" style={{border:`1px solid ${C.border}`,borderRadius:6,padding:"7px 10px",fontSize:13,outline:"none"}}/>
-    <button onClick={onRemove} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:6,padding:"6px 10px",cursor:"pointer",color:C.red,fontSize:12,whiteSpace:"nowrap"}}>Remove</button>
+  <div style={{display:"grid",gridTemplateColumns:TRIM_ROW_COLUMNS,gap:6,marginBottom:8,alignItems:"center"}}>
+    <input value={trim.category} onChange={e=>onChange({category:e.target.value})} placeholder="Category" style={trimInputStyle}/>
+    <input value={trim.name} onChange={e=>onChange({name:e.target.value})} placeholder="Trim name" style={trimInputStyle}/>
+    <input value={trim.width} onChange={e=>onChange({width:e.target.value})} placeholder="Width" style={trimInputStyle}/>
+    <input type="number" value={trim.length} onChange={e=>onChange({length:Number(e.target.value)||0})} placeholder="Length mm" style={trimInputStyle}/>
+    <input value={trim.supplier} onChange={e=>onChange({supplier:e.target.value})} placeholder="Supplier" style={trimInputStyle}/>
+    <button onClick={onRemove} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:6,padding:"6px 8px",cursor:"pointer",color:C.red,fontSize:11,whiteSpace:"nowrap",minWidth:0}}>Remove</button>
   </div>
 );
 
@@ -3743,8 +3745,8 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
               </div>
 
               {/* Manual list */}
-              <div style={{display:"grid",gridTemplateColumns:"1.2fr 1.6fr 1fr 0.9fr 1fr auto",gap:8,marginBottom:6,fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.05em"}}>
-                <div>Category</div><div>Trim Name</div><div>Width</div><div>Length (mm)</div><div>Supplier</div><div/>
+              <div style={{display:"grid",gridTemplateColumns:TRIM_ROW_COLUMNS,gap:6,marginBottom:6,fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.05em"}}>
+                <div style={{minWidth:0}}>Category</div><div style={{minWidth:0}}>Trim Name</div><div style={{minWidth:0}}>Width</div><div style={{minWidth:0}}>Length (mm)</div><div style={{minWidth:0}}>Supplier</div><div/>
               </div>
               {catalog.map(t=>(
                 <TrimRow key={t.id} trim={t} onChange={patch=>updateTrim(t.id,patch)} onRemove={()=>removeTrim(t.id)}/>
