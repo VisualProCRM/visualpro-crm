@@ -85,7 +85,7 @@ const DEFAULT_TRIM_CATALOG = [
   {category:"Rigid angle",name:"Equal rigid angle",width:"80 × 80mm",length:5000,supplier:"Eurocell"},
   {category:"Rigid angle",name:"Unequal rigid angle",width:"100 × 80mm",length:5000,supplier:"Eurocell"},
   {category:"Hollow angle",name:"Hollow rigid angle",width:"100 × 80mm",length:5000,supplier:"Eurocell"},
-].map((t,i)=>({...t,id:"seed-"+i}));
+].map((t,i)=>({...t,width:t.width.replace(/mm$/,""),id:"seed-"+i}));
 const PRODUCTS_OF_INTEREST = ["UPVC Windows","UPVC Doors","Composite Door","Bifold Door","Sliding Door","Aluminium Windows","Roof Lanterns","Flat Glass Rooflights","Glass Units","Other"];
 const CARD_TABS     = ["Details","Tasks","Quote","Invoices","Notes","Survey","Order Confirmation","Bills","Installation","Guarantee","Service Call"];
 
@@ -3467,7 +3467,7 @@ const SupplierRow = ({supplier,index,settings,setSettings}) => {
 // editable here rather than hardcoded, since the office plans to add more suppliers over
 // time — each row's own "length" (stock length in mm) drives the auto-calculated trim-count
 // field on the survey form, so a future supplier stocking a different length just works.
-const TRIM_ROW_COLUMNS="1.2fr 1.6fr 1fr 0.9fr 1fr auto";
+const TRIM_ROW_COLUMNS="1fr 2.2fr 0.6fr 0.6fr 0.9fr auto";
 const trimInputStyle={width:"100%",minWidth:0,boxSizing:"border-box",border:`1px solid ${C.border}`,borderRadius:6,padding:"7px 8px",fontSize:12,outline:"none"};
 // Renders its 6 cells as flat siblings (no wrapping div/grid of its own) — the header row
 // and every TrimRow must all be direct children of ONE shared grid container, or each row's
@@ -3477,7 +3477,7 @@ const TrimRow = ({trim,onChange,onRemove}) => (
   <>
     <input value={trim.category} onChange={e=>onChange({category:e.target.value})} placeholder="Category" style={trimInputStyle}/>
     <input value={trim.name} onChange={e=>onChange({name:e.target.value})} placeholder="Trim name" style={trimInputStyle}/>
-    <input value={trim.width} onChange={e=>onChange({width:e.target.value})} placeholder="Width" style={trimInputStyle}/>
+    <input value={trim.width} onChange={e=>onChange({width:e.target.value})} placeholder="20" style={trimInputStyle}/>
     <input type="number" value={trim.length} onChange={e=>onChange({length:Number(e.target.value)||0})} placeholder="Length mm" style={trimInputStyle}/>
     <input value={trim.supplier} onChange={e=>onChange({supplier:e.target.value})} placeholder="Supplier" style={trimInputStyle}/>
     <button onClick={onRemove} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:6,padding:"6px 8px",cursor:"pointer",color:C.red,fontSize:11,whiteSpace:"nowrap",minWidth:0}}>Remove</button>
@@ -3511,7 +3511,7 @@ const parseTrimCatalogExcel=async(file)=>{
     .map(r=>({
       category:cols.category>=0?String(r[cols.category]||"").trim():"",
       name:cols.name>=0?String(r[cols.name]||"").trim():"",
-      width:cols.width>=0?String(r[cols.width]||"").trim():"",
+      width:cols.width>=0?String(r[cols.width]||"").trim().replace(/\s*mm$/i,""):"",
       length:cols.length>=0?(Number(String(r[cols.length]||"").replace(/[^\d.]/g,""))||0)*(String(r[cols.length]||"").toLowerCase().includes("m")&&!String(r[cols.length]||"").toLowerCase().includes("mm")?1000:1):0,
       supplier:cols.supplier>=0?String(r[cols.supplier]||"").trim():"",
     }))
@@ -3753,7 +3753,7 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
               <div style={{display:"grid",gridTemplateColumns:TRIM_ROW_COLUMNS,gap:6,rowGap:8}}>
                 <div style={{minWidth:0,fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.05em"}}>Category</div>
                 <div style={{minWidth:0,fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.05em"}}>Trim Name</div>
-                <div style={{minWidth:0,fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.05em"}}>Width</div>
+                <div style={{minWidth:0,fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.05em"}}>Width (mm)</div>
                 <div style={{minWidth:0,fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.05em"}}>Length (mm)</div>
                 <div style={{minWidth:0,fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.05em"}}>Supplier</div>
                 <div/>
