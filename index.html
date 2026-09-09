@@ -11,6 +11,7 @@
   <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <style>
     *{box-sizing:border-box;margin:0;padding:0;}
     body{font-family:'Inter','Segoe UI',sans-serif;background:#FDFCFA;}
@@ -54,6 +55,37 @@ const PRODUCT_TYPES = ["Casement Windows","Sash Windows","French Doors","Bi-fold
 const DEFAULT_FITTERS = ["Tom Bailey","Steve Marsh","Dan Rees","Chris Wood"];
 const DEFAULT_STAFF   = ["James Owen","Rachel Kent"];
 const DEFAULT_SUPPLIERS = ["Epwin Group","Rehau","Deceuninck","Liniar","Veka","Other"];
+// Seeded from the office's real Eurocell trim price list — editable via Settings → Trim
+// Catalog (manual add/edit, or bulk Excel upload) so adding future suppliers never needs a
+// code change. "length" is each SKU's own standard stock length in mm (all 5000mm/5m for
+// Eurocell today, but kept per-row rather than a hardcoded constant since a different future
+// supplier might stock 3m or 6m lengths instead) — used to work out how many lengths a
+// fitter needs for a given opening's perimeter.
+const DEFAULT_TRIM_CATALOG = [
+  {category:"Flat",name:"Cloaking fillet",width:"20mm",length:5000,supplier:"Eurocell"},
+  {category:"Flat",name:"Cloaking fillet",width:"30mm",length:5000,supplier:"Eurocell"},
+  {category:"Flat",name:"D-moulding",width:"25mm",length:5000,supplier:"Eurocell"},
+  {category:"Flat",name:"Pencil-round architrave",width:"45mm",length:5000,supplier:"Eurocell"},
+  {category:"Flat",name:"Pencil-round architrave",width:"65mm",length:5000,supplier:"Eurocell"},
+  {category:"Flat",name:"Pencil-round architrave",width:"95mm",length:5000,supplier:"Eurocell"},
+  {category:"Flat",name:"Castellated pencil-round architrave",width:"40mm",length:5000,supplier:"Eurocell"},
+  {category:"Flat",name:"Castellated pencil-round architrave",width:"60mm",length:5000,supplier:"Eurocell"},
+  {category:"Flat",name:"Castellated pencil-round architrave",width:"90mm",length:5000,supplier:"Eurocell"},
+  {category:"Bead",name:"Chamfered bead/finishing trim",width:"20mm",length:5000,supplier:"Eurocell"},
+  {category:"Bead",name:"Square finishing trim",width:"20mm",length:5000,supplier:"Eurocell"},
+  {category:"Quadrant",name:"Small quadrant",width:"13mm",length:5000,supplier:"Eurocell"},
+  {category:"Quadrant",name:"Large quadrant",width:"17.5mm",length:5000,supplier:"Eurocell"},
+  {category:"Adjustable angle",name:"Equal adjustable angle",width:"25 × 25mm",length:5000,supplier:"Eurocell"},
+  {category:"Adjustable angle",name:"Equal adjustable angle",width:"35 × 35mm",length:5000,supplier:"Eurocell"},
+  {category:"Adjustable angle",name:"Equal adjustable angle",width:"50 × 50mm",length:5000,supplier:"Eurocell"},
+  {category:"Rigid angle",name:"Equal rigid angle",width:"25 × 25mm",length:5000,supplier:"Eurocell"},
+  {category:"Rigid angle",name:"Equal rigid angle",width:"40 × 40mm",length:5000,supplier:"Eurocell"},
+  {category:"Rigid angle",name:"Equal rigid angle",width:"60 × 60mm",length:5000,supplier:"Eurocell"},
+  {category:"Rigid angle",name:"Unequal rigid angle",width:"65 × 35mm",length:5000,supplier:"Eurocell"},
+  {category:"Rigid angle",name:"Equal rigid angle",width:"80 × 80mm",length:5000,supplier:"Eurocell"},
+  {category:"Rigid angle",name:"Unequal rigid angle",width:"100 × 80mm",length:5000,supplier:"Eurocell"},
+  {category:"Hollow angle",name:"Hollow rigid angle",width:"100 × 80mm",length:5000,supplier:"Eurocell"},
+].map((t,i)=>({...t,id:"seed-"+i}));
 const PRODUCTS_OF_INTEREST = ["UPVC Windows","UPVC Doors","Composite Door","Bifold Door","Sliding Door","Aluminium Windows","Roof Lanterns","Flat Glass Rooflights","Glass Units","Other"];
 const CARD_TABS     = ["Details","Tasks","Quote","Invoices","Notes","Survey","Order Confirmation","Bills","Installation","Guarantee","Service Call"];
 
@@ -3429,12 +3461,83 @@ const SupplierRow = ({supplier,index,settings,setSettings}) => {
     </div>
   );
 };
+
+// ── Trim Catalog (Settings → Trim Catalog) ──────────────────────────────────────
+// Feeds the trim width/type pickers in the fitter's digital survey form. Deliberately kept
+// editable here rather than hardcoded, since the office plans to add more suppliers over
+// time — each row's own "length" (stock length in mm) drives the auto-calculated trim-count
+// field on the survey form, so a future supplier stocking a different length just works.
+const TrimRow = ({trim,onChange,onRemove}) => (
+  <div style={{display:"grid",gridTemplateColumns:"1.2fr 1.6fr 1fr 0.9fr 1fr auto",gap:8,marginBottom:8,alignItems:"center"}}>
+    <input value={trim.category} onChange={e=>onChange({category:e.target.value})} placeholder="Category e.g. Flat" style={{border:`1px solid ${C.border}`,borderRadius:6,padding:"7px 10px",fontSize:13,outline:"none"}}/>
+    <input value={trim.name} onChange={e=>onChange({name:e.target.value})} placeholder="Trim name e.g. D-moulding" style={{border:`1px solid ${C.border}`,borderRadius:6,padding:"7px 10px",fontSize:13,outline:"none"}}/>
+    <input value={trim.width} onChange={e=>onChange({width:e.target.value})} placeholder="Width e.g. 25mm" style={{border:`1px solid ${C.border}`,borderRadius:6,padding:"7px 10px",fontSize:13,outline:"none"}}/>
+    <input type="number" value={trim.length} onChange={e=>onChange({length:Number(e.target.value)||0})} placeholder="Length mm" style={{border:`1px solid ${C.border}`,borderRadius:6,padding:"7px 10px",fontSize:13,outline:"none"}}/>
+    <input value={trim.supplier} onChange={e=>onChange({supplier:e.target.value})} placeholder="Supplier" style={{border:`1px solid ${C.border}`,borderRadius:6,padding:"7px 10px",fontSize:13,outline:"none"}}/>
+    <button onClick={onRemove} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:6,padding:"6px 10px",cursor:"pointer",color:C.red,fontSize:12,whiteSpace:"nowrap"}}>Remove</button>
+  </div>
+);
+
+// Tolerant of header-name variation (e.g. "Width/profile size" vs "Width") since a real
+// supplier spreadsheet is very unlikely to match our exact field names verbatim.
+const TRIM_COLUMN_ALIASES = {
+  category:["category"],
+  name:["trim name","name","trim","type"],
+  width:["width/profile size","width","profile size","size"],
+  length:["standard length","length"],
+  supplier:["supplier"],
+};
+const findTrimColumn=(headerRow,aliases)=>{
+  const idx=headerRow.findIndex(h=>aliases.includes(String(h||"").trim().toLowerCase()));
+  return idx;
+};
+const parseTrimCatalogExcel=async(file)=>{
+  const buf=await file.arrayBuffer();
+  const wb=XLSX.read(buf,{type:"array"});
+  const sheet=wb.Sheets[wb.SheetNames[0]];
+  const rows=XLSX.utils.sheet_to_json(sheet,{header:1,defval:""});
+  if(rows.length<2) return [];
+  const header=rows[0];
+  const cols={};
+  Object.entries(TRIM_COLUMN_ALIASES).forEach(([key,aliases])=>{ cols[key]=findTrimColumn(header,aliases); });
+  return rows.slice(1)
+    .filter(r=>r.some(c=>String(c||"").trim()))
+    .map(r=>({
+      category:cols.category>=0?String(r[cols.category]||"").trim():"",
+      name:cols.name>=0?String(r[cols.name]||"").trim():"",
+      width:cols.width>=0?String(r[cols.width]||"").trim():"",
+      length:cols.length>=0?(Number(String(r[cols.length]||"").replace(/[^\d.]/g,""))||0)*(String(r[cols.length]||"").toLowerCase().includes("m")&&!String(r[cols.length]||"").toLowerCase().includes("mm")?1000:1):0,
+      supplier:cols.supplier>=0?String(r[cols.supplier]||"").trim():"",
+    }))
+    .filter(t=>t.name);
+};
+
 const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
   const [activeSection,setActiveSection]=useState("fitters");
   // idle | saving | saved | error
   const [saveStatus,setSaveStatus]=useState("idle");
   const skipNextSave=useRef(true); // don't fire a save for the initial load from the API
   const [uploadingLogo,setUploadingLogo]=useState(false);
+  const [trimUploadPreview,setTrimUploadPreview]=useState(null);
+  const [trimUploadError,setTrimUploadError]=useState("");
+  const handleTrimExcelUpload=async(e)=>{
+    const file=e.target.files[0];
+    if(!file) return;
+    setTrimUploadError("");setTrimUploadPreview(null);
+    try{
+      const parsed=await parseTrimCatalogExcel(file);
+      if(parsed.length===0) throw new Error("No trim rows found — check the spreadsheet has Category/Trim Name/Width/Standard Length/Supplier columns.");
+      setTrimUploadPreview(parsed);
+    }catch(err){
+      setTrimUploadError(err.message||"Failed to read this spreadsheet.");
+    }
+    e.target.value="";
+  };
+  const confirmTrimUpload=()=>{
+    if(!trimUploadPreview) return;
+    setSettings(ss=>({...ss,trimCatalog:[...(ss.trimCatalog||DEFAULT_TRIM_CATALOG),...trimUploadPreview.map(t=>({...t,id:uid()}))]}));
+    setTrimUploadPreview(null);
+  };
   const [windowcadEvents,setWindowcadEvents]=useState(null); // null = not loaded yet
   const [windowcadLoading,setWindowcadLoading]=useState(false);
   const loadWindowcadEvents=()=>{
@@ -3521,6 +3624,7 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
           {sectionBtn("fitters","Fitters","👷")}
           {sectionBtn("staff","Office Staff","🏢")}
           {sectionBtn("suppliers","Suppliers","🚚")}
+          {sectionBtn("trims","Trim Catalog","📏")}
           {sectionBtn("company","Company Info","🏠")}
           {sectionBtn("emails","Email Templates","✉️")}
           {sectionBtn("feedback","Feedback Form","⭐")}
@@ -3601,6 +3705,62 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
             </div>
           </div>
         )}
+
+        {/* ── TRIM CATALOG ── */}
+        {activeSection==="trims"&&(()=>{
+          const catalog=settings.trimCatalog||DEFAULT_TRIM_CATALOG;
+          const updateTrim=(id,patch)=>setSettings(ss=>({...ss,trimCatalog:(ss.trimCatalog||DEFAULT_TRIM_CATALOG).map(t=>t.id===id?{...t,...patch}:t)}));
+          const removeTrim=(id)=>setSettings(ss=>({...ss,trimCatalog:(ss.trimCatalog||DEFAULT_TRIM_CATALOG).filter(t=>t.id!==id)}));
+          return (
+            <div style={{background:C.white,borderRadius:10,border:`1px solid ${C.border}`,padding:24}}>
+              <h3 style={{margin:"0 0 6px",fontSize:18,color:C.navy,fontWeight:800}}>📏 Trim Catalog</h3>
+              <p style={{margin:"0 0 16px",fontSize:13,color:C.slate}}>Powers the trim width/type pickers fitters use on the digital survey form. Add suppliers' trims here — manually, or by uploading their price list as a spreadsheet below.</p>
+
+              {/* Excel upload */}
+              <div style={{background:C.slateLight,borderRadius:8,padding:14,marginBottom:20}}>
+                <label style={{display:"inline-flex",alignItems:"center",gap:6,cursor:"pointer",background:C.white,border:`1px dashed ${C.border}`,borderRadius:6,padding:"7px 14px",fontSize:13,color:C.slate,fontWeight:600}}>
+                  📊 Upload Trim List (Excel)
+                  <input type="file" accept=".xlsx,.xls,.csv" onChange={handleTrimExcelUpload} style={{display:"none"}}/>
+                </label>
+                <div style={{fontSize:12,color:C.muted,marginTop:6}}>Expects columns for Category, Trim Name, Width, Standard Length, and Supplier — column order/exact naming doesn't matter. New rows are added to the list below, not replacing it.</div>
+                {trimUploadError&&<div style={{fontSize:13,color:C.red,marginTop:10}}>⚠ {trimUploadError}</div>}
+                {trimUploadPreview&&(
+                  <div style={{marginTop:12}}>
+                    <div style={{fontSize:13,color:C.text,marginBottom:8}}>Found <strong>{trimUploadPreview.length} rows</strong> — review before adding:</div>
+                    <div style={{maxHeight:220,overflowY:"auto",background:C.white,borderRadius:6,border:`1px solid ${C.border}`,padding:8,marginBottom:10}}>
+                      {trimUploadPreview.map((t,i)=>(
+                        <div key={i} style={{fontSize:12,padding:"4px 6px",borderBottom:i<trimUploadPreview.length-1?`1px solid ${C.border}`:"none"}}>
+                          <strong>{t.category}</strong> — {t.name} — {t.width} — {t.length}mm — {t.supplier}
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{display:"flex",gap:8}}>
+                      <Btn onClick={confirmTrimUpload} style={{fontSize:12,padding:"7px 14px"}}>Add {trimUploadPreview.length} Rows</Btn>
+                      <Btn variant="secondary" onClick={()=>setTrimUploadPreview(null)} style={{fontSize:12,padding:"7px 14px"}}>Cancel</Btn>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Manual list */}
+              <div style={{display:"grid",gridTemplateColumns:"1.2fr 1.6fr 1fr 0.9fr 1fr auto",gap:8,marginBottom:6,fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.05em"}}>
+                <div>Category</div><div>Trim Name</div><div>Width</div><div>Length (mm)</div><div>Supplier</div><div/>
+              </div>
+              {catalog.map(t=>(
+                <TrimRow key={t.id} trim={t} onChange={patch=>updateTrim(t.id,patch)} onRemove={()=>removeTrim(t.id)}/>
+              ))}
+              <button onClick={()=>setSettings(ss=>({...ss,trimCatalog:[...(ss.trimCatalog||DEFAULT_TRIM_CATALOG),{id:uid(),category:"",name:"",width:"",length:5000,supplier:""}]}))}
+                style={{marginTop:6,border:`1px dashed ${C.border}`,borderRadius:8,padding:"10px 16px",background:"transparent",color:C.sky,fontSize:14,fontWeight:600,cursor:"pointer",width:"100%"}}>
+                + Add Trim
+              </button>
+              <div style={{marginTop:20,paddingTop:20,borderTop:`1px solid ${C.border}`,display:"flex",justifyContent:"flex-end"}}>
+                <div style={{background:saveStatus==="saving"?C.slateLight:saveStatus==="error"?"#FEF2F2":"#F0FDF4",color:saveStatus==="saving"?C.slate:saveStatus==="error"?C.red:C.mint,fontSize:12,fontWeight:700,padding:"7px 14px",borderRadius:8,border:`1px solid ${saveStatus==="saving"?C.border:saveStatus==="error"?"#FECACA":"#86EFAC"}`,whiteSpace:"nowrap"}}>
+                  {saveStatus==="saving"?"Saving…":saveStatus==="error"?"⚠ Save failed":"✓ Saved"}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* ── COMPANY INFO ── */}
         {activeSection==="company"&&(
