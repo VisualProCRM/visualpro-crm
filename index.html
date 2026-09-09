@@ -3469,15 +3469,19 @@ const SupplierRow = ({supplier,index,settings,setSettings}) => {
 // field on the survey form, so a future supplier stocking a different length just works.
 const TRIM_ROW_COLUMNS="1.2fr 1.6fr 1fr 0.9fr 1fr auto";
 const trimInputStyle={width:"100%",minWidth:0,boxSizing:"border-box",border:`1px solid ${C.border}`,borderRadius:6,padding:"7px 8px",fontSize:12,outline:"none"};
+// Renders its 6 cells as flat siblings (no wrapping div/grid of its own) — the header row
+// and every TrimRow must all be direct children of ONE shared grid container, or each row's
+// own independently-computed column widths drift apart from the header's (same sub-pixel
+// rounding issue as the Fitter Calendar month view, fixed the same way: one grid, not many).
 const TrimRow = ({trim,onChange,onRemove}) => (
-  <div style={{display:"grid",gridTemplateColumns:TRIM_ROW_COLUMNS,gap:6,marginBottom:8,alignItems:"center"}}>
+  <>
     <input value={trim.category} onChange={e=>onChange({category:e.target.value})} placeholder="Category" style={trimInputStyle}/>
     <input value={trim.name} onChange={e=>onChange({name:e.target.value})} placeholder="Trim name" style={trimInputStyle}/>
     <input value={trim.width} onChange={e=>onChange({width:e.target.value})} placeholder="Width" style={trimInputStyle}/>
     <input type="number" value={trim.length} onChange={e=>onChange({length:Number(e.target.value)||0})} placeholder="Length mm" style={trimInputStyle}/>
     <input value={trim.supplier} onChange={e=>onChange({supplier:e.target.value})} placeholder="Supplier" style={trimInputStyle}/>
     <button onClick={onRemove} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:6,padding:"6px 8px",cursor:"pointer",color:C.red,fontSize:11,whiteSpace:"nowrap",minWidth:0}}>Remove</button>
-  </div>
+  </>
 );
 
 // Tolerant of header-name variation (e.g. "Width/profile size" vs "Width") since a real
@@ -3744,13 +3748,19 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
                 )}
               </div>
 
-              {/* Manual list */}
-              <div style={{display:"grid",gridTemplateColumns:TRIM_ROW_COLUMNS,gap:6,marginBottom:6,fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.05em"}}>
-                <div style={{minWidth:0}}>Category</div><div style={{minWidth:0}}>Trim Name</div><div style={{minWidth:0}}>Width</div><div style={{minWidth:0}}>Length (mm)</div><div style={{minWidth:0}}>Supplier</div><div/>
+              {/* Manual list — header + every row are direct children of ONE grid, so column
+                  widths can never drift apart between rows (see TrimRow's own comment). */}
+              <div style={{display:"grid",gridTemplateColumns:TRIM_ROW_COLUMNS,gap:6,rowGap:8}}>
+                <div style={{minWidth:0,fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.05em"}}>Category</div>
+                <div style={{minWidth:0,fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.05em"}}>Trim Name</div>
+                <div style={{minWidth:0,fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.05em"}}>Width</div>
+                <div style={{minWidth:0,fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.05em"}}>Length (mm)</div>
+                <div style={{minWidth:0,fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.05em"}}>Supplier</div>
+                <div/>
+                {catalog.map(t=>(
+                  <TrimRow key={t.id} trim={t} onChange={patch=>updateTrim(t.id,patch)} onRemove={()=>removeTrim(t.id)}/>
+                ))}
               </div>
-              {catalog.map(t=>(
-                <TrimRow key={t.id} trim={t} onChange={patch=>updateTrim(t.id,patch)} onRemove={()=>removeTrim(t.id)}/>
-              ))}
               <button onClick={()=>setSettings(ss=>({...ss,trimCatalog:[...(ss.trimCatalog||DEFAULT_TRIM_CATALOG),{id:uid(),category:"",name:"",width:"",length:5000,supplier:""}]}))}
                 style={{marginTop:6,border:`1px dashed ${C.border}`,borderRadius:8,padding:"10px 16px",background:"transparent",color:C.sky,fontSize:14,fontWeight:600,cursor:"pointer",width:"100%"}}>
                 + Add Trim
