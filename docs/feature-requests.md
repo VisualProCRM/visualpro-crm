@@ -8,6 +8,15 @@ A shared place for feature ideas, wherever they come from — the office, a fitt
 
 ## Requested
 
+### Auto-send a "Feedback Form" / TrustPilot review-invite email on a good feedback response — ✅ built 2026-09-10
+- Requested by: office — 2026-09-10, after adding a new "happy to leave a TrustPilot review?" question to the customer feedback form
+- When the customer submits the on-site feedback form and gives a qualifying answer, the CRM automatically emails them an editable "Feedback Form" template. To use TrustPilot's Automatic Feedback Service the office BCCs a unique TrustPilot alias into that customer email — BCC'ing it is what triggers TrustPilot's own review invite.
+- **Built**:
+  - New editable **Feedback Form** template in Settings → Email Templates (own "Feedback" group). Has two editable BCC fields: `bcc` (the TrustPilot alias) and `bcc2` (the office address, so the team has a record it went out). Both are just BCCs on the one customer email. Placeholders: `{{customerName}}`, `{{companyName}}`, `{{companyPhone}}`, `{{address}}`.
+  - Per-question trigger toggles in Settings → Feedback Form: any **star** question gets an "If 4★ or higher…" slider; any **yes/no** question gets an "If the customer answers YES…" slider (same slider UI as "Send install booked email automatically"). Stored on the question object (`sendFeedbackEmail`), matched to responses by question text since questions are reorderable. Enabling more than one is an OR.
+  - Server-side (`jobsUpdate` → `sendFeedbackReviewEmail` in `reminderCore.js`): fires once, the first time `job.tabs.installation.feedback` is saved, if `feedbackQualifiesForReview` is true. Recipients = customer primary + secondary email. Marks `job.tabs.installation.feedbackEmailSent`; office Installation tab shows a "📧 Feedback Form / review email sent" line under the completed feedback. Send failure never fails the save (try/catch), same pattern as the booked-email sends.
+- **Not built / possible later**: a manual "resend" button; richer merge fields (e.g. fitter names) in this template.
+
 ### Show fitter-uploaded installation photos + receipts on the office Installation tab — ✅ built 2026-09-10
 - Raised by: office — 2026-09-10, after noticing photos a fitter uploaded to a job weren't visible in the office portal
 - Not a sync/data bug — the photos (`installation.installImages`) were saved on the record all along, the office-side Installation tab just never had a section to display them. Added an Installation Photos gallery there plus a read-only summary of the fitter's Additional Materials Purchased receipts/costs (same gap).
