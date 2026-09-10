@@ -1227,6 +1227,22 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
             <div style={{fontSize:12,fontWeight:600,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Site Photos</div>
             <ImageGallery images={data.tabs.survey.images} onAdd={addImage} onRemove={removeImage}/>
           </div>
+
+          {/* ── Survey Item Photos (taken per item by the fitter in the digital survey form —
+              read-only here so the office can't delete a fitter's record) ── */}
+          {(data.tabs.survey.digitised?.items||[]).some(it=>(it.images||[]).length>0)&&(
+            <div>
+              <div style={{fontSize:12,fontWeight:600,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Survey Item Photos (from the fitter)</div>
+              <div style={{display:"flex",flexDirection:"column",gap:12}}>
+                {(data.tabs.survey.digitised.items||[]).filter(it=>(it.images||[]).length>0).map((it,i)=>(
+                  <div key={it.id||i}>
+                    <div style={{fontSize:12,fontWeight:700,color:C.navy,marginBottom:6}}>{it.label||`Item ${i+1}`}</div>
+                    <ImageGallery images={it.images} readOnly/>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <TA label="Survey Notes" value={data.tabs.survey.notes} onChange={e=>setTab("survey",{notes:e.target.value})} placeholder="e.g. Access issues on left side, check lintel above bay..."/>
           <div style={{display:"flex",justifyContent:"flex-end"}}>
             <Btn onClick={save}>Save & Close</Btn>
