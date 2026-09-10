@@ -576,7 +576,7 @@ const Lightbox = ({src,alt,onClose}) => (
   </div>
 );
 
-const ImageGallery = ({images,onAdd,onRemove}) => {
+const ImageGallery = ({images,onAdd,onRemove,readOnly=false}) => {
   const [lightbox,setLightbox]=useState(null);
   const handleChange = async (e) => {
     const files=Array.from(e.target.files);
@@ -586,16 +586,18 @@ const ImageGallery = ({images,onAdd,onRemove}) => {
   };
   return (
     <div>
-      <label style={{display:"inline-flex",alignItems:"center",gap:6,cursor:"pointer",background:C.slateLight,border:`1px dashed ${C.border}`,borderRadius:6,padding:"7px 14px",fontSize:13,color:C.slate,fontWeight:600}}>
-        📷 Add Photos
-        <input type="file" accept="image/*" multiple onChange={handleChange} style={{display:"none"}}/>
-      </label>
+      {!readOnly&&(
+        <label style={{display:"inline-flex",alignItems:"center",gap:6,cursor:"pointer",background:C.slateLight,border:`1px dashed ${C.border}`,borderRadius:6,padding:"7px 14px",fontSize:13,color:C.slate,fontWeight:600}}>
+          📷 Add Photos
+          <input type="file" accept="image/*" multiple onChange={handleChange} style={{display:"none"}}/>
+        </label>
+      )}
       {images.length>0&&(
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(100px,1fr))",gap:8,marginTop:10}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(100px,1fr))",gap:8,marginTop:readOnly?0:10}}>
           {images.map((img,i)=>(
             <div key={i} style={{position:"relative",borderRadius:8,overflow:"hidden",aspectRatio:"1",border:`1px solid ${C.border}`}}>
               <img src={img.data} alt={img.name} onClick={()=>setLightbox(img)} style={{width:"100%",height:"100%",objectFit:"cover",cursor:"zoom-in"}}/>
-              <button onClick={(e)=>{e.stopPropagation();onRemove(i);}} style={{position:"absolute",top:4,right:4,background:"rgba(0,0,0,0.5)",border:"none",color:"#fff",borderRadius:"50%",width:20,height:20,cursor:"pointer",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+              {!readOnly&&<button onClick={(e)=>{e.stopPropagation();onRemove(i);}} style={{position:"absolute",top:4,right:4,background:"rgba(0,0,0,0.5)",border:"none",color:"#fff",borderRadius:"50%",width:20,height:20,cursor:"pointer",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>}
             </div>
           ))}
         </div>
@@ -1511,14 +1513,13 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
               style={{minHeight:130,background:C.white}}/>
           </div>
 
-          {/* ── Installation Photos (uploaded by fitters on-site via the mobile app) ── */}
+          {/* ── Installation Photos (uploaded by fitters on-site via the mobile app —
+              read-only here so the office can't delete a fitter's record) ── */}
           <div>
             <div style={{fontSize:12,fontWeight:600,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Installation Photos</div>
-            <ImageGallery
-              images={data.tabs.installation.installImages||[]}
-              onAdd={file=>setTab("installation",{installImages:[...(data.tabs.installation.installImages||[]),file]})}
-              onRemove={i=>setTab("installation",{installImages:(data.tabs.installation.installImages||[]).filter((_,idx)=>idx!==i)})}
-            />
+            {(data.tabs.installation.installImages||[]).length>0
+              ? <ImageGallery images={data.tabs.installation.installImages} readOnly/>
+              : <div style={{fontSize:13,color:C.muted}}>No photos uploaded by the fitter yet.</div>}
           </div>
 
           {/* ── Additional Materials Purchased (receipts + costs logged by fitters on-site) ── */}
