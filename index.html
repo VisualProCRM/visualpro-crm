@@ -3143,11 +3143,98 @@ const ChecklistModal = ({job,settings,onSubmit,onClose}) => {
 // do, since losing a half-completed 30-item survey would be a real problem.
 const DIGITAL_SURVEY_SIZE_FIELDS = [
   { wKey: "apertureW", hKey: "apertureH", label: "External Aperture Size" },
-  { wKey: "makeW", hKey: "makeH", label: "External Make Size" },
-  { wKey: "internalW", hKey: "internalH", label: "Internal Size" },
+  { wKey: "makeW", hKey: "makeH", label: "External Make Size", trim: true },
+  { wKey: "internalW", hKey: "internalH", label: "Internal Size", trim: true },
 ];
 
-const DigitalSurveyModal = ({job,onUpdateJob,onUpdateJobDebounced,onClose}) => {
+const TRIM_BESPOKE = "__bespoke__";
+
+// Distinct trim names from the catalog, in catalog order.
+const trimTypeOptions = (catalog) => {
+  const seen = [];
+  (catalog || []).forEach((t) => { if (t.name && !seen.includes(t.name)) seen.push(t.name); });
+  return seen;
+};
+// Distinct widths stocked for a given trim name.
+const trimWidthOptions = (catalog, type) =>
+  [...new Set((catalog || []).filter((t) => t.name === type).map((t) => String(t.width)))];
+
+// Stock length (mm) to use for a trim: the exact catalog row if type+width match, else any
+// row with that name, else a sensible 5000mm default so a bespoke width still calculates.
+const trimStockLength = (catalog, type, width) => {
+  const rows = catalog || [];
+  const exact = rows.find((t) => t.name === type && String(t.width) === String(width));
+  if (exact) return Number(exact.length) || 5000;
+  const byName = rows.find((t) => t.name === type);
+  return byName ? Number(byName.length) || 5000 : 5000;
+};
+
+// Full-perimeter trim count: ⌈2 × (W + H) ÷ stock length⌉. Returns 0 until both sizes exist.
+const trimLengthsNeeded = (w, h, stock) => {
+  const W = Number(w), H = Number(h);
+  if (!W || !H || !stock) return 0;
+  return Math.ceil((2 * (W + H)) / stock);
+};
+
+// One trim type + width picker for a survey item's Make Size / Internal Size section, with a
+// read-only auto-count. Type and width are dropdowns from the Trim Catalog with a "bespoke"
+// escape hatch (free-text type, 1–100mm width) so an unusual trim can still be recorded.
+const SurveyTrimPicker = ({catalog,value,onChange,w,h}) => {
+  const v = value || {};
+  const typeOpts = trimTypeOptions(catalog);
+  const typeIsBespoke = !!v.bespokeType || (!!v.type && !typeOpts.includes(v.type));
+  const widthOpts = typeIsBespoke ? [] : trimWidthOptions(catalog, v.type);
+  const widthIsBespoke = !!v.bespokeWidth || (!!v.width && !widthOpts.includes(String(v.width)));
+  const hasType = typeIsBespoke || !!v.type;
+  const stock = hasType ? trimStockLength(catalog, v.type, v.width) : 0;
+  const lengths = trimLengthsNeeded(w, h, stock);
+  const selStyle = {width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:16,outline:"none",boxSizing:"border-box",background:C.white};
+  return (
+    <div style={{marginTop:8,border:`1px solid ${C.border}`,borderRadius:8,padding:12,background:C.slateLight}}>
+      <div style={{fontSize:11,fontWeight:700,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Trim for this section</div>
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        <select value={typeIsBespoke?TRIM_BESPOKE:(v.type||"")}
+          onChange={e=>{
+            const nv=e.target.value;
+            if(nv===TRIM_BESPOKE) onChange({type:"",width:"",bespokeType:true});
+            else if(nv==="") onChange({});
+            else onChange({type:nv,width:""});
+          }} style={selStyle}>
+          <option value="">— Select trim —</option>
+          {typeOpts.map(o=><option key={o} value={o}>{o}</option>)}
+          <option value={TRIM_BESPOKE}>Other / bespoke…</option>
+        </select>
+        {typeIsBespoke&&(
+          <input value={v.type||""} onChange={e=>onChange({...v,type:e.target.value})} placeholder="Trim name / description" style={selStyle}/>
+        )}
+        {hasType&&(
+          typeIsBespoke||widthIsBespoke?(
+            <input type="number" inputMode="numeric" min="1" max="100" value={v.width||""} onChange={e=>onChange({...v,width:e.target.value})} placeholder="Width (mm)" style={selStyle}/>
+          ):(
+            <select value={v.width||""} onChange={e=>{
+              const nv=e.target.value;
+              if(nv===TRIM_BESPOKE) onChange({...v,width:"",bespokeWidth:true});
+              else onChange({...v,width:nv,bespokeWidth:false});
+            }} style={selStyle}>
+              <option value="">— Select width —</option>
+              {widthOpts.map(o=><option key={o} value={o}>{o} mm</option>)}
+              <option value={TRIM_BESPOKE}>Other width…</option>
+            </select>
+          )
+        )}
+        {hasType&&(
+          <div style={{fontSize:13,color:C.navy,fontWeight:700,background:C.white,border:`1px solid ${C.border}`,borderRadius:6,padding:"8px 10px"}}>
+            {lengths>0
+              ? <>≈ {lengths} × {stock}mm length{lengths>1?"s":""} needed <span style={{color:C.muted,fontWeight:500}}>(2 × (W + H) ÷ {stock}mm)</span></>
+              : <span style={{color:C.muted,fontWeight:500}}>Enter the width &amp; height above to calculate lengths needed</span>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const DigitalSurveyModal = ({job,catalog,onUpdateJob,onUpdateJobDebounced,onClose}) => {
   const digitised=job.tabs?.survey?.digitised;
   const items=digitised?.items||[];
   const total=items.length;
@@ -3230,7 +3317,7 @@ const DigitalSurveyModal = ({job,onUpdateJob,onUpdateJobDebounced,onClose}) => {
             </label>
           </div>
         </div>
-        {DIGITAL_SURVEY_SIZE_FIELDS.map(({wKey,hKey,label})=>(
+        {DIGITAL_SURVEY_SIZE_FIELDS.map(({wKey,hKey,label,trim})=>(
           <div key={wKey}>
             <label style={{fontSize:12,fontWeight:600,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",display:"block",marginBottom:6}}>{label} (mm)</label>
             <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -3240,6 +3327,10 @@ const DigitalSurveyModal = ({job,onUpdateJob,onUpdateJobDebounced,onClose}) => {
               <input type="number" inputMode="numeric" value={item[hKey]||""} onChange={e=>patchItem({[hKey]:e.target.value},{debounce:true})} placeholder="H"
                 style={{width:110,flexShrink:0,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:16,outline:"none",boxSizing:"border-box"}}/>
             </div>
+            {trim&&(
+              <SurveyTrimPicker catalog={catalog} value={item.trims?.[wKey]} w={item[wKey]} h={item[hKey]}
+                onChange={val=>patchItem({trims:{...(item.trims||{}),[wKey]:val}})}/>
+            )}
           </div>
         ))}
         {Object.entries(SURVEY_FIELD_CHOICES).map(([key,{label,options}])=>(
@@ -5190,7 +5281,7 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
         )}
         {/* Digital survey modal */}
         {showDigitalSurvey&&(
-          <DigitalSurveyModal job={job}
+          <DigitalSurveyModal job={job} catalog={settings?.trimCatalog||DEFAULT_TRIM_CATALOG}
             onUpdateJob={updated=>{updateJob(updated);setSelectedJob(updated);}}
             onUpdateJobDebounced={updateJobDebounced}
             onClose={()=>setShowDigitalSurvey(false)}/>
