@@ -4605,6 +4605,24 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
     setSelectedJob(updated);
   };
 
+  // Additional materials a fitter buys on the day (extra trims, fixings, etc.) — each entry
+  // is an uploaded receipt plus an optional cost/note. Stored on the installation tab; the
+  // office can factor the costs into the job margin (that wiring is not built yet).
+  const materialsOf=(job)=>job.tabs?.installation?.additionalMaterials||[];
+  const setMaterials=(job,newList,{debounce=false}={})=>{
+    const updated={...job,tabs:{...job.tabs,installation:{...job.tabs.installation,additionalMaterials:newList}}};
+    (debounce?updateJobDebounced:updateJob)(updated);
+    if(!debounce) setSelectedJob(updated);
+  };
+  const addMaterialReceipts=async(e,job)=>{
+    const files=Array.from(e.target.files);
+    const datas=await Promise.all(files.map(f=>uploadFile(f,"documents")));
+    setMaterials(job,[...materialsOf(job),...datas.map(d=>({id:uid(),file:d,cost:"",note:""}))]);
+    e.target.value="";
+  };
+  const updateMaterial=(job,id,patch)=>setMaterials(job,materialsOf(job).map(m=>m.id===id?{...m,...patch}:m),{debounce:true});
+  const removeMaterial=(job,id)=>setMaterials(job,materialsOf(job).filter(m=>m.id!==id));
+
   const updateSurveyNotes=(val,job)=>{
     const updated={...job,tabs:{...job.tabs,survey:{...job.tabs.survey,notes:val}}};
     updateJobDebounced(updated);
@@ -4887,6 +4905,48 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
                   ))}
                 </div>
               </div>
+              {/* Additional materials purchased */}
+              {(()=>{
+                const mats=job.tabs?.installation?.additionalMaterials||[];
+                const total=mats.reduce((s,m)=>s+(parseFloat(m.cost)||0),0);
+                return (
+                  <div style={{background:C.white,borderRadius:12,padding:16,border:`1px solid ${C.border}`}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                      <div style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em"}}>Additional Materials Purchased</div>
+                      <label style={{background:C.mint,color:"#fff",borderRadius:8,padding:"6px 14px",fontSize:13,fontWeight:600,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:6}}>
+                        🧾 Add Receipt
+                        <input type="file" accept="image/*,.pdf" multiple onChange={e=>addMaterialReceipts(e,job)} style={{display:"none"}}/>
+                      </label>
+                    </div>
+                    {mats.length===0&&(
+                      <div style={{textAlign:"center",padding:"20px 0",color:C.muted,fontSize:13}}>No receipts yet. Tap Add Receipt to upload one.</div>
+                    )}
+                    {mats.map(m=>(
+                      <div key={m.id} style={{background:C.slateLight,borderRadius:8,padding:10,marginBottom:8}}>
+                        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+                          <a href={m.file?.data} target="_blank" rel="noreferrer" style={{fontSize:22,textDecoration:"none",flexShrink:0}}>{m.file?.type==="application/pdf"?"📄":"🖼️"}</a>
+                          <a href={m.file?.data} target="_blank" rel="noreferrer" style={{flex:1,minWidth:0,fontSize:13,color:C.sky,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.file?.name||"Receipt"}</a>
+                          <button onClick={()=>removeMaterial(job,m.id)} style={{background:"none",border:"none",color:C.red,fontSize:18,cursor:"pointer",flexShrink:0,lineHeight:1}}>×</button>
+                        </div>
+                        <div style={{display:"flex",gap:8}}>
+                          <div style={{display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
+                            <span style={{color:C.slate,fontWeight:700}}>£</span>
+                            <input type="number" inputMode="decimal" value={m.cost} onChange={e=>updateMaterial(job,m.id,{cost:e.target.value})} placeholder="0.00"
+                              style={{width:90,border:`1px solid ${C.border}`,borderRadius:6,padding:"8px 10px",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
+                          </div>
+                          <input value={m.note} onChange={e=>updateMaterial(job,m.id,{note:e.target.value})} placeholder="What was it for?"
+                            style={{flex:1,minWidth:0,border:`1px solid ${C.border}`,borderRadius:6,padding:"8px 10px",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
+                        </div>
+                      </div>
+                    ))}
+                    {mats.length>0&&(
+                      <div style={{display:"flex",justifyContent:"flex-end",fontSize:14,fontWeight:700,color:C.navy,marginTop:4}}>
+                        Total: £{total.toFixed(2)}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
               {/* Feedback button */}
               <button onClick={()=>setShowFeedback(true)} style={{background:job.tabs?.installation?.feedback?C.mint:C.amber,color:"#fff",border:"none",borderRadius:12,padding:"16px",fontSize:16,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
                 {job.tabs?.installation?.feedback?"✅ Customer Feedback Complete":"⭐ Customer Feedback Form"}
