@@ -240,6 +240,25 @@ Kind regards,
 {{companyName}}
 {{companyPhone}}`,
   },
+  // Internal notification — sent to the office (not the customer) the moment a fitter marks
+  // the last item of a digital survey complete. "to" is the office recipient(s), comma-
+  // separated; if left blank it falls back to the company email in General settings. The
+  // server appends whichever sections are switched on in "include" below the body text.
+  surveyComplete: {
+    enabled: true,
+    to: "",
+    bcc: "",
+    include: { trimsSummary: true, itemBreakdown: true, notes: true, photos: true },
+    subject: "Survey completed – {{customerName}} ({{itemCount}} items)",
+    body: `The on-site survey for {{customerName}} has been completed.
+
+Address: {{address}}
+Survey date: {{surveyDate}}
+Surveyor: {{fitterName}}
+Items surveyed: {{itemCount}}
+
+Details below.`,
+  },
 };
 
 const STAGE_META = {
@@ -1157,6 +1176,12 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
               {data.tabs.survey.digitised&&!digitisePreview&&(
                 <div style={{fontSize:13,color:C.text,marginBottom:10}}>
                   ✅ Digitised — <strong>{data.tabs.survey.digitised.items.length} items</strong> from {data.tabs.survey.digitised.sourceFileName}, {new Date(data.tabs.survey.digitised.extractedAt).toLocaleDateString("en-GB")}
+                  {data.tabs.survey.digitised.completedAt&&(
+                    <div style={{color:C.mint,fontWeight:700,marginTop:4}}>
+                      🧑‍🔧 Fitter completed the on-site survey {new Date(data.tabs.survey.digitised.completedAt).toLocaleDateString("en-GB")}
+                      {data.tabs.survey.completeEmailSent?.status==="sent"&&<> · 📧 office emailed {data.tabs.survey.completeEmailSent.sentAt}</>}
+                    </div>
+                  )}
                 </div>
               )}
               {digitiseError&&<div style={{fontSize:13,color:C.red,marginBottom:10}}>⚠ {digitiseError}</div>}
@@ -3764,15 +3789,17 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
     serviceCallBooked:{label:"Service Call Booked",icon:"🔧",group:"Service Call"},
     serviceCallReminderDay:{label:"Service Call Reminder (1-Day)",icon:"⏰",group:"Service Call"},
     feedbackReview:{label:"Feedback Form",icon:"⭐",group:"Feedback"},
+    surveyComplete:{label:"Survey Completed → Office",icon:"📋",group:"Internal Notifications"},
   };
 
   const placeholders=[
     ["{{customerName}}","Customer's full name"],
     ["{{surveyDate}}","Survey date"],
     ["{{installDate}}","Installation date"],
-    ["{{fitterName}}","Single fitter name"],
+    ["{{fitterName}}","Single fitter name (surveyor, for the survey-complete email)"],
     ["{{fitterNames}}","All assigned fitters"],
     ["{{address}}","Customer address"],
+    ["{{itemCount}}","Number of survey items (survey-complete email)"],
     ["{{companyName}}","Your company name"],
     ["{{companyPhone}}","Your company phone"],
   ];
@@ -3999,10 +4026,38 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
                   )}
                   <div style={{background:C.white,borderRadius:10,border:`1px solid ${C.border}`,padding:24}}>
                     <h3 style={{margin:"0 0 4px",fontSize:16,color:C.navy,fontWeight:800}}>{icon} {label} Email</h3>
-                    <p style={{margin:"0 0 16px",fontSize:13,color:C.slate}}>{key==="feedbackReview"
-                      ? "Sent to the customer automatically when they give a qualifying answer on the feedback form (set which answers count under Settings → Feedback Form). BCC the unique alias TrustPilot gave you for their Automatic Feedback Service and it triggers a review invite."
+                    <p style={{margin:"0 0 16px",fontSize:13,color:C.slate}}>{
+                      key==="feedbackReview"
+                        ? "Sent to the customer automatically when they give a qualifying answer on the feedback form (set which answers count under Settings → Feedback Form). BCC the unique alias TrustPilot gave you for their Automatic Feedback Service and it triggers a review invite."
+                      : key==="surveyComplete"
+                        ? "Sent to the office (not the customer) the moment a fitter marks the last item of a digital survey complete. Choose the recipient and which sections to include below."
                       : `Sent when a ${label.toLowerCase()} is confirmed.`}</p>
                     <div style={{display:"flex",flexDirection:"column",gap:12}}>
+                      {key==="surveyComplete"&&(
+                        <>
+                          <div style={{display:"flex",alignItems:"center",gap:10,fontSize:13,fontWeight:600,color:C.text}}>
+                            <div onClick={()=>updateTemplate(key,"enabled",tmpl.enabled===false)}
+                              style={{width:42,height:23,borderRadius:12,background:tmpl.enabled!==false?C.mint:C.border,position:"relative",cursor:"pointer",flexShrink:0}}>
+                              <div style={{width:17,height:17,borderRadius:"50%",background:"#fff",position:"absolute",top:3,left:tmpl.enabled!==false?22:3,transition:"left 0.15s",boxShadow:"0 1px 3px rgba(0,0,0,0.3)"}}/>
+                            </div>
+                            Send this email when a survey is completed
+                          </div>
+                          <div>
+                            <Inp label="Send to (office email)" value={tmpl.to||""} onChange={e=>updateTemplate(key,"to",e.target.value)} placeholder="e.g. surveys@visualglazing.co.uk"/>
+                            <p style={{margin:"6px 0 0",fontSize:12,color:C.muted}}>Leave blank to use the Company Email from General settings. Separate multiple recipients with commas.</p>
+                          </div>
+                          <div>
+                            <div style={{fontSize:11,fontWeight:700,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Include in the email</div>
+                            {[["trimsSummary","Trims to order — grouped by type & width, with a total"],["itemBreakdown","Per-item measurements & selected options"],["notes","Surveyor notes for each item"],["photos","Photo count per item"]].map(([k,lbl])=>(
+                              <label key={k} style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:C.text,padding:"4px 0",cursor:"pointer"}}>
+                                <input type="checkbox" checked={(tmpl.include||{})[k]!==false}
+                                  onChange={()=>{const cur=(tmpl.include||{})[k]!==false;updateTemplate(key,"include",{...(tmpl.include||{}),[k]:!cur});}}/>
+                                {lbl}
+                              </label>
+                            ))}
+                          </div>
+                        </>
+                      )}
                       <div>
                         <Inp label={key==="feedbackReview"?"TrustPilot alias (BCC)":"BCC Email (optional)"} value={tmpl.bcc||""} onChange={e=>updateTemplate(key,"bcc",e.target.value)} placeholder={key==="feedbackReview"?"e.g. yourcompany.abc123@invite.trustpilot.com":"e.g. enquiries@visualglazing.co.uk"}/>
                         <p style={{margin:"6px 0 0",fontSize:12,color:C.muted}}>{key==="feedbackReview"

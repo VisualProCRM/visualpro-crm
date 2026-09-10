@@ -45,12 +45,14 @@ function fillTemplate(tmpl, vars) {
 
 // Sends to every address in recipientList (a customer's primary + optional secondary
 // email — both get every automated email, per the office's preference) and BCCs the
-// sending template's own bcc field (if set) — configured per-template in Settings, not a
-// single global address, so different templates can go to different inboxes if needed.
+// sending template's own bcc field(s) (if set) — configured per-template in Settings, not a
+// single global address, so different templates can go to different inboxes if needed. Most
+// templates have one bcc; feedbackReview also has bcc2 (TrustPilot alias + office address).
 function buildRecipients(recipientList, tmpl) {
   const recipients = { to: recipientList.map((address) => ({ address })) };
-  if (tmpl.bcc && tmpl.bcc.trim()) {
-    recipients.bcc = [{ address: tmpl.bcc.trim() }];
+  const bccList = [tmpl.bcc, tmpl.bcc2].map((a) => (a || '').trim()).filter(Boolean);
+  if (bccList.length) {
+    recipients.bcc = bccList.map((address) => ({ address }));
   }
   return recipients;
 }
@@ -182,6 +184,143 @@ Fitter: {{fitterName}}
 Address: {{address}}
 
 If you need to rearrange or have any questions, please don't hesitate to get in touch.
+
+Kind regards,
+{{companyName}}
+{{companyPhone}}`,
+};
+
+const DEFAULT_SURVEY_COMPLETE = {
+  enabled: true,
+  to: '',
+  bcc: '',
+  include: { trimsSummary: true, itemBreakdown: true, notes: true, photos: true },
+  subject: 'Survey completed – {{customerName}} ({{itemCount}} items)',
+  body: `The on-site survey for {{customerName}} has been completed.
+
+Address: {{address}}
+Survey date: {{surveyDate}}
+Surveyor: {{fitterName}}
+Items surveyed: {{itemCount}}
+
+Details below.`,
+};
+
+// Trim catalog helpers — mirror the same-named logic in index.html so the completion email
+// can recompute "lengths needed" from the live catalog rather than trusting a stored count.
+function trimStockLengthSrv(catalog, type, width) {
+  const rows = catalog || [];
+  const exact = rows.find((t) => t.name === type && String(t.width) === String(width));
+  if (exact) return Number(exact.length) || 5000;
+  const byName = rows.find((t) => t.name === type);
+  return byName ? Number(byName.length) || 5000 : 5000;
+}
+function trimLengthsNeededSrv(w, h, stock) {
+  const W = Number(w), H = Number(h);
+  if (!W || !H || !stock) return 0;
+  return Math.ceil((2 * (W + H)) / stock);
+}
+
+// Fields the fitter picks per survey item, with the labels used in the email breakdown.
+const SURVEY_ITEM_FIELDS = [
+  ['outerFrame', 'Outer frame'],
+  ['cillSize', 'Cill'],
+  ['hingeType', 'Hinges'],
+  ['opening', 'Opening'],
+  ['hinged', 'Hinged'],
+  ['drainage', 'Drainage'],
+  ['threshold', 'Threshold'],
+  ['handleColour', 'Handle colour'],
+  ['addOn', 'Add-on'],
+];
+
+// Rolls every item's two trim slots (Make Size, Internal Size) up into a per-(type+width)
+// total of stock lengths needed.
+function collectSurveyTrims(digitised, catalog) {
+  const groups = {};
+  (digitised.items || []).forEach((it) => {
+    [['makeW', 'makeH'], ['internalW', 'internalH']].forEach(([wKey, hKey]) => {
+      const t = it.trims && it.trims[wKey];
+      if (!t || !t.type) return;
+      const stock = trimStockLengthSrv(catalog, t.type, t.width);
+      const lengths = trimLengthsNeededSrv(it[wKey], it[hKey], stock);
+      if (lengths <= 0) return;
+      const label = `${t.type}${t.width ? ` ${t.width}mm` : ''}`;
+      const g = groups[label] || (groups[label] = { label, stock, lengths: 0 });
+      g.lengths += lengths;
+    });
+  });
+  return Object.values(groups).sort((a, b) => a.label.localeCompare(b.label));
+}
+
+// Builds the plain-text body: the template's own intro text, then whichever sections the
+// office switched on in Settings → Email Templates → Survey Completed.
+function buildSurveyCompleteBody(intro, digitised, catalog, include) {
+  const inc = include || {};
+  const parts = [intro.trimEnd()];
+  const items = digitised.items || [];
+
+  if (inc.trimsSummary !== false) {
+    const trims = collectSurveyTrims(digitised, catalog);
+    const lines = ['', '── TRIMS TO ORDER ──'];
+    if (!trims.length) {
+      lines.push('No trims recorded on this survey.');
+    } else {
+      let total = 0;
+      trims.forEach((g) => {
+        total += g.lengths;
+        lines.push(`- ${g.label}: ${g.lengths} × ${g.stock}mm length${g.lengths > 1 ? 's' : ''}`);
+      });
+      lines.push(`Total: ${total} length${total > 1 ? 's' : ''}`);
+    }
+    parts.push(lines.join('\n'));
+  }
+
+  if (inc.itemBreakdown !== false) {
+    const lines = ['', '── ITEMS ──'];
+    items.forEach((it, i) => {
+      lines.push(`${i + 1}. ${it.label || 'Item ' + (i + 1)}${it.quotedSize ? ` — quoted ${it.quotedSize}` : ''}`);
+      const sizes = [];
+      if (it.apertureW || it.apertureH) sizes.push(`Aperture ${it.apertureW || '?'} × ${it.apertureH || '?'}`);
+      if (it.makeW || it.makeH) sizes.push(`Make ${it.makeW || '?'} × ${it.makeH || '?'}`);
+      if (it.internalW || it.internalH) sizes.push(`Internal ${it.internalW || '?'} × ${it.internalH || '?'}`);
+      if (sizes.length) lines.push(`   ${sizes.join(' | ')}`);
+      const opts = SURVEY_ITEM_FIELDS.filter(([k]) => it[k]).map(([k, lbl]) => `${lbl}: ${it[k]}`);
+      if (opts.length) lines.push(`   ${opts.join(' | ')}`);
+      const trimBits = [];
+      if (it.trims && it.trims.makeW && it.trims.makeW.type) trimBits.push(`Make — ${it.trims.makeW.type}${it.trims.makeW.width ? ` ${it.trims.makeW.width}mm` : ''}`);
+      if (it.trims && it.trims.internalW && it.trims.internalW.type) trimBits.push(`Internal — ${it.trims.internalW.type}${it.trims.internalW.width ? ` ${it.trims.internalW.width}mm` : ''}`);
+      if (trimBits.length) lines.push(`   Trims: ${trimBits.join('; ')}`);
+    });
+    parts.push(lines.join('\n'));
+  }
+
+  if (inc.notes !== false) {
+    const withNotes = items.filter((it) => (it.notes || '').trim());
+    if (withNotes.length) {
+      const lines = ['', '── SURVEYOR NOTES ──'];
+      withNotes.forEach((it) => lines.push(`${it.label || 'Item'}: ${it.notes.trim()}`));
+      parts.push(lines.join('\n'));
+    }
+  }
+
+  if (inc.photos !== false) {
+    const lines = ['', '── PHOTOS ──'];
+    const totalPhotos = items.reduce((n, it) => n + ((it.images || []).length), 0);
+    lines.push(`${totalPhotos} photo${totalPhotos === 1 ? '' : 's'} attached across ${items.length} item${items.length === 1 ? '' : 's'} — view them on the job's Survey tab in the CRM.`);
+    parts.push(lines.join('\n'));
+  }
+
+  return parts.join('\n');
+}
+
+const DEFAULT_FEEDBACK_REVIEW = {
+  subject: 'Thank you for your feedback – {{customerName}}',
+  body: `Dear {{customerName}},
+
+Thank you so much for taking the time to share your feedback with us — we're delighted you're happy with the work.
+
+If you have a spare moment, we'd really appreciate a short review. It helps other people find us and means a lot to our team.
 
 Kind regards,
 {{companyName}}
@@ -619,6 +758,163 @@ async function sendServiceCallReminderEmail({ pool, jobId, bookingId, testEmailO
   return { sent: true, to: recipientList.join(', '), senderAddress, messageId: result.id };
 }
 
+// Sends the "Feedback Form" / review-invite email for a job. Called from jobs.js's update
+// handler the moment the customer's feedback form is first saved AND at least one question
+// the office flagged in Settings → Feedback Form was answered qualifyingly (4★+ on a star
+// question, or "Yes" on a yes/no question). Goes to the customer; BCCs the template's bcc
+// (the TrustPilot Automatic Feedback Service alias, which is what actually triggers the
+// review invite) and bcc2 (an office address, so the team has a record it went out). Marks
+// tabs.installation.feedbackEmailSent, mirroring bookedEmailSent.
+async function sendFeedbackReviewEmail({ pool, jobId, testEmailOverride }) {
+  const jobResult = await pool.request().input('Id', sql.Int, jobId).query('SELECT * FROM dbo.Jobs WHERE Id = @Id');
+  if (!jobResult.recordset.length) throw new Error('Job not found');
+  const jobRow = jobResult.recordset[0];
+  const job = JSON.parse(jobRow.DataJson);
+
+  const customerResult = await pool
+    .request()
+    .input('Id', sql.Int, jobRow.CustomerId)
+    .query('SELECT * FROM dbo.Customers WHERE Id = @Id');
+  if (!customerResult.recordset.length) throw new Error('Customer not found');
+  const customer = JSON.parse(customerResult.recordset[0].DataJson);
+
+  const recipientList = testEmailOverride ? [testEmailOverride] : [customer.email, customer.email2].filter(Boolean);
+  if (!recipientList.length) throw new Error('No recipient email available');
+
+  const settingsResult = await pool.request().query('SELECT * FROM dbo.Settings WHERE TenantId = 1');
+  const settings = settingsResult.recordset.length ? JSON.parse(settingsResult.recordset[0].DataJson) : {};
+  const tmpl = settings.emailTemplates?.feedbackReview || DEFAULT_FEEDBACK_REVIEW;
+
+  const vars = {
+    customerName: customer.name || '',
+    address: customer.address || '',
+    companyName: settings.companyName || 'VisualPro',
+    companyPhone: settings.companyPhone || '',
+  };
+
+  const subject = fillTemplate(tmpl.subject, vars);
+  const plainText = fillTemplate(tmpl.body, vars);
+
+  const { hostname } = await getSenderDomain();
+  const senderUsername = process.env.EMAIL_SENDER_USERNAME || 'donotreply';
+  const senderAddress = `${senderUsername}@${hostname}`;
+
+  const poller = await emailClient.beginSend({
+    senderAddress,
+    content: { subject, plainText },
+    recipients: buildRecipients(recipientList, tmpl),
+  });
+  const result = await poller.pollUntilDone();
+  if (result.status !== 'Succeeded') {
+    throw new Error(`ACS email send did not succeed: ${result.status}${result.error ? ' - ' + result.error.message : ''}`);
+  }
+
+  if (!testEmailOverride) {
+    job.tabs = job.tabs || {};
+    job.tabs.installation = job.tabs.installation || {};
+    job.tabs.installation.feedbackEmailSent = { status: 'sent', sentAt: new Date().toLocaleDateString('en-GB') };
+    await pool
+      .request()
+      .input('Id', sql.Int, jobId)
+      .input('DataJson', sql.NVarChar, JSON.stringify(job))
+      .query('UPDATE dbo.Jobs SET DataJson = @DataJson, UpdatedAt = SYSUTCDATETIME() WHERE Id = @Id');
+  }
+
+  return { sent: true, to: recipientList.join(', '), senderAddress, messageId: result.id };
+}
+
+// Given the saved feedback form and the office's feedbackQuestions settings, returns true
+// if any question the office flagged (sendFeedbackEmail) was answered qualifyingly: 4★ or
+// higher on a star question, or "Yes" on a yes/no question. Matched by question text, since
+// the questions are reorderable so position isn't stable.
+function feedbackQualifiesForReview(feedback, feedbackQuestions) {
+  if (!feedback || !Array.isArray(feedback.responses)) return false;
+  const flagged = (feedbackQuestions || []).filter((q) => q && q.sendFeedbackEmail);
+  if (!flagged.length) return false;
+  return flagged.some((q) => {
+    const resp = feedback.responses.find((r) => r.question === q.question);
+    if (!resp) return false;
+    if (q.type === 'stars') return Number(resp.answer) >= 4;
+    if (q.type === 'yesno') return String(resp.answer).toLowerCase() === 'yes';
+    return false;
+  });
+}
+
+// Sends the internal "survey completed" notification to the office. Called from jobs.js the
+// moment job.tabs.survey.digitised.completedAt goes from unset to set (the fitter marking
+// the last item complete). Recipient(s) = the surveyComplete template's own "to" field
+// (comma-separated), falling back to the company email. Marks tabs.survey.completeEmailSent.
+async function sendSurveyCompleteEmail({ pool, jobId, testEmailOverride }) {
+  const jobResult = await pool.request().input('Id', sql.Int, jobId).query('SELECT * FROM dbo.Jobs WHERE Id = @Id');
+  if (!jobResult.recordset.length) throw new Error('Job not found');
+  const jobRow = jobResult.recordset[0];
+  const job = JSON.parse(jobRow.DataJson);
+
+  const digitised = job.tabs?.survey?.digitised;
+  if (!digitised || !(digitised.items || []).length) throw new Error('No digitised survey on this job');
+
+  const customerResult = await pool
+    .request()
+    .input('Id', sql.Int, jobRow.CustomerId)
+    .query('SELECT * FROM dbo.Customers WHERE Id = @Id');
+  if (!customerResult.recordset.length) throw new Error('Customer not found');
+  const customer = JSON.parse(customerResult.recordset[0].DataJson);
+
+  const settingsResult = await pool.request().query('SELECT * FROM dbo.Settings WHERE TenantId = 1');
+  const settings = settingsResult.recordset.length ? JSON.parse(settingsResult.recordset[0].DataJson) : {};
+  const tmpl = settings.emailTemplates?.surveyComplete || DEFAULT_SURVEY_COMPLETE;
+
+  const recipientList = testEmailOverride
+    ? [testEmailOverride]
+    : (tmpl.to || '').split(',').map((s) => s.trim()).filter(Boolean);
+  if (!recipientList.length && settings.companyEmail) recipientList.push(settings.companyEmail);
+  if (!recipientList.length) throw new Error('No office recipient set for the survey-complete email (set one in Settings → Email Templates, or a Company Email in General settings)');
+
+  const surveyDate = job.tabs?.survey?.date;
+  const vars = {
+    customerName: customer.name || '',
+    address: customer.address || '',
+    surveyDate: surveyDate
+      ? new Date(surveyDate).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+      : '',
+    fitterName: job.tabs?.survey?.fitter || '',
+    itemCount: String((digitised.items || []).length),
+    companyName: settings.companyName || 'VisualPro',
+    companyPhone: settings.companyPhone || '',
+  };
+
+  const subject = fillTemplate(tmpl.subject, vars);
+  const intro = fillTemplate(tmpl.body, vars);
+  const plainText = buildSurveyCompleteBody(intro, digitised, settings.trimCatalog || [], tmpl.include);
+
+  const { hostname } = await getSenderDomain();
+  const senderUsername = process.env.EMAIL_SENDER_USERNAME || 'donotreply';
+  const senderAddress = `${senderUsername}@${hostname}`;
+
+  const poller = await emailClient.beginSend({
+    senderAddress,
+    content: { subject, plainText },
+    recipients: buildRecipients(recipientList, tmpl),
+  });
+  const result = await poller.pollUntilDone();
+  if (result.status !== 'Succeeded') {
+    throw new Error(`ACS email send did not succeed: ${result.status}${result.error ? ' - ' + result.error.message : ''}`);
+  }
+
+  if (!testEmailOverride) {
+    job.tabs = job.tabs || {};
+    job.tabs.survey = job.tabs.survey || {};
+    job.tabs.survey.completeEmailSent = { status: 'sent', sentAt: new Date().toLocaleDateString('en-GB') };
+    await pool
+      .request()
+      .input('Id', sql.Int, jobId)
+      .input('DataJson', sql.NVarChar, JSON.stringify(job))
+      .query('UPDATE dbo.Jobs SET DataJson = @DataJson, UpdatedAt = SYSUTCDATETIME() WHERE Id = @Id');
+  }
+
+  return { sent: true, to: recipientList.join(', '), senderAddress, messageId: result.id };
+}
+
 module.exports = {
   sendJobReminder,
   sendInstallBookedEmail,
@@ -626,6 +922,9 @@ module.exports = {
   sendServiceCallBookedEmail,
   sendSurveyReminderEmail,
   sendServiceCallReminderEmail,
+  sendFeedbackReviewEmail,
+  feedbackQualifiesForReview,
+  sendSurveyCompleteEmail,
   getSenderDomain,
   getDomainProperties,
 };
