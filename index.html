@@ -4492,6 +4492,7 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
   const [showFeedback,setShowFeedback]=useState(false);
   const [showChecklist,setShowChecklist]=useState(false);
   const [showDigitalSurvey,setShowDigitalSurvey]=useState(false);
+  const [editingMaterialId,setEditingMaterialId]=useState(null);
   const [viewDate,setViewDate]=useState(new Date());
   // Each fitter can hold down a view button to pin it as their default, so the calendar
   // opens straight into whichever view they actually use — stored per-fitter in
@@ -4916,7 +4917,7 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
                         <div style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em"}}>Additional Materials Purchased</div>
                         {noteSaveStatus!=="idle"&&<div style={{fontSize:10,fontWeight:700,color:noteSaveStatus==="saving"?C.slate:noteSaveStatus==="error"?C.red:C.mint}}>{noteSaveStatus==="saving"?"Saving…":noteSaveStatus==="error"?"⚠ Save failed":"✓ Saved"}</div>}
                       </div>
-                      <label style={{background:C.mint,color:"#fff",borderRadius:8,padding:"6px 14px",fontSize:13,fontWeight:600,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:6}}>
+                      <label style={{background:C.mint,color:"#fff",borderRadius:8,padding:"6px 14px",fontSize:13,fontWeight:600,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:6,whiteSpace:"nowrap",flexShrink:0}}>
                         🧾 Add Receipt
                         <input type="file" accept="image/*,.pdf" multiple onChange={e=>addMaterialReceipts(e,job)} style={{display:"none"}}/>
                       </label>
@@ -4924,24 +4925,42 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
                     {mats.length===0&&(
                       <div style={{textAlign:"center",padding:"20px 0",color:C.muted,fontSize:13}}>No receipts yet. Tap Add Receipt to upload one.</div>
                     )}
-                    {mats.map(m=>(
-                      <div key={m.id} style={{background:C.slateLight,borderRadius:8,padding:10,marginBottom:8}}>
-                        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
-                          <a href={m.file?.data} target="_blank" rel="noreferrer" style={{fontSize:22,textDecoration:"none",flexShrink:0}}>{m.file?.type==="application/pdf"?"📄":"🖼️"}</a>
-                          <a href={m.file?.data} target="_blank" rel="noreferrer" style={{flex:1,minWidth:0,fontSize:13,color:C.sky,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.file?.name||"Receipt"}</a>
-                          <button onClick={()=>removeMaterial(job,m.id)} style={{background:"none",border:"none",color:C.red,fontSize:18,cursor:"pointer",flexShrink:0,lineHeight:1}}>×</button>
+                    {mats.map(m=>{
+                      const committed=m.cost!==""&&m.cost!=null;
+                      const editing=editingMaterialId===m.id||!committed;
+                      if(!editing) return (
+                        <div key={m.id} style={{background:"#F0FDF4",border:"1px solid #86EFAC",borderRadius:8,padding:"10px 12px",marginBottom:8,display:"flex",alignItems:"center",gap:10}}>
+                          <span style={{fontSize:16,color:C.mint,flexShrink:0}}>✓</span>
+                          <a href={m.file?.data} target="_blank" rel="noreferrer" style={{flex:1,minWidth:0,fontSize:13,color:C.navy,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                            £{(parseFloat(m.cost)||0).toFixed(2)}{m.note?` · ${m.note}`:""}
+                          </a>
+                          <button onClick={()=>setEditingMaterialId(m.id)} style={{background:"none",border:"none",color:C.sky,fontSize:13,fontWeight:600,cursor:"pointer",flexShrink:0}}>Edit</button>
                         </div>
-                        <div style={{display:"flex",gap:8}}>
-                          <div style={{display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
-                            <span style={{color:C.slate,fontWeight:700}}>£</span>
-                            <input type="number" inputMode="decimal" value={m.cost} onChange={e=>updateMaterial(job,m.id,{cost:e.target.value})} placeholder="0.00"
-                              style={{width:90,border:`1px solid ${C.border}`,borderRadius:6,padding:"8px 10px",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
+                      );
+                      return (
+                        <div key={m.id} style={{background:C.slateLight,borderRadius:8,padding:10,marginBottom:8}}>
+                          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+                            <a href={m.file?.data} target="_blank" rel="noreferrer" style={{fontSize:22,textDecoration:"none",flexShrink:0}}>{m.file?.type==="application/pdf"?"📄":"🖼️"}</a>
+                            <a href={m.file?.data} target="_blank" rel="noreferrer" style={{flex:1,minWidth:0,fontSize:13,color:C.sky,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.file?.name||"Receipt"}</a>
+                            <button onClick={()=>removeMaterial(job,m.id)} style={{background:"none",border:"none",color:C.red,fontSize:18,cursor:"pointer",flexShrink:0,lineHeight:1}}>×</button>
                           </div>
-                          <input value={m.note} onChange={e=>updateMaterial(job,m.id,{note:e.target.value})} placeholder="What was it for?"
-                            style={{flex:1,minWidth:0,border:`1px solid ${C.border}`,borderRadius:6,padding:"8px 10px",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
+                          <div style={{display:"flex",gap:8}}>
+                            <div style={{display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
+                              <span style={{color:C.slate,fontWeight:700}}>£</span>
+                              <input type="number" inputMode="decimal" value={m.cost} onChange={e=>updateMaterial(job,m.id,{cost:e.target.value})} placeholder="0.00"
+                                style={{width:90,border:`1px solid ${C.border}`,borderRadius:6,padding:"8px 10px",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
+                            </div>
+                            <input value={m.note} onChange={e=>updateMaterial(job,m.id,{note:e.target.value})} placeholder="What was it for?"
+                              style={{flex:1,minWidth:0,border:`1px solid ${C.border}`,borderRadius:6,padding:"8px 10px",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
+                          </div>
+                          {committed&&(
+                            <div style={{display:"flex",justifyContent:"flex-end",marginTop:8}}>
+                              <button onClick={()=>setEditingMaterialId(null)} style={{background:C.mint,color:"#fff",border:"none",borderRadius:6,padding:"6px 16px",fontSize:13,fontWeight:600,cursor:"pointer"}}>Done</button>
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                     {mats.length>0&&(
                       <div style={{display:"flex",justifyContent:"flex-end",fontSize:14,fontWeight:700,color:C.navy,marginTop:4}}>
                         Total: £{total.toFixed(2)}
