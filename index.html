@@ -285,7 +285,10 @@ const uid = () => Date.now() * 1000 + Math.floor(Math.random() * 1000);
 // ── API client ────────────────────────────────────────────────────────────────
 // Talks directly to the Function App (not proxied through the Static Web App), so CORS is
 // configured on the Function App side to allow this origin.
-const API_BASE = "https://visualpro-crm-func.azurewebsites.net/api";
+// Routed through the Static Web App (same origin), which forwards /api/* to the linked
+// Function App backend. The Function App is locked to SWA-only traffic once linked, so a
+// direct azurewebsites.net URL here would be rejected (401).
+const API_BASE = "/api";
 
 // Module-level (not React state) so the plain apiRequest() function below can read it
 // without every call site needing to pass it through explicitly. The React state that
