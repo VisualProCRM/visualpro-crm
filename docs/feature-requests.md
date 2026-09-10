@@ -8,6 +8,14 @@ A shared place for feature ideas, wherever they come from — the office, a fitt
 
 ## Requested
 
+### App favicon — ✅ built 2026-09-10
+- Requested by: office — 2026-09-10
+- The app had no favicon (browser default globe in the tab). Added the dark GlazeStream "G" app icon (`assets/app-icon.png`) as both the browser-tab favicon and the iOS "add to home screen" icon.
+
+### Show fitter per-item survey photos on the office Survey tab — ✅ built 2026-09-10
+- Requested by: office — 2026-09-10, "same style as the install photos"
+- The digital survey form's required per-item photos (`job.tabs.survey.digitised.items[].images`) were only visible to the fitter. Added a read-only, per-item-labelled gallery ("Survey Item Photos (from the fitter)") on the office Survey tab, below the existing editable "Site Photos" gallery (which already showed the separate general `tabs.survey.images`). Same `ImageGallery readOnly` + lightbox style as the office-side Installation Photos section.
+
 ### Auto-send a "Feedback Form" / TrustPilot review-invite email on a good feedback response — ✅ built 2026-09-10
 - Requested by: office — 2026-09-10, after adding a new "happy to leave a TrustPilot review?" question to the customer feedback form
 - When the customer submits the on-site feedback form and gives a qualifying answer, the CRM automatically emails them an editable "Feedback Form" template. To use TrustPilot's Automatic Feedback Service the office BCCs a unique TrustPilot alias into that customer email — BCC'ing it is what triggers TrustPilot's own review invite.
