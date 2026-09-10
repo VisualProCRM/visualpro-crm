@@ -41,3 +41,26 @@ jobs:
         with:
           app-name: visualpro-crm-func
           package: api
+
+      # Deploying the Function App with functions-action drops the Static Web App's
+      # "bring your own" backend link, which silently takes the whole CRM offline
+      # (every /api/* route falls through to the SPA). Re-assert the link after each
+      # deploy so this can't recur. Idempotent: skips if already linked correctly.
+      - name: Re-link Static Web App backend
+        run: |
+          set -euo pipefail
+          SWA_NAME="visualpro-crm"
+          RG="visualpro-crm_group"
+          BACKEND_ID="/subscriptions/${{ vars.AZURE_SUBSCRIPTION_ID }}/resourceGroups/${RG}/providers/Microsoft.Web/sites/visualpro-crm-func"
+          CURRENT="$(az staticwebapp backends show --name "$SWA_NAME" --resource-group "$RG" -o json 2>/dev/null || echo '{}')"
+          if echo "$CURRENT" | grep -q "sites/visualpro-crm-func"; then
+            echo "Backend already linked to visualpro-crm-func — nothing to do."
+          else
+            echo "Backend not linked (current: $CURRENT) — linking now."
+            az staticwebapp backends link \
+              --name "$SWA_NAME" \
+              --resource-group "$RG" \
+              --backend-resource-id "$BACKEND_ID" \
+              --backend-region "Central US"
+            echo "Linked."
+          fi
