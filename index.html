@@ -567,7 +567,17 @@ const FileAttach = ({files,onAdd,onRemove,accept,label="Attach File"}) => {
 };
 
 // ── Image Gallery Widget ──────────────────────────────────────────────────────
+// Full-screen image viewer — tap/click any thumbnail to open, click anywhere or the ×
+// to close. Shared by every photo grid that uses ImageGallery (office Survey + Install).
+const Lightbox = ({src,alt,onClose}) => (
+  <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:1100,display:"flex",alignItems:"center",justifyContent:"center",padding:20,cursor:"zoom-out"}}>
+    <button onClick={onClose} style={{position:"absolute",top:16,right:16,background:"rgba(255,255,255,0.15)",border:"none",color:"#fff",borderRadius:"50%",width:40,height:40,fontSize:22,cursor:"pointer",lineHeight:1}}>×</button>
+    <img src={src} alt={alt} onClick={e=>e.stopPropagation()} style={{maxWidth:"95vw",maxHeight:"92vh",objectFit:"contain",borderRadius:8,cursor:"default"}}/>
+  </div>
+);
+
 const ImageGallery = ({images,onAdd,onRemove}) => {
+  const [lightbox,setLightbox]=useState(null);
   const handleChange = async (e) => {
     const files=Array.from(e.target.files);
     const datas=await Promise.all(files.map(f=>uploadFile(f,"photos")));
@@ -584,12 +594,13 @@ const ImageGallery = ({images,onAdd,onRemove}) => {
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(100px,1fr))",gap:8,marginTop:10}}>
           {images.map((img,i)=>(
             <div key={i} style={{position:"relative",borderRadius:8,overflow:"hidden",aspectRatio:"1",border:`1px solid ${C.border}`}}>
-              <img src={img.data} alt={img.name} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
-              <button onClick={()=>onRemove(i)} style={{position:"absolute",top:4,right:4,background:"rgba(0,0,0,0.5)",border:"none",color:"#fff",borderRadius:"50%",width:20,height:20,cursor:"pointer",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+              <img src={img.data} alt={img.name} onClick={()=>setLightbox(img)} style={{width:"100%",height:"100%",objectFit:"cover",cursor:"zoom-in"}}/>
+              <button onClick={(e)=>{e.stopPropagation();onRemove(i);}} style={{position:"absolute",top:4,right:4,background:"rgba(0,0,0,0.5)",border:"none",color:"#fff",borderRadius:"50%",width:20,height:20,cursor:"pointer",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
             </div>
           ))}
         </div>
       )}
+      {lightbox&&<Lightbox src={lightbox.data} alt={lightbox.name} onClose={()=>setLightbox(null)}/>}
     </div>
   );
 };
