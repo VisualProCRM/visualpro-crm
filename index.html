@@ -1500,6 +1500,36 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
               style={{minHeight:130,background:C.white}}/>
           </div>
 
+          {/* ── Installation Photos (uploaded by fitters on-site via the mobile app) ── */}
+          <div>
+            <div style={{fontSize:12,fontWeight:600,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Installation Photos</div>
+            <ImageGallery
+              images={data.tabs.installation.installImages||[]}
+              onAdd={file=>setTab("installation",{installImages:[...(data.tabs.installation.installImages||[]),file]})}
+              onRemove={i=>setTab("installation",{installImages:(data.tabs.installation.installImages||[]).filter((_,idx)=>idx!==i)})}
+            />
+          </div>
+
+          {/* ── Additional Materials Purchased (receipts + costs logged by fitters on-site) ── */}
+          {(data.tabs.installation.additionalMaterials||[]).length>0&&(()=>{
+            const mats=data.tabs.installation.additionalMaterials||[];
+            const total=mats.reduce((s,m)=>s+(parseFloat(m.cost)||0),0);
+            return (
+              <div style={{border:`1px solid ${C.border}`,borderRadius:8,padding:14}}>
+                <div style={{fontSize:12,fontWeight:600,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10}}>Additional Materials Purchased (by fitter)</div>
+                {mats.map(m=>(
+                  <div key={m.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:`1px solid ${C.border}`,fontSize:13}}>
+                    <a href={m.file?.data} target="_blank" rel="noreferrer" style={{fontSize:18,textDecoration:"none",flexShrink:0}}>{m.file?.type==="application/pdf"?"📄":"🧾"}</a>
+                    <span style={{fontWeight:700,color:C.navy,flexShrink:0}}>£{(parseFloat(m.cost)||0).toFixed(2)}</span>
+                    <span style={{color:C.slate,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.note||"—"}</span>
+                    <a href={m.file?.data} target="_blank" rel="noreferrer" style={{fontSize:12,color:C.sky,fontWeight:600,flexShrink:0}}>View receipt</a>
+                  </div>
+                ))}
+                <div style={{display:"flex",justifyContent:"flex-end",fontSize:14,fontWeight:700,color:C.navy,marginTop:8}}>Total: £{total.toFixed(2)}</div>
+              </div>
+            );
+          })()}
+
           {/* ── Email Reminders ── */}
           {(()=>{
             const instDate=data.tabs.installation.date;
