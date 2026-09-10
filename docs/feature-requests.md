@@ -8,6 +8,11 @@ A shared place for feature ideas, wherever they come from — the office, a fitt
 
 ## Requested
 
+### Show fitter-uploaded installation photos + receipts on the office Installation tab — ✅ built 2026-09-10
+- Raised by: office — 2026-09-10, after noticing photos a fitter uploaded to a job weren't visible in the office portal
+- Not a sync/data bug — the photos (`installation.installImages`) were saved on the record all along, the office-side Installation tab just never had a section to display them. Added an Installation Photos gallery there plus a read-only summary of the fitter's Additional Materials Purchased receipts/costs (same gap).
+- Follow-ons same session: added a click-to-expand lightbox to the shared `ImageGallery` component (benefits office Survey + Install photo grids), and made the office-side install photos **read-only** (no delete ×, no add) — the office can view/expand but not remove a fitter's on-site record. The office Survey tab's own Site Photos gallery stays editable.
+
 ### Fitter "Additional Materials Purchased" on the Install tab — ✅ built 2026-09-10
 - Requested by: office — 2026-09-10 (quick same-session ask)
 - Below Installation Photos on the fitter Install tab: fitters upload receipts (images/PDFs) for extra materials bought on the day, each with a £ cost and a short "what for" note, with a running total. Saved to `job.tabs.installation.additionalMaterials`. Once a cost is entered the row collapses to a settled green summary line with an "Edit" affordance (so it reads as logged, not still-editable) — Edit reopens the fields and the delete option.
