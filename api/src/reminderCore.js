@@ -45,14 +45,12 @@ function fillTemplate(tmpl, vars) {
 
 // Sends to every address in recipientList (a customer's primary + optional secondary
 // email — both get every automated email, per the office's preference) and BCCs the
-// sending template's own bcc field(s) (if set) — configured per-template in Settings, not a
-// single global address, so different templates can go to different inboxes if needed. Most
-// templates have one bcc; feedbackReview also has bcc2 (TrustPilot alias + office address).
+// sending template's own bcc field (if set) — configured per-template in Settings, not a
+// single global address, so different templates can go to different inboxes if needed.
 function buildRecipients(recipientList, tmpl) {
   const recipients = { to: recipientList.map((address) => ({ address })) };
-  const bccList = [tmpl.bcc, tmpl.bcc2].map((a) => (a || '').trim()).filter(Boolean);
-  if (bccList.length) {
-    recipients.bcc = bccList.map((address) => ({ address }));
+  if (tmpl.bcc && tmpl.bcc.trim()) {
+    recipients.bcc = [{ address: tmpl.bcc.trim() }];
   }
   return recipients;
 }
@@ -184,19 +182,6 @@ Fitter: {{fitterName}}
 Address: {{address}}
 
 If you need to rearrange or have any questions, please don't hesitate to get in touch.
-
-Kind regards,
-{{companyName}}
-{{companyPhone}}`,
-};
-
-const DEFAULT_FEEDBACK_REVIEW = {
-  subject: 'Thank you for your feedback – {{customerName}}',
-  body: `Dear {{customerName}},
-
-Thank you so much for taking the time to share your feedback with us — we're delighted you're happy with the work.
-
-If you have a spare moment, we'd really appreciate a short review. It helps other people find us and means a lot to our team.
 
 Kind regards,
 {{companyName}}
@@ -634,88 +619,6 @@ async function sendServiceCallReminderEmail({ pool, jobId, bookingId, testEmailO
   return { sent: true, to: recipientList.join(', '), senderAddress, messageId: result.id };
 }
 
-// Sends the "Feedback Form" / review-invite email for a job. Called from jobs.js's update
-// handler the moment the customer's feedback form is first saved AND at least one question
-// the office flagged in Settings → Feedback Form was answered qualifyingly (4★+ on a star
-// question, or "Yes" on a yes/no question). Goes to the customer; BCCs the template's bcc
-// (the TrustPilot Automatic Feedback Service alias, which is what actually triggers the
-// review invite) and bcc2 (an office address, so the team has a record it went out). Marks
-// tabs.installation.feedbackEmailSent, mirroring bookedEmailSent.
-async function sendFeedbackReviewEmail({ pool, jobId, testEmailOverride }) {
-  const jobResult = await pool.request().input('Id', sql.Int, jobId).query('SELECT * FROM dbo.Jobs WHERE Id = @Id');
-  if (!jobResult.recordset.length) throw new Error('Job not found');
-  const jobRow = jobResult.recordset[0];
-  const job = JSON.parse(jobRow.DataJson);
-
-  const customerResult = await pool
-    .request()
-    .input('Id', sql.Int, jobRow.CustomerId)
-    .query('SELECT * FROM dbo.Customers WHERE Id = @Id');
-  if (!customerResult.recordset.length) throw new Error('Customer not found');
-  const customer = JSON.parse(customerResult.recordset[0].DataJson);
-
-  const recipientList = testEmailOverride ? [testEmailOverride] : [customer.email, customer.email2].filter(Boolean);
-  if (!recipientList.length) throw new Error('No recipient email available');
-
-  const settingsResult = await pool.request().query('SELECT * FROM dbo.Settings WHERE TenantId = 1');
-  const settings = settingsResult.recordset.length ? JSON.parse(settingsResult.recordset[0].DataJson) : {};
-  const tmpl = settings.emailTemplates?.feedbackReview || DEFAULT_FEEDBACK_REVIEW;
-
-  const vars = {
-    customerName: customer.name || '',
-    address: customer.address || '',
-    companyName: settings.companyName || 'VisualPro',
-    companyPhone: settings.companyPhone || '',
-  };
-
-  const subject = fillTemplate(tmpl.subject, vars);
-  const plainText = fillTemplate(tmpl.body, vars);
-
-  const { hostname } = await getSenderDomain();
-  const senderUsername = process.env.EMAIL_SENDER_USERNAME || 'donotreply';
-  const senderAddress = `${senderUsername}@${hostname}`;
-
-  const poller = await emailClient.beginSend({
-    senderAddress,
-    content: { subject, plainText },
-    recipients: buildRecipients(recipientList, tmpl),
-  });
-  const result = await poller.pollUntilDone();
-  if (result.status !== 'Succeeded') {
-    throw new Error(`ACS email send did not succeed: ${result.status}${result.error ? ' - ' + result.error.message : ''}`);
-  }
-
-  if (!testEmailOverride) {
-    job.tabs = job.tabs || {};
-    job.tabs.installation = job.tabs.installation || {};
-    job.tabs.installation.feedbackEmailSent = { status: 'sent', sentAt: new Date().toLocaleDateString('en-GB') };
-    await pool
-      .request()
-      .input('Id', sql.Int, jobId)
-      .input('DataJson', sql.NVarChar, JSON.stringify(job))
-      .query('UPDATE dbo.Jobs SET DataJson = @DataJson, UpdatedAt = SYSUTCDATETIME() WHERE Id = @Id');
-  }
-
-  return { sent: true, to: recipientList.join(', '), senderAddress, messageId: result.id };
-}
-
-// Given the saved feedback form and the office's feedbackQuestions settings, returns true
-// if any question the office flagged (sendFeedbackEmail) was answered qualifyingly: 4★ or
-// higher on a star question, or "Yes" on a yes/no question. Matched by question text, since
-// the questions are reorderable so position isn't stable.
-function feedbackQualifiesForReview(feedback, feedbackQuestions) {
-  if (!feedback || !Array.isArray(feedback.responses)) return false;
-  const flagged = (feedbackQuestions || []).filter((q) => q && q.sendFeedbackEmail);
-  if (!flagged.length) return false;
-  return flagged.some((q) => {
-    const resp = feedback.responses.find((r) => r.question === q.question);
-    if (!resp) return false;
-    if (q.type === 'stars') return Number(resp.answer) >= 4;
-    if (q.type === 'yesno') return String(resp.answer).toLowerCase() === 'yes';
-    return false;
-  });
-}
-
 module.exports = {
   sendJobReminder,
   sendInstallBookedEmail,
@@ -723,8 +626,6 @@ module.exports = {
   sendServiceCallBookedEmail,
   sendSurveyReminderEmail,
   sendServiceCallReminderEmail,
-  sendFeedbackReviewEmail,
-  feedbackQualifiesForReview,
   getSenderDomain,
   getDomainProperties,
 };

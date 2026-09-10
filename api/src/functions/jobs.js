@@ -2,7 +2,7 @@ const { app } = require('@azure/functions');
 const { getPool, sql } = require('../db');
 const { mapJobRow } = require('../mapRow');
 const { requireAuth } = require('../auth');
-const { sendInstallBookedEmail, sendSurveyBookedEmail, sendServiceCallBookedEmail, sendFeedbackReviewEmail, feedbackQualifiesForReview } = require('../reminderCore');
+const { sendInstallBookedEmail, sendSurveyBookedEmail, sendServiceCallBookedEmail } = require('../reminderCore');
 
 app.http('jobsList', {
   methods: ['GET'],
@@ -161,27 +161,6 @@ app.http('jobsUpdate', {
           } catch (err) {
             context.error('sendServiceCallBookedEmail failed', err);
           }
-        }
-      }
-
-      // Feedback Form / review-invite email — fires the first time the customer's feedback
-      // form is saved, if any question the office flagged in Settings → Feedback Form was
-      // answered qualifyingly (4★+ or "Yes"). The BCC on the feedbackReview template is the
-      // TrustPilot Automatic Feedback Service alias, so BCC'ing it is what triggers the
-      // actual review invite.
-      const feedbackWasSaved = !!before?.tabs?.installation?.feedback;
-      const feedbackIsNowSaved = !!body.tabs?.installation?.feedback;
-      const feedbackAlreadySent = !!body.tabs?.installation?.feedbackEmailSent;
-      if (!feedbackWasSaved && feedbackIsNowSaved && !feedbackAlreadySent) {
-        try {
-          const settingsRow = await pool.request().query('SELECT DataJson FROM dbo.Settings WHERE TenantId = 1');
-          const feedbackSettings = settingsRow.recordset.length ? JSON.parse(settingsRow.recordset[0].DataJson) : {};
-          if (feedbackQualifiesForReview(body.tabs.installation.feedback, feedbackSettings.feedbackQuestions)) {
-            await sendFeedbackReviewEmail({ pool, jobId: id });
-            sentAny = true;
-          }
-        } catch (err) {
-          context.error('sendFeedbackReviewEmail failed', err);
         }
       }
 
