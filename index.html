@@ -4912,7 +4912,10 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
                 return (
                   <div style={{background:C.white,borderRadius:12,padding:16,border:`1px solid ${C.border}`}}>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-                      <div style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em"}}>Additional Materials Purchased</div>
+                      <div style={{display:"flex",alignItems:"center",gap:8}}>
+                        <div style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em"}}>Additional Materials Purchased</div>
+                        {noteSaveStatus!=="idle"&&<div style={{fontSize:10,fontWeight:700,color:noteSaveStatus==="saving"?C.slate:noteSaveStatus==="error"?C.red:C.mint}}>{noteSaveStatus==="saving"?"Saving…":noteSaveStatus==="error"?"⚠ Save failed":"✓ Saved"}</div>}
+                      </div>
                       <label style={{background:C.mint,color:"#fff",borderRadius:8,padding:"6px 14px",fontSize:13,fontWeight:600,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:6}}>
                         🧾 Add Receipt
                         <input type="file" accept="image/*,.pdf" multiple onChange={e=>addMaterialReceipts(e,job)} style={{display:"none"}}/>
