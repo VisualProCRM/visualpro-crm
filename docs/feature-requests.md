@@ -8,6 +8,11 @@ A shared place for feature ideas, wherever they come from — the office, a fitt
 
 ## Requested
 
+### Fitter "Additional Materials Purchased" on the Install tab — ✅ built 2026-09-10
+- Requested by: office — 2026-09-10 (quick same-session ask)
+- Below Installation Photos on the fitter Install tab: fitters upload receipts (images/PDFs) for extra materials bought on the day, each with a £ cost and a short "what for" note, with a running total. Saved to `job.tabs.installation.additionalMaterials`. Once a cost is entered the row collapses to a settled green summary line with an "Edit" affordance (so it reads as logged, not still-editable) — Edit reopens the fields and the delete option.
+- **Not built**: feeding these costs into the job margin calculation — data is structured ready for it, but the wiring into margin isn't done. Office was happy to defer this.
+
 ### Delivery PDF digitisation into Track Orders, with structured quantities + a 9am office reminder
 - Requested by: office — 2026-09-08
 - **Preferred first phase (revised 2026-09-08, easier than the original inbound-email idea below)**: a general "Deliveries" PDF upload area — NOT tied to a single Job/Customer record, unlike the Survey tab's own upload-and-digitise pattern — since one particular supplier sends a single weekly PDF covering multiple different customers' deliveries. Office manually uploads a delivery-confirmation PDF (single-order or the weekly multi-order one), the CRM extracts it into a list of candidate deliveries (date, product line-items with quantities, and whatever identifying text the PDF has — reference/address/customer name), and each candidate gets matched to the right Job via an office-confirmed dropdown (deliberately not auto-matched by name alone — same reasoning as WindowCAD7's own matching logic elsewhere in this app, too easy to misattribute to the wrong customer) before becoming a real Track Orders entry. Reuses the same client-side pdf.js pattern already proven for the WindowCAD7 survey digitisation (built 2026-09-06), but since supplier layouts vary (unlike WindowCAD7's own fixed template), extraction needs an LLM-based approach rather than position-based parsing — a new AI-API dependency with its own small per-use cost. Estimated at ~1-1.5 sessions, notably smaller than the original idea below since it skips all inbound-email infrastructure.
