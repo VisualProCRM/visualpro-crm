@@ -40,6 +40,7 @@ param aadAuthClientSecret string
 
 param communicationServiceName string = 'visualpro-crm-acs'
 param emailServiceName string = 'visualpro-crm-email'
+param speechServiceName string = 'visualpro-crm-speech'
 
 @description('Which ACS Email domain to send reminders from. Now "visualglazing.co.uk" — DNS-verified (Domain/SPF/DKIM/DKIM2 all Verified) on 2026-07-21. Was "AzureManagedDomain" before that.')
 param emailDomainName string = 'visualglazing.co.uk'
@@ -104,6 +105,14 @@ module email 'modules/email.bicep' = {
   }
 }
 
+module speech 'modules/speech.bicep' = {
+  name: 'speech-deploy'
+  params: {
+    location: location
+    speechServiceName: speechServiceName
+  }
+}
+
 // Referenced (not re-declared) so we can build a connection string for the email-sending
 // Function without exposing the ACS access key as a module output.
 resource communicationServiceExisting 'Microsoft.Communication/communicationServices@2023-04-01' existing = {
@@ -130,6 +139,8 @@ module functionApp 'modules/functionapp.bicep' = {
     emailSenderUsername: emailSenderUsername
     sessionTokenSecret: sessionTokenSecret
     windowcadWebhookSecret: windowcadWebhookSecret
+    speechKey: speech.outputs.speechKey
+    speechRegion: speech.outputs.speechRegion
     sqlServerFqdn: sql.outputs.sqlServerFqdn
     sqlDatabaseName: sql.outputs.sqlDatabaseName
     storageAccountName: storage.outputs.storageAccountName

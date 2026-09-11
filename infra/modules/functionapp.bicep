@@ -38,6 +38,13 @@ param sessionTokenSecret string
 @secure()
 param windowcadWebhookSecret string
 
+@description('Azure AI Speech resource key, for the voice-input transcription endpoint (/api/transcribe). Plain app setting, same pattern as the other secrets here — azure/functions-action needs a literal value, not a Key Vault reference.')
+@secure()
+param speechKey string
+
+@description('Region the Speech resource was created in (e.g. "centralus") — the transcription REST call is region-scoped (https://{region}.stt.speech.microsoft.com/...).')
+param speechRegion string
+
 @description('Origins allowed to call this API cross-origin (the frontend Static Web App, plus localhost for local dev, plus the Azure Portal so its built-in Test/Run feature works for manually invoking functions like the timer trigger). Note: the SWA hostname changed after upgrading from Free to Standard tier — this is the post-upgrade hostname, not the original. crm.glazestream.co.uk added ahead of the custom domain going live (see infra/BOOTSTRAP.md) — harmless to have listed before DNS/custom domain setup is finished.')
 param corsAllowedOrigins array = [
   'https://mango-beach-0c25f8610.7.azurestaticapps.net'
@@ -113,6 +120,8 @@ resource functionApp 'Microsoft.Web/sites@2023-01-01' = {
         { name: 'EMAIL_SENDER_USERNAME', value: emailSenderUsername }
         { name: 'SESSION_TOKEN_SECRET', value: sessionTokenSecret }
         { name: 'WINDOWCAD_WEBHOOK_SECRET', value: windowcadWebhookSecret }
+        { name: 'SPEECH_KEY', value: speechKey }
+        { name: 'SPEECH_REGION', value: speechRegion }
         { name: 'RESOURCE_GROUP_NAME', value: resourceGroup().name }
         { name: 'AZURE_SUBSCRIPTION_ID', value: subscription().subscriptionId }
       ]
