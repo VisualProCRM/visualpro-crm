@@ -430,6 +430,24 @@ const apiTranscribe = async (audioBase64, language) => {
   }
 };
 
+// Pre-flight check, run the instant a fitter taps the mic — before recording anything. Pings
+// the dependency-free /api/ping (see ping.js) with a short timeout; a fitter on weak on-site
+// signal gets told immediately ("unavailable, type instead") rather than talking for several
+// seconds and waiting for a transcription that was always going to time out. navigator.onLine
+// catches the fully-offline case for free, with no network round trip at all.
+const checkSignalOk = async () => {
+  if (navigator.onLine === false) return false;
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
+    const res = await fetch(`${API_BASE}/ping`, { signal: controller.signal, cache: "no-store" });
+    clearTimeout(timeoutId);
+    return res.ok;
+  } catch {
+    return false;
+  }
+};
+
 // Records mic audio via MediaRecorder, then re-encodes it to 16kHz mono 16-bit PCM WAV
 // client-side (via the Web Audio API) before it ever reaches the network. This is
 // deliberate: MediaRecorder's native output format differs by platform (webm/opus on
@@ -732,12 +750,19 @@ const extractFirstNumber = (text) => {
 // hands the recognized text to onResult. Deliberately silent about *how* transcription
 // happens (Azure Speech today) so a future provider swap never touches this component.
 const VoiceMicButton = ({onResult,title,size=32,parse}) => {
-  const [state,setState]=useState("idle"); // idle | recording | transcribing | error
+  const [state,setState]=useState("idle"); // idle | checking | recording | transcribing | error
   const [error,setError]=useState("");
   const recorderRef=useRef(null);
 
   const start = async () => {
     setError("");
+    setState("checking");
+    const signalOk = await checkSignalOk();
+    if (!signalOk) {
+      setState("error");
+      setError("Voice recognition unavailable — signal too weak. Please input manually.");
+      return;
+    }
     try {
       recorderRef.current = await recordVoiceClip({
         onStop: async (err,wavBase64) => {
@@ -766,12 +791,12 @@ const VoiceMicButton = ({onResult,title,size=32,parse}) => {
 
   return (
     <span style={{position:"relative",display:"inline-flex",flexShrink:0}}>
-      <button type="button" onClick={state==="recording"?stop:start} disabled={state==="transcribing"} title={title||"Dictate"}
-        style={{width:size,height:size,borderRadius:"50%",border:"none",cursor:state==="transcribing"?"default":"pointer",
-          background:state==="recording"?C.red:state==="transcribing"?C.muted:C.sky,color:"#fff",
+      <button type="button" onClick={state==="recording"?stop:start} disabled={state==="transcribing"||state==="checking"} title={title||"Dictate"}
+        style={{width:size,height:size,borderRadius:"50%",border:"none",cursor:(state==="transcribing"||state==="checking")?"default":"pointer",
+          background:state==="recording"?C.red:(state==="transcribing"||state==="checking")?C.muted:C.sky,color:"#fff",
           display:"flex",alignItems:"center",justifyContent:"center",fontSize:Math.round(size*0.5),lineHeight:1,
           animation:state==="recording"?"pulse 1s ease-in-out infinite":"none"}}>
-        {state==="transcribing"?"⋯":state==="recording"?"■":"🎤"}
+        {(state==="transcribing"||state==="checking")?"⋯":state==="recording"?"■":"🎤"}
       </button>
       {error&&(
         <span onClick={()=>setError("")} style={{position:"absolute",top:"115%",right:0,background:"#FEF2F2",color:C.red,fontSize:11,fontWeight:600,padding:"5px 9px",borderRadius:6,whiteSpace:"nowrap",zIndex:20,border:"1px solid #FECACA",cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,0.1)"}}>
