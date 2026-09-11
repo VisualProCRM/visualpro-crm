@@ -23,6 +23,7 @@
     #loading p{font-size:14px;opacity:0.6;}
     .spinner{width:40px;height:40px;border:3px solid rgba(2,33,70,0.15);border-top-color:#0061FC;border-radius:50%;animation:spin 0.8s linear infinite;margin-bottom:20px;}
     @keyframes spin{to{transform:rotate(360deg)}}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.55}}
   </style>
 </head>
 <body>
@@ -398,6 +399,86 @@ const uploadFile = async (file, container) => {
   return saved;
 };
 
+// ── Voice input (digital survey mic buttons) ────────────────────────────────────
+// apiTranscribe is the ONLY thing that knows there's an /api/transcribe endpoint — swapping
+// speech-to-text providers later only ever means changing api/src/functions/transcribe.js,
+// nothing here.
+const apiTranscribe = (audioBase64, language) =>
+  apiRequest("/transcribe", { method: "POST", body: JSON.stringify({ audioBase64, language }) });
+
+// Records mic audio via MediaRecorder, then re-encodes it to 16kHz mono 16-bit PCM WAV
+// client-side (via the Web Audio API) before it ever reaches the network. This is
+// deliberate: MediaRecorder's native output format differs by platform (webm/opus on
+// Chrome/Android, mp4/aac on Safari/iOS) and negotiating every codec with Azure's REST
+// endpoint is fragile — normalizing to WAV here means the backend only ever has to handle
+// one format, on every device.
+async function recordVoiceClip({ onStop }) {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const chunks = [];
+  const recorder = new MediaRecorder(stream);
+  recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+  recorder.onstop = async () => {
+    stream.getTracks().forEach((t) => t.stop());
+    try {
+      const blob = new Blob(chunks, { type: recorder.mimeType });
+      const arrayBuffer = await blob.arrayBuffer();
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      const audioCtx = new AudioCtx();
+      const decoded = await audioCtx.decodeAudioData(arrayBuffer);
+      const wavBase64 = encodeWavBase64(decoded);
+      audioCtx.close();
+      onStop(null, wavBase64);
+    } catch (err) {
+      onStop(err, null);
+    }
+  };
+  recorder.start();
+  return recorder; // caller calls recorder.stop() to finish
+}
+
+// Downmixes to mono, resamples to 16kHz (linear interpolation — audio quality doesn't
+// matter here, only intelligibility for speech recognition), and writes a standard 16-bit
+// PCM WAV container. Returns base64 (no data: prefix), ready for the transcribe endpoint.
+function encodeWavBase64(audioBuffer) {
+  const targetRate = 16000;
+  const numChannels = audioBuffer.numberOfChannels;
+  const mono = new Float32Array(audioBuffer.length);
+  for (let ch = 0; ch < numChannels; ch++) {
+    const data = audioBuffer.getChannelData(ch);
+    for (let i = 0; i < data.length; i++) mono[i] = (mono[i] || 0) + data[i] / numChannels;
+  }
+  const srcRate = audioBuffer.sampleRate;
+  const outLength = Math.round((mono.length * targetRate) / srcRate);
+  const resampled = new Float32Array(outLength);
+  for (let i = 0; i < outLength; i++) {
+    const srcPos = (i * srcRate) / targetRate;
+    const i0 = Math.floor(srcPos), i1 = Math.min(i0 + 1, mono.length - 1);
+    const frac = srcPos - i0;
+    resampled[i] = (mono[i0] || 0) * (1 - frac) + (mono[i1] || 0) * frac;
+  }
+  const pcm = new Int16Array(resampled.length);
+  for (let i = 0; i < resampled.length; i++) {
+    const s = Math.max(-1, Math.min(1, resampled[i]));
+    pcm[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+  }
+  const bytesPerSample = 2, blockAlign = bytesPerSample, byteRate = targetRate * blockAlign;
+  const dataSize = pcm.length * bytesPerSample;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+  const writeStr = (offset, str) => { for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i)); };
+  writeStr(0, "RIFF"); view.setUint32(4, 36 + dataSize, true); writeStr(8, "WAVE");
+  writeStr(12, "fmt "); view.setUint32(16, 16, true); view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true); view.setUint32(24, targetRate, true); view.setUint32(28, byteRate, true);
+  view.setUint16(32, blockAlign, true); view.setUint16(34, 16, true);
+  writeStr(36, "data"); view.setUint32(40, dataSize, true);
+  let offset = 44;
+  for (let i = 0; i < pcm.length; i++, offset += 2) view.setInt16(offset, pcm[i], true);
+  let binary = "";
+  const bytes = new Uint8Array(buffer);
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
 // ── WindowCAD7 survey PDF digitisation ─────────────────────────────────────────
 // Turns an uploaded "Print to PDF" Survey document (WindowCAD7's own fixed template)
 // into a structured, fillable item list for the fitter app. Every real fillable item on
@@ -612,6 +693,69 @@ const FileAttach = ({files,onAdd,onRemove,accept,label="Attach File"}) => {
 // ── Image Gallery Widget ──────────────────────────────────────────────────────
 // Full-screen image viewer — tap/click any thumbnail to open, click anywhere or the ×
 // to close. Shared by every photo grid that uses ImageGallery (office Survey + Install).
+// Pulls the first number out of a spoken phrase, e.g. "twelve hundred" (Azure's transcript
+// normalizes spoken numbers to digits, so this is usually literally "1200 millimeters" or
+// similar) — used by the size-field mic buttons. Returns "" if no number was said, so the
+// caller can fall back to showing the raw transcript for the fitter to read/retype instead
+// of silently writing nothing.
+const extractFirstNumber = (text) => {
+  const m = (text || "").match(/\d+(\.\d+)?/);
+  return m ? m[0] : "";
+};
+
+// Tap to record, tap again to stop (no press-and-hold — easier with gloves/one-handed on
+// site). Records via recordVoiceClip/encodeWavBase64 above, sends to /api/transcribe, and
+// hands the recognized text to onResult. Deliberately silent about *how* transcription
+// happens (Azure Speech today) so a future provider swap never touches this component.
+const VoiceMicButton = ({onResult,title,size=32,parse}) => {
+  const [state,setState]=useState("idle"); // idle | recording | transcribing | error
+  const [error,setError]=useState("");
+  const recorderRef=useRef(null);
+
+  const start = async () => {
+    setError("");
+    try {
+      recorderRef.current = await recordVoiceClip({
+        onStop: async (err,wavBase64) => {
+          if (err) { setState("error"); setError("Couldn't process that recording — try again."); return; }
+          setState("transcribing");
+          try {
+            const { text } = await apiTranscribe(wavBase64);
+            if (!text) { setState("error"); setError("Didn't catch that — try again or type it in."); return; }
+            const finalValue = parse ? parse(text) : text;
+            if (parse && !finalValue) { setState("error"); setError(`Heard "${text}" — no number in that, try again.`); return; }
+            onResult(finalValue);
+            setState("idle");
+          } catch (e) {
+            setState("error"); setError(e.message||"Transcription failed — try again or type it in.");
+          }
+        },
+      });
+      setState("recording");
+    } catch (e) {
+      setState("error"); setError("Microphone access denied or unavailable on this device.");
+    }
+  };
+  const stop = () => { recorderRef.current && recorderRef.current.stop(); };
+
+  return (
+    <span style={{position:"relative",display:"inline-flex",flexShrink:0}}>
+      <button type="button" onClick={state==="recording"?stop:start} disabled={state==="transcribing"} title={title||"Dictate"}
+        style={{width:size,height:size,borderRadius:"50%",border:"none",cursor:state==="transcribing"?"default":"pointer",
+          background:state==="recording"?C.red:state==="transcribing"?C.muted:C.sky,color:"#fff",
+          display:"flex",alignItems:"center",justifyContent:"center",fontSize:Math.round(size*0.5),lineHeight:1,
+          animation:state==="recording"?"pulse 1s ease-in-out infinite":"none"}}>
+        {state==="transcribing"?"⋯":state==="recording"?"■":"🎤"}
+      </button>
+      {error&&(
+        <span onClick={()=>setError("")} style={{position:"absolute",top:"115%",right:0,background:"#FEF2F2",color:C.red,fontSize:11,fontWeight:600,padding:"5px 9px",borderRadius:6,whiteSpace:"nowrap",zIndex:20,border:"1px solid #FECACA",cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,0.1)"}}>
+          {error}
+        </span>
+      )}
+    </span>
+  );
+};
+
 const Lightbox = ({src,alt,onClose}) => (
   <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:1100,display:"flex",alignItems:"center",justifyContent:"center",padding:20,cursor:"zoom-out"}}>
     <button onClick={onClose} style={{position:"absolute",top:16,right:16,background:"rgba(255,255,255,0.15)",border:"none",color:"#fff",borderRadius:"50%",width:40,height:40,fontSize:22,cursor:"pointer",lineHeight:1}}>×</button>
@@ -3280,7 +3424,7 @@ const SurveyTrimPicker = ({catalog,value,onChange,w,h}) => {
   );
 };
 
-const DigitalSurveyModal = ({job,catalog,onUpdateJob,onUpdateJobDebounced,onClose}) => {
+const DigitalSurveyModal = ({job,catalog,voiceEnabled,onUpdateJob,onUpdateJobDebounced,onClose}) => {
   const digitised=job.tabs?.survey?.digitised;
   const items=digitised?.items||[];
   const total=items.length;
@@ -3366,12 +3510,14 @@ const DigitalSurveyModal = ({job,catalog,onUpdateJob,onUpdateJobDebounced,onClos
         {DIGITAL_SURVEY_SIZE_FIELDS.map(({wKey,hKey,label,trim})=>(
           <div key={wKey}>
             <label style={{fontSize:12,fontWeight:600,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",display:"block",marginBottom:6}}>{label} (mm)</label>
-            <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <div style={{display:"flex",alignItems:"center",gap:6}}>
               <input type="number" inputMode="numeric" value={item[wKey]||""} onChange={e=>patchItem({[wKey]:e.target.value},{debounce:true})} placeholder="W"
-                style={{width:110,flexShrink:0,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:16,outline:"none",boxSizing:"border-box"}}/>
+                style={{width:100,flexShrink:0,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 8px",fontSize:16,outline:"none",boxSizing:"border-box"}}/>
+              {voiceEnabled&&<VoiceMicButton size={28} title="Dictate width" parse={extractFirstNumber} onResult={val=>patchItem({[wKey]:val},{debounce:true})}/>}
               <span style={{color:C.muted,fontWeight:600}}>×</span>
               <input type="number" inputMode="numeric" value={item[hKey]||""} onChange={e=>patchItem({[hKey]:e.target.value},{debounce:true})} placeholder="H"
-                style={{width:110,flexShrink:0,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:16,outline:"none",boxSizing:"border-box"}}/>
+                style={{width:100,flexShrink:0,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 8px",fontSize:16,outline:"none",boxSizing:"border-box"}}/>
+              {voiceEnabled&&<VoiceMicButton size={28} title="Dictate height" parse={extractFirstNumber} onResult={val=>patchItem({[hKey]:val},{debounce:true})}/>}
             </div>
             {trim&&(
               <SurveyTrimPicker catalog={catalog} value={item.trims?.[wKey]} w={item[wKey]} h={item[hKey]}
@@ -3385,8 +3531,15 @@ const DigitalSurveyModal = ({job,catalog,onUpdateJob,onUpdateJobDebounced,onClos
             {options.map(o=><option key={o} value={o}>{o}</option>)}
           </Sel>
         ))}
-        <TA label="Notes (Trims Needed / Surveyor Comments)" value={item.notes||""} onChange={e=>patchItem({notes:e.target.value},{debounce:true})}
-          placeholder="Any trims needed, access notes, or other comments for this item..." style={{minHeight:90,fontSize:15}}/>
+        <div>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+            <label style={{fontSize:12,fontWeight:600,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em"}}>Notes (Trims Needed / Surveyor Comments)</label>
+            {voiceEnabled&&<VoiceMicButton title="Dictate notes" onResult={text=>patchItem({notes:(item.notes?item.notes+" ":"")+text},{debounce:true})}/>}
+          </div>
+          <textarea value={item.notes||""} onChange={e=>patchItem({notes:e.target.value},{debounce:true})}
+            placeholder="Any trims needed, access notes, or other comments for this item..."
+            style={{width:"100%",minHeight:90,fontSize:15,border:`1px solid ${C.border}`,borderRadius:6,padding:"8px 10px",color:C.text,outline:"none",background:C.white,resize:"vertical",boxSizing:"border-box"}}/>
+        </div>
       </div>
 
       {/* Nav */}
@@ -3922,6 +4075,18 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
           const updateTrim=(id,patch)=>setSettings(ss=>({...ss,trimCatalog:(ss.trimCatalog||DEFAULT_TRIM_CATALOG).map(t=>t.id===id?{...t,...patch}:t)}));
           const removeTrim=(id)=>setSettings(ss=>({...ss,trimCatalog:(ss.trimCatalog||DEFAULT_TRIM_CATALOG).filter(t=>t.id!==id)}));
           return (
+            <div style={{display:"flex",flexDirection:"column",gap:16}}>
+            <div style={{background:C.white,borderRadius:10,border:`1px solid ${C.border}`,padding:24}}>
+              <h3 style={{margin:"0 0 6px",fontSize:18,color:C.navy,fontWeight:800}}>🎤 Voice Input (beta)</h3>
+              <p style={{margin:"0 0 14px",fontSize:13,color:C.slate}}>Lets fitters tap a mic button to dictate notes and measurements on the digital survey form, instead of typing. New — if it's not working well for someone on site, turn it off here; the form works exactly as before with it off.</p>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <div onClick={()=>update("voiceInputEnabled",settings.voiceInputEnabled===false)}
+                  style={{width:42,height:23,borderRadius:12,background:settings.voiceInputEnabled!==false?C.mint:C.border,position:"relative",cursor:"pointer",flexShrink:0}}>
+                  <div style={{width:17,height:17,borderRadius:"50%",background:"#fff",position:"absolute",top:3,left:settings.voiceInputEnabled!==false?22:3,transition:"left 0.15s",boxShadow:"0 1px 3px rgba(0,0,0,0.3)"}}/>
+                </div>
+                <div style={{fontSize:13,fontWeight:600,color:C.text}}>{settings.voiceInputEnabled!==false?"Voice input is on":"Voice input is off — mic buttons hidden for all fitters"}</div>
+              </div>
+            </div>
             <div style={{background:C.white,borderRadius:10,border:`1px solid ${C.border}`,padding:24}}>
               <h3 style={{margin:"0 0 6px",fontSize:18,color:C.navy,fontWeight:800}}>📏 Trim Catalog</h3>
               <p style={{margin:"0 0 16px",fontSize:13,color:C.slate}}>Powers the trim width/type pickers fitters use on the digital survey form. Add suppliers' trims here — manually, or by uploading their price list as a spreadsheet below.</p>
@@ -3974,6 +4139,7 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
                   {saveStatus==="saving"?"Saving…":saveStatus==="error"?"⚠ Save failed":"✓ Saved"}
                 </div>
               </div>
+            </div>
             </div>
           );
         })()}
@@ -5357,7 +5523,7 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
         )}
         {/* Digital survey modal */}
         {showDigitalSurvey&&(
-          <DigitalSurveyModal job={job} catalog={settings?.trimCatalog||DEFAULT_TRIM_CATALOG}
+          <DigitalSurveyModal job={job} catalog={settings?.trimCatalog||DEFAULT_TRIM_CATALOG} voiceEnabled={settings?.voiceInputEnabled!==false}
             onUpdateJob={updated=>{updateJob(updated);setSelectedJob(updated);}}
             onUpdateJobDebounced={updateJobDebounced}
             onClose={()=>setShowDigitalSurvey(false)}/>
