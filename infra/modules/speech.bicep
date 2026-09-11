@@ -1,3 +1,8 @@
+// First deploy of this module failed with MissingSubscriptionRegistration — this
+// subscription had never used Microsoft.CognitiveServices before. One-time fix: Portal ->
+// Subscriptions -> [subscription] -> Settings -> Resource providers -> search
+// "Microsoft.CognitiveServices" -> Register (a subscription-level action the GitHub deploy
+// principal, scoped only to the resource group, can't do itself). Registered 2026-09-11.
 @description('Azure region for the Speech resource — must be a region that offers Speech-to-Text; centralus (matching everything else here) does.')
 param location string
 
