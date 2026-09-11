@@ -403,8 +403,32 @@ const uploadFile = async (file, container) => {
 // apiTranscribe is the ONLY thing that knows there's an /api/transcribe endpoint — swapping
 // speech-to-text providers later only ever means changing api/src/functions/transcribe.js,
 // nothing here.
-const apiTranscribe = (audioBase64, language) =>
-  apiRequest("/transcribe", { method: "POST", body: JSON.stringify({ audioBase64, language }) });
+//
+// Uses its own fetch (not the shared apiRequest) so it can carry a short, transcribe-only
+// timeout — fitters are often on weak on-site signal, and a live speech round-trip should
+// fail fast with a clear "check your signal" message rather than hang indefinitely. Other
+// API calls (customers/jobs/settings) deliberately keep no timeout — they can legitimately
+// take longer (e.g. the SQL database waking from an idle auto-pause), so a blanket timeout
+// there would risk false failures.
+const apiTranscribe = async (audioBase64, language) => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 20000);
+  try {
+    const headers = { "Content-Type": "application/json" };
+    if (_authToken) headers["Authorization"] = `Bearer ${_authToken}`;
+    const res = await fetch(`${API_BASE}/transcribe`, {
+      method: "POST", headers, signal: controller.signal,
+      body: JSON.stringify({ audioBase64, language }),
+    });
+    if (!res.ok) throw new Error(`Transcription failed: ${res.status}`);
+    return res.json();
+  } catch (err) {
+    if (err.name === "AbortError") throw new Error("SIGNAL_TIMEOUT");
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};
 
 // Records mic audio via MediaRecorder, then re-encodes it to 16kHz mono 16-bit PCM WAV
 // client-side (via the Web Audio API) before it ever reaches the network. This is
@@ -727,7 +751,9 @@ const VoiceMicButton = ({onResult,title,size=32,parse}) => {
             onResult(finalValue);
             setState("idle");
           } catch (e) {
-            setState("error"); setError(e.message||"Transcription failed — try again or type it in.");
+            setState("error");
+            const noSignal = e.message==="SIGNAL_TIMEOUT" || e.message==="Failed to fetch" || e instanceof TypeError;
+            setError(noSignal ? "Poor or no signal — try again, or just type it in." : (e.message||"Transcription failed — try again or type it in."));
           }
         },
       });
