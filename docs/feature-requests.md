@@ -8,6 +8,14 @@ A shared place for feature ideas, wherever they come from — the office, a fitt
 
 ## Requested
 
+### Auto-extract "Product Cost" from an uploaded supplier quote PDF — flagged, not started
+- Requested by: office — 2026-09-12, alongside the new supplier-quote upload slot (see below, that part is built) — "not something to look at now unless it's quick."
+- **Not quick, deliberately not attempted blind**: this is the same category of problem as the Delivery PDF digitisation idea already on this list — unlike WindowCAD7's own survey PDF (one fixed, known template, which is why that extraction was buildable), a "supplier quote PDF" could come from any of several different suppliers, each with their own layout, with no fixed template to write extraction rules against. Needs a real sample PDF (or several, if multiple suppliers are used) before any parsing code gets written — same lesson learned building the WindowCAD7 survey extraction, where a guessed-at fixture completely failed against the real file's actual layout.
+
+### Attach the supplier's own quote PDF (separate from the WindowCAD7 quote) — ✅ built 2026-09-12
+- Requested by: office — 2026-09-12.
+- A Customer's Quote tab now has two separate upload slots: the existing "Attach WindowCAD7 Quote (PDF)" (what we charge the customer) and a new "Attach Supplier Quote (PDF)" (what the supplier charges us) — kept as their own separate file list (`tabs.supplierQuote.files`) rather than mixed into the customer-facing document list.
+
 ### New "Outreach" section — customisable templates for prospecting & trade newsletters
 - Requested by: office — 2026-09-12, flagged ahead of time rather than asked to be built now — "this may need an independent design pass."
 - New top-level entry in the left sidebar nav (alongside Dashboard/Sales Pipeline/Installation Pipeline/etc.), separate from the existing Settings → Email Templates (which is transactional/automated — survey booked, install reminders, etc., one template per fixed trigger). This would instead be a library of **multiple, freely-named, customisable templates** for outbound campaigns the office chooses to send manually/on a schedule — prospecting to new leads and regular trade newsletters were the two examples given.

@@ -884,8 +884,11 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
   // before persisting, or every customer/job record would carry a full copy of Settings.
   const save=()=>{ const {_settings,...toSave}=data; onSave(toSave); onClose(); };
 
-  const addFile=(tabKey,file)=>setData(d=>({...d,tabs:{...d.tabs,[tabKey]:{...d.tabs[tabKey],files:[...d.tabs[tabKey].files,file]}}}));
-  const removeFile=(tabKey,i)=>setData(d=>({...d,tabs:{...d.tabs,[tabKey]:{...d.tabs[tabKey],files:d.tabs[tabKey].files.filter((_,idx)=>idx!==i)}}}));
+  // Defensive against a tab key that doesn't exist yet on an older record (e.g. supplierQuote,
+  // added after plenty of real records already existed) — falls back to an empty files list
+  // instead of crashing on d.tabs[tabKey] being undefined.
+  const addFile=(tabKey,file)=>setData(d=>({...d,tabs:{...d.tabs,[tabKey]:{...(d.tabs[tabKey]||{}),files:[...((d.tabs[tabKey]||{}).files||[]),file]}}}));
+  const removeFile=(tabKey,i)=>setData(d=>({...d,tabs:{...d.tabs,[tabKey]:{...(d.tabs[tabKey]||{}),files:((d.tabs[tabKey]||{}).files||[]).filter((_,idx)=>idx!==i)}}}));
   const addImage=(file)=>setData(d=>({...d,tabs:{...d.tabs,survey:{...d.tabs.survey,images:[...d.tabs.survey.images,file]}}}));
   const removeImage=(i)=>setData(d=>({...d,tabs:{...d.tabs,survey:{...d.tabs.survey,images:d.tabs.survey.images.filter((_,idx)=>idx!==i)}}}));
 
@@ -1273,6 +1276,14 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
           <div style={{background:C.slateLight,borderRadius:8,padding:14}}>
             <p style={{margin:"0 0 12px",fontSize:13,color:C.slate}}>Attach your WindowCAD7 quote PDF here once generated.</p>
             <FileAttach files={data.tabs.quote.files} onAdd={f=>addFile("quote",f)} onRemove={i=>removeFile("quote",i)} accept=".pdf,application/pdf" label="Attach WindowCAD7 Quote (PDF)"/>
+          </div>
+
+          {/* Supplier's own quote — what they charge us, as distinct from the WindowCAD7
+              quote above (what we charge the customer). Kept as its own tab/file list so it
+              doesn't get mixed in with the customer-facing document. */}
+          <div style={{background:C.slateLight,borderRadius:8,padding:14}}>
+            <p style={{margin:"0 0 12px",fontSize:13,color:C.slate}}>Attach the quote you received back from your supplier here.</p>
+            <FileAttach files={data.tabs.supplierQuote?.files||[]} onAdd={f=>addFile("supplierQuote",f)} onRemove={i=>removeFile("supplierQuote",i)} accept=".pdf,application/pdf" label="Attach Supplier Quote (PDF)"/>
           </div>
 
           {/* Quote Financials */}
