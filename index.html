@@ -2615,27 +2615,29 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
     }).catch(err=>window.alert("Failed to save job: "+err.message));
   };
 
+  // Matches InstallPipelinePage's own job card layout field-for-field (title, then Reference
+  // badge, then a customer-name+sector row, phone, quote/margin, products, date) — the office
+  // wants one consistent card format across both pipeline boards, not two different ones. A
+  // plain customer has no separate "title" (it IS the name), so the customer-name+sector row
+  // just becomes the sector badge on its own, and lead temperature/source — real Sales-only
+  // concepts with no Installation equivalent — are dropped from the card for that consistency
+  // (still fully editable inside the record itself, just not shown on the card face).
   const renderCard=(c)=>{
     const m=margin(c);
-    const temp=c.tabs?.quote?.leadTemp;
-    const tempMeta={cold:{icon:"🥶",label:"Cold",bg:"#EFF6FF",color:"#1D4ED8"},warm:{icon:"🌡️",label:"Warm",bg:"#FFFBEB",color:"#92400E"},hot:{icon:"🔥",label:"Hot",bg:"#FEF2F2",color:"#DC2626"}};
     return (
       <div key={c.id} onClick={()=>setDetailRecord(c)}
-        style={{background:C.white,border:`1px solid ${temp==="hot"?"#FECACA":temp==="warm"?"#FDE68A":C.border}`,borderRadius:8,padding:"11px 13px",marginBottom:7,cursor:"pointer",boxShadow:"0 1px 3px rgba(0,0,0,0.06)"}}
+        style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:8,padding:"11px 13px",marginBottom:7,cursor:"pointer",boxShadow:"0 1px 3px rgba(0,0,0,0.06)"}}
         onMouseEnter={e=>e.currentTarget.style.boxShadow="0 4px 12px rgba(0,0,0,0.1)"}
         onMouseLeave={e=>e.currentTarget.style.boxShadow="0 1px 3px rgba(0,0,0,0.06)"}
       >
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:3}}>
-          <div style={{fontWeight:700,fontSize:13,color:C.text}}>{c.name}</div>
-          {temp&&tempMeta[temp]&&(
-            <span style={{background:tempMeta[temp].bg,color:tempMeta[temp].color,fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:10,flexShrink:0,marginLeft:6}}>
-              {tempMeta[temp].icon} {tempMeta[temp].label}
-            </span>
-          )}
-        </div>
+        <div style={{fontWeight:700,fontSize:13,color:C.text,marginBottom:3,lineHeight:1.3}}>{c.name}</div>
         {c.windowcad&&<div style={{fontSize:11,color:C.navy,fontWeight:700,marginBottom:3,background:C.skyLight,display:"inline-block",padding:"1px 7px",borderRadius:6}}>📍 {c.windowcad}</div>}
-        <div style={{fontSize:12,color:C.slate,marginBottom:3,marginTop:c.windowcad?3:0}}>{c.phone}</div>
-        <div style={{fontSize:11,color:C.muted,marginBottom:totalQuoteValue(c)?7:0}}>{c.address}</div>
+        {c.sector&&SECTOR_META[c.sector]&&(
+          <div style={{marginBottom:3}}>
+            <span style={{fontSize:10,background:SECTOR_META[c.sector].bg,color:SECTOR_META[c.sector].text,padding:"2px 7px",borderRadius:10,fontWeight:700}}>{SECTOR_META[c.sector].icon} {c.sector}</span>
+          </div>
+        )}
+        {c.phone&&<div style={{fontSize:12,color:C.slate,marginBottom:3}}>{c.phone}</div>}
         {totalQuoteValue(c)>0&&(
           <div style={{display:"flex",gap:5,marginBottom:5}}>
             <div style={{background:C.skyLight,borderRadius:5,padding:"3px 7px",flex:1}}>
@@ -2648,28 +2650,21 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
             </div>}
           </div>
         )}
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
-            <span style={{fontSize:10,background:C.slateLight,color:C.slate,padding:"2px 7px",borderRadius:10,fontWeight:500}}>{c.source}</span>
-            {c.sector&&SECTOR_META[c.sector]&&(
-              <span style={{fontSize:10,background:SECTOR_META[c.sector].bg,color:SECTOR_META[c.sector].text,padding:"2px 7px",borderRadius:10,fontWeight:700}}>{SECTOR_META[c.sector].icon} {c.sector}</span>
-            )}
-          </div>
-          {c.tabs?.quote?.expectedSaleDate?(
-            <span style={{fontSize:10,color:C.sky,fontWeight:600}}>📅 {c.tabs.quote.expectedSaleDate}</span>
-          ):(
-            <span style={{fontSize:10,color:C.muted}}>{c.createdAt}</span>
-          )}
-        </div>
+        {c.productsOfInterest?.length>0&&<div style={{fontSize:11,color:C.muted,marginTop:3}}>{c.productsOfInterest.join(", ")}</div>}
+        {c.tabs?.quote?.expectedSaleDate?(
+          <div style={{fontSize:11,color:C.slate,marginTop:3}}>📅 {c.tabs.quote.expectedSaleDate}</div>
+        ):(
+          <div style={{fontSize:11,color:C.muted,marginTop:3}}>{c.createdAt}</div>
+        )}
       </div>
     );
   };
 
   // A repeat WindowCAD7 quote (its own distinct Reference, own Job record) shown on this
-  // board while it's still just quoted — not yet won. Same visual language as a lead card,
-  // plus a small "Job" tag and the Reference badge so it reads as "another quote for an
-  // existing customer", not a fresh enquiry. Opens the Job's own detail (reuses viewingJob,
-  // the same modal CardDetailModal already opens via onOpenJob elsewhere on this page).
+  // board while it's still just quoted — not yet won. Field-for-field identical to
+  // InstallPipelinePage's own job card (see comment on renderCard above) so a Job reads the
+  // same wherever it's currently shown. Opens the Job's own detail via the same viewingJob
+  // state/modal CardDetailModal already uses elsewhere on this page.
   const renderJobCard=(job)=>{
     const revenue=wonJobRevenue(job);
     const m=calcMargin(revenue,wonJobCost(job));
@@ -2677,15 +2672,18 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
     return (
       <div key={"job-"+job.id} onClick={()=>setViewingJob(job)}
         style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:8,padding:"11px 13px",marginBottom:7,cursor:"pointer",boxShadow:"0 1px 3px rgba(0,0,0,0.06)"}}
-        onMouseEnter={e=>e.currentTarget.style.boxShadow="0 4px 12px rgba(0,0,0,0.1)"}
+        onMouseEnter={e=>e.currentTarget.style.boxShadow="0 4px 10px rgba(0,0,0,0.1)"}
         onMouseLeave={e=>e.currentTarget.style.boxShadow="0 1px 3px rgba(0,0,0,0.06)"}
       >
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:3}}>
-          <div style={{fontWeight:700,fontSize:13,color:C.text}}>{customerName(job.customerId)}</div>
-          <span style={{background:"#EEF2FF",color:"#4338CA",fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:10,flexShrink:0,marginLeft:6}}>🔧 Job</span>
+        <div style={{fontWeight:700,fontSize:13,color:C.text,marginBottom:3,lineHeight:1.3}}>{(job.title||"").replace(/ — Installation$/,"")}</div>
+        {job.reference&&<div style={{fontSize:11,color:C.navy,fontWeight:700,marginBottom:3,background:C.skyLight,display:"inline-block",padding:"1px 7px",borderRadius:6}}>📍 {job.reference}</div>}
+        <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginBottom:3}}>
+          <div style={{fontSize:12,color:C.sky,fontWeight:600}}>{customerName(job.customerId)}</div>
+          {cust?.sector&&SECTOR_META[cust.sector]&&(
+            <span style={{fontSize:10,background:SECTOR_META[cust.sector].bg,color:SECTOR_META[cust.sector].text,padding:"2px 7px",borderRadius:10,fontWeight:700}}>{SECTOR_META[cust.sector].icon} {cust.sector}</span>
+          )}
         </div>
-        <div style={{fontSize:12,color:C.slate,marginBottom:3}}>{cust?.phone}</div>
-        <div style={{fontSize:11,color:C.muted,marginBottom:7}}>{job.reference||cust?.address}</div>
+        {cust?.phone&&<div style={{fontSize:12,color:C.slate,marginBottom:3}}>{cust.phone}</div>}
         {revenue>0&&(
           <div style={{display:"flex",gap:5,marginBottom:5}}>
             <div style={{background:C.skyLight,borderRadius:5,padding:"3px 7px",flex:1}}>
@@ -2698,15 +2696,8 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
             </div>}
           </div>
         )}
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
-            {cust?.source&&<span style={{fontSize:10,background:C.slateLight,color:C.slate,padding:"2px 7px",borderRadius:10,fontWeight:500}}>{cust.source}</span>}
-            {cust?.sector&&SECTOR_META[cust.sector]&&(
-              <span style={{fontSize:10,background:SECTOR_META[cust.sector].bg,color:SECTOR_META[cust.sector].text,padding:"2px 7px",borderRadius:10,fontWeight:700}}>{SECTOR_META[cust.sector].icon} {cust.sector}</span>
-            )}
-          </div>
-          <span style={{fontSize:10,color:C.muted}}>{job.createdAt}</span>
-        </div>
+        {job.products?.length>0&&<div style={{fontSize:11,color:C.muted,marginTop:3}}>{job.products.join(", ")}</div>}
+        {(job.tabs?.installation?.date||job.installDate)&&<div style={{fontSize:11,color:C.slate,marginTop:3}}>🔨 {job.tabs?.installation?.date||job.installDate}</div>}
       </div>
     );
   };
