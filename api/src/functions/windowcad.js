@@ -205,7 +205,11 @@ async function applyWindowcadProject(pool, project, context) {
   if (matched) {
     const newJob = {
       customerId: matched.id,
-      title: matched.name || f.name || f.reference,
+      // This project's own name first, not the customer's — this Job specifically
+      // represents *this* WindowCAD7 project (e.g. "...Option One"), which is usually a
+      // more distinctive name than whatever the customer record happens to be called,
+      // especially once several same-customer quotes each have their own Job.
+      title: f.name || matched.name || f.reference,
       status: 'Book Survey',
       reference: f.reference,
       windowcad: f.reference,
