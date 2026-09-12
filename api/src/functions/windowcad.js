@@ -22,6 +22,47 @@ function emptyTabs() {
 
 const norm = (s) => (s || '').trim().toLowerCase();
 
+// Mirrors LEAD_STAGES / INSTALL_STAGES in index.html — MUST be kept in sync if those change.
+// Combined in pipeline order so stage advancement below has one unambiguous ordering across
+// both the Sales and Installation pipelines.
+const LEAD_STAGES = ['Prospect List', 'New Enquiry', 'Contacted', 'Quoted', 'Followed Up', 'Deal Won', 'Deal Lost'];
+const INSTALL_STAGES = ['Book Survey', 'Survey Booked', 'Order Confirmation Sent', 'Order Confirmation Signed', 'Order Products', 'Book Installation', 'Send Product Balance', 'Install Started', 'Install Completed', 'Send Guarantees', 'Job Completed ✓'];
+const ALL_STAGES = [...LEAD_STAGES, ...INSTALL_STAGES];
+
+// Matches DEFAULT_WINDOWCAD_STATUS_MAPPING in index.html — used only if Settings has never
+// been saved (no row yet) or doesn't have a mapping saved.
+const DEFAULT_STATUS_MAPPING = [
+  { windowcadStatus: 'Enquiry', stage: 'New Enquiry' },
+  { windowcadStatus: 'Quotation Sent', stage: 'Quoted' },
+  { windowcadStatus: 'Awaiting deposit', stage: 'Order Confirmation Sent' },
+  { windowcadStatus: 'Requires surveying', stage: 'Book Survey' },
+  { windowcadStatus: 'Requires ordering', stage: 'Order Products' },
+  { windowcadStatus: 'Awaiting final payment', stage: 'Send Product Balance' },
+];
+
+// Looks up which CRM stage (Sales or Installation) a WindowCAD7 status maps to, per the
+// office's own Settings → WindowCAD7 → Status Mapping table.
+function resolveMappedStage(windowcadStatus, mapping) {
+  if (!windowcadStatus) return null;
+  const row = (mapping && mapping.length ? mapping : DEFAULT_STATUS_MAPPING).find(
+    (m) => norm(m.windowcadStatus) === norm(windowcadStatus)
+  );
+  return row ? row.stage : null;
+}
+
+// Never lets an automated WindowCAD7 sync move a record backward through the combined Sales
+// -> Installation pipeline order, or apply a stage it doesn't recognise. The office's own
+// manual progress always wins from wherever it's already got to — this only ever advances a
+// record, it never regresses or resets one, however far behind the WindowCAD7 status is.
+function maybeAdvanceStage(currentStage, mappedStage) {
+  if (!mappedStage) return currentStage;
+  const newRank = ALL_STAGES.indexOf(mappedStage);
+  if (newRank === -1) return currentStage;
+  const curRank = ALL_STAGES.indexOf(currentStage);
+  if (curRank === -1) return mappedStage; // current value isn't a recognised stage - just take the mapped one
+  return newRank > curRank ? mappedStage : currentStage;
+}
+
 // Pulls the fields we know how to use out of WindowCAD7's project JSON. Everything else in
 // the payload is ignored for now — infoProperties/bays carry a lot more (product specs,
 // frame details) that isn't mapped to a CRM field yet.
@@ -137,6 +178,10 @@ async function applyWindowcadProject(pool, project, context) {
   const jobRows = (await pool.request().query('SELECT * FROM dbo.Jobs WHERE TenantId = 1')).recordset;
   const jobs = jobRows.map(mapJobRow);
 
+  const settingsRow = (await pool.request().query('SELECT DataJson FROM dbo.Settings WHERE TenantId = 1')).recordset;
+  const settings = settingsRow.length ? JSON.parse(settingsRow[0].DataJson) : {};
+  const mappedStage = resolveMappedStage(f.windowcadStatus, settings.windowcadStatusMapping);
+
   // Staleness guard: skip applying if this project's own modifiedDate is not newer than the
   // last one we actually applied for it. Protects against any out-of-order or duplicate
   // webhook delivery — from WindowCAD7 retrying, our own re-processing of an old capture, or
@@ -164,6 +209,10 @@ async function applyWindowcadProject(pool, project, context) {
     if (f.installationValue) patch.installationValue = f.installationValue;
     if (f.windowcadStatus) patch.windowcadStatus = f.windowcadStatus;
     if (f.windowcadModifiedAt) patch.windowcadModifiedAt = f.windowcadModifiedAt;
+    // Auto-advances this Job onto (or further along) the mapped stage — Sales or
+    // Installation Pipeline, per Settings → WindowCAD7 → Status Mapping — but only ever
+    // forward; never regresses or resets stage progress the office has made by hand.
+    patch.status = maybeAdvanceStage(linkedJob.status, mappedStage);
     await updateJobRow(pool, linkedJob.id, patch);
     // Identity fields still belong on the linked customer, source-of-truth per the office.
     const cust = customers.find((c) => c.id === linkedJob.customerId);
@@ -192,6 +241,8 @@ async function applyWindowcadProject(pool, project, context) {
     if (f.installationValue) patch.installationValue = f.installationValue;
     if (f.windowcadStatus) patch.windowcadStatus = f.windowcadStatus;
     if (f.windowcadModifiedAt) patch.windowcadModifiedAt = f.windowcadModifiedAt;
+    // Same forward-only stage advancement as the linked-Job path above.
+    patch.stage = maybeAdvanceStage(linkedCustomer.stage, mappedStage);
     await updateCustomerRow(pool, linkedCustomer.id, patch);
     return { action: 'updated-customer', customerId: linkedCustomer.id };
   }
@@ -210,7 +261,7 @@ async function applyWindowcadProject(pool, project, context) {
       // more distinctive name than whatever the customer record happens to be called,
       // especially once several same-customer quotes each have their own Job.
       title: f.name || matched.name || f.reference,
-      status: 'Book Survey',
+      status: mappedStage || 'Book Survey',
       reference: f.reference,
       windowcad: f.reference,
       windowcadProjectId: f.windowcadProjectId,
@@ -231,7 +282,7 @@ async function applyWindowcadProject(pool, project, context) {
     phone: f.phone,
     address: f.address,
     source: 'WindowCAD7',
-    stage: f.quoteValue ? 'Quoted' : 'New Enquiry',
+    stage: mappedStage || (f.quoteValue ? 'Quoted' : 'New Enquiry'),
     windowcad: f.reference,
     windowcadProjectId: f.windowcadProjectId,
     quoteValue: f.quoteValue,

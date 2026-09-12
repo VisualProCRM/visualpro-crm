@@ -47,6 +47,22 @@ const C = {
 const LEAD_STAGES   = ["Prospect List","New Enquiry","Contacted","Quoted","Followed Up","Deal Won","Deal Lost"];
 const INSTALL_STAGES= ["Book Survey","Survey Booked","Order Confirmation Sent","Order Confirmation Signed","Order Products","Book Installation","Send Product Balance","Install Started","Install Completed","Send Guarantees","Job Completed ✓"];
 const COMPLETED_STAGE = "Job Completed ✓";
+// Sales + Installation stages in one combined pipeline order — used wherever a WindowCAD7
+// status needs to be compared against "how far along is this already" (see the API's own
+// mirrored copy in api/src/functions/windowcad.js, which must be kept in sync).
+const ALL_PIPELINE_STAGES = [...LEAD_STAGES, ...INSTALL_STAGES];
+// Settings → WindowCAD7 → Status Mapping default seed — editable by the office (see
+// SettingsPage), tells the sync which CRM stage a given WindowCAD7 status should place a
+// new/updated Customer or Job at. A brand-new tenant with no saved mapping yet falls back to
+// this list, same pattern as DEFAULT_TRIM_CATALOG.
+const DEFAULT_WINDOWCAD_STATUS_MAPPING = [
+  { windowcadStatus: "Enquiry", stage: "New Enquiry" },
+  { windowcadStatus: "Quotation Sent", stage: "Quoted" },
+  { windowcadStatus: "Awaiting deposit", stage: "Order Confirmation Sent" },
+  { windowcadStatus: "Requires surveying", stage: "Book Survey" },
+  { windowcadStatus: "Requires ordering", stage: "Order Products" },
+  { windowcadStatus: "Awaiting final payment", stage: "Send Product Balance" },
+];
 const SOURCES       = ["Website","Referral","Checkatrade","Google Ads","Facebook","Flyer","WindowCAD7","Other"];
 const SECTORS       = ["Retail","Trade","Commercial"];
 const SECTOR_META = {
@@ -2509,6 +2525,18 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
     return customers.filter(c=>!q||c.name.toLowerCase().includes(q)||c.phone.includes(q)||c.address.toLowerCase().includes(q));
   },[customers,search]);
 
+  const customerName=id=>customers.find(c=>c.id===id)?.name||"Unknown";
+  // Jobs currently sitting at a Sales Pipeline stage (e.g. "Quoted") rather than an
+  // Installation one — a repeat WindowCAD7 quote that hasn't been won yet. Shown alongside
+  // Customer leads on this board so a second/third quote for an existing customer (its own
+  // distinct WindowCAD7 Reference) stays fully visible with its own figure, instead of being
+  // merged into — or silently replacing — the customer's own quote. Once its status maps to
+  // an Installation stage it moves over to the Installation Pipeline board instead.
+  const filteredLeadJobs=useMemo(()=>{
+    const q=search.toLowerCase();
+    return jobs.filter(j=>LEAD_STAGES.includes(j.status)&&(!q||(j.title||"").toLowerCase().includes(q)||customerName(j.customerId).toLowerCase().includes(q)));
+  },[jobs,customers,search]);
+
   const margin=c=>calcMargin(totalQuoteValue(c),totalQuoteCost(c));
 
   // Takes the customer record AFTER it's been saved (so it has its real, server-assigned
@@ -2636,6 +2664,43 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
     );
   };
 
+  // A repeat WindowCAD7 quote (its own distinct Reference, own Job record) shown on this
+  // board while it's still just quoted — not yet won. Same visual language as a lead card,
+  // plus a small "Job" tag and the Reference badge so it reads as "another quote for an
+  // existing customer", not a fresh enquiry. Opens the Job's own detail (reuses viewingJob,
+  // the same modal CardDetailModal already opens via onOpenJob elsewhere on this page).
+  const renderJobCard=(job)=>{
+    const revenue=wonJobRevenue(job);
+    const m=calcMargin(revenue,wonJobCost(job));
+    const cust=customers.find(c=>c.id===job.customerId);
+    return (
+      <div key={"job-"+job.id} onClick={()=>setViewingJob(job)}
+        style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:8,padding:"11px 13px",marginBottom:7,cursor:"pointer",boxShadow:"0 1px 3px rgba(0,0,0,0.06)"}}
+        onMouseEnter={e=>e.currentTarget.style.boxShadow="0 4px 12px rgba(0,0,0,0.1)"}
+        onMouseLeave={e=>e.currentTarget.style.boxShadow="0 1px 3px rgba(0,0,0,0.06)"}
+      >
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:3}}>
+          <div style={{fontWeight:700,fontSize:13,color:C.text}}>{customerName(job.customerId)}</div>
+          <span style={{background:"#EEF2FF",color:"#4338CA",fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:10,flexShrink:0,marginLeft:6}}>🔧 Job</span>
+        </div>
+        {job.reference&&<div style={{fontSize:11,color:C.navy,fontWeight:700,marginBottom:3,background:C.skyLight,display:"inline-block",padding:"1px 7px",borderRadius:6}}>📍 {job.reference}</div>}
+        {cust?.phone&&<div style={{fontSize:12,color:C.slate,marginBottom:3,marginTop:job.reference?3:0}}>{cust.phone}</div>}
+        {revenue>0&&(
+          <div style={{display:"flex",gap:5,marginBottom:5,marginTop:5}}>
+            <div style={{background:C.skyLight,borderRadius:5,padding:"3px 7px",flex:1}}>
+              <div style={{fontSize:10,color:C.slate}}>Quote</div>
+              <div style={{fontSize:12,fontWeight:800,color:C.navy}}>£{revenue.toLocaleString()}</div>
+            </div>
+            {m&&<div style={{background:m.profit>=0?"#F0FDF4":"#FEF2F2",borderRadius:5,padding:"3px 7px",flex:1}}>
+              <div style={{fontSize:10,color:C.slate}}>Margin</div>
+              <div style={{fontSize:12,fontWeight:800,color:m.profit>=0?C.mint:C.red}}>{m.pct}%</div>
+            </div>}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
       <div style={{display:"flex",gap:10,marginBottom:16,alignItems:"center"}}>
@@ -2645,9 +2710,14 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
       </div>
       <div style={{display:"flex",gap:10,overflowX:"auto",flex:1,paddingBottom:8,alignItems:"flex-start"}}>
         {LEAD_STAGES.map(stage=>{
-          const stageItems=filtered.filter(c=>c.stage===stage);
-          const stageRevenue=stageItems.reduce((sum,c)=>sum+totalQuoteValue(c),0);
-          const marginsWithData=stageItems.map(c=>calcMargin(totalQuoteValue(c),totalQuoteCost(c))).filter(Boolean);
+          const stageCustomers=filtered.filter(c=>c.stage===stage);
+          const stageJobs=filteredLeadJobs.filter(j=>j.status===stage);
+          const stageItems=[...stageCustomers,...stageJobs];
+          const stageRevenue=stageCustomers.reduce((sum,c)=>sum+totalQuoteValue(c),0)+stageJobs.reduce((sum,j)=>sum+wonJobRevenue(j),0);
+          const marginsWithData=[
+            ...stageCustomers.map(c=>calcMargin(totalQuoteValue(c),totalQuoteCost(c))),
+            ...stageJobs.map(j=>calcMargin(wonJobRevenue(j),wonJobCost(j))),
+          ].filter(Boolean);
           const avgMargin=marginsWithData.length>0
             ?(marginsWithData.reduce((sum,m)=>sum+parseFloat(m.pct),0)/marginsWithData.length).toFixed(1)
             :null;
@@ -2657,7 +2727,7 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
               revenue={stageRevenue}
               avgMargin={avgMargin}
               onAdd={s=>{setDefaultStage(s);setModal("add");}}
-              renderCard={renderCard}
+              renderCard={item=>item.customerId!==undefined?renderJobCard(item):renderCard(item)}
             />
           );
         })}
@@ -2688,8 +2758,10 @@ const InstallPipelinePage = ({jobs,setJobs,customers,settings}) => {
 
   const customerName=id=>customers.find(c=>c.id===id)?.name||"Unknown";
 
-  // Active jobs — exclude completed
-  const activeJobs=useMemo(()=>jobs.filter(j=>j.status!==COMPLETED_STAGE),[jobs]);
+  // Active jobs — exclude completed, and exclude anything currently sitting at a Sales
+  // Pipeline stage (e.g. "Quoted") rather than an Installation one. A repeat WindowCAD7 quote
+  // that hasn't been won yet shows on the Sales Pipeline board instead — see SalesPipelinePage.
+  const activeJobs=useMemo(()=>jobs.filter(j=>j.status!==COMPLETED_STAGE&&!LEAD_STAGES.includes(j.status)),[jobs]);
   // Completed / archived jobs
   const completedJobs=useMemo(()=>jobs.filter(j=>j.status===COMPLETED_STAGE),[jobs]);
 
@@ -4433,8 +4505,47 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
         )}
 
         {/* ── WINDOWCAD7 ── */}
-        {activeSection==="windowcad"&&(
+        {activeSection==="windowcad"&&(()=>{
+          const mapping=settings.windowcadStatusMapping||DEFAULT_WINDOWCAD_STATUS_MAPPING;
+          const updateMappingRow=(i,patch)=>setSettings(ss=>({...ss,windowcadStatusMapping:(ss.windowcadStatusMapping||DEFAULT_WINDOWCAD_STATUS_MAPPING).map((m,mi)=>mi===i?{...m,...patch}:m)}));
+          const removeMappingRow=(i)=>setSettings(ss=>({...ss,windowcadStatusMapping:(ss.windowcadStatusMapping||DEFAULT_WINDOWCAD_STATUS_MAPPING).filter((_,mi)=>mi!==i)}));
+          const addMappingRow=()=>setSettings(ss=>({...ss,windowcadStatusMapping:[...(ss.windowcadStatusMapping||DEFAULT_WINDOWCAD_STATUS_MAPPING),{windowcadStatus:"",stage:"New Enquiry"}]}));
+          return (
           <div style={{display:"flex",flexDirection:"column",gap:16}}>
+            <div style={{background:C.white,borderRadius:10,border:`1px solid ${C.border}`,padding:24}}>
+              <h3 style={{margin:"0 0 6px",fontSize:18,color:C.navy,fontWeight:800}}>🔀 WindowCAD7 Status Mapping</h3>
+              <p style={{margin:"0 0 16px",fontSize:13,color:C.slate}}>Tells the CRM which pipeline stage each WindowCAD7 status should place a customer or job at. A record only ever moves <strong>forward</strong> through the combined Sales → Installation pipeline as WindowCAD7 statuses change — once the office has manually progressed something further, a sync can never pull it back, only ever advance it. Enter the exact status text as WindowCAD7 shows it (case doesn't matter).</p>
+              <div style={{display:"grid",gridTemplateColumns:"1.2fr 1.4fr auto",gap:8,rowGap:10}}>
+                <div style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.05em"}}>WindowCAD7 Status</div>
+                <div style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.05em"}}>CRM Stage</div>
+                <div/>
+                {mapping.map((m,i)=>(
+                  <React.Fragment key={i}>
+                    <input value={m.windowcadStatus} onChange={e=>updateMappingRow(i,{windowcadStatus:e.target.value})} placeholder="e.g. Quotation Sent"
+                      style={{minWidth:0,width:"100%",boxSizing:"border-box",border:`1px solid ${C.border}`,borderRadius:6,padding:"7px 10px",fontSize:13,outline:"none"}}/>
+                    <select value={m.stage} onChange={e=>updateMappingRow(i,{stage:e.target.value})}
+                      style={{minWidth:0,width:"100%",boxSizing:"border-box",border:`1px solid ${C.border}`,borderRadius:6,padding:"7px 10px",fontSize:13,outline:"none",background:C.white}}>
+                      <optgroup label="Sales Pipeline">
+                        {LEAD_STAGES.map(s=><option key={s} value={s}>{s}</option>)}
+                      </optgroup>
+                      <optgroup label="Installation Pipeline">
+                        {INSTALL_STAGES.map(s=><option key={s} value={s}>{s}</option>)}
+                      </optgroup>
+                    </select>
+                    <button onClick={()=>removeMappingRow(i)} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:6,padding:"6px 10px",cursor:"pointer",color:C.red,fontSize:12,whiteSpace:"nowrap"}}>Remove</button>
+                  </React.Fragment>
+                ))}
+              </div>
+              <button onClick={addMappingRow}
+                style={{marginTop:12,border:`1px dashed ${C.border}`,borderRadius:8,padding:"10px 16px",background:"transparent",color:C.sky,fontSize:14,fontWeight:600,cursor:"pointer",width:"100%"}}>
+                + Add Status Mapping
+              </button>
+              <div style={{marginTop:16,paddingTop:16,borderTop:`1px solid ${C.border}`,display:"flex",justifyContent:"flex-end"}}>
+                <div style={{background:saveStatus==="saving"?C.slateLight:saveStatus==="error"?"#FEF2F2":"#F0FDF4",color:saveStatus==="saving"?C.slate:saveStatus==="error"?C.red:C.mint,fontSize:12,fontWeight:700,padding:"7px 14px",borderRadius:8,border:`1px solid ${saveStatus==="saving"?C.border:saveStatus==="error"?"#FECACA":"#86EFAC"}`,whiteSpace:"nowrap"}}>
+                  {saveStatus==="saving"?"Saving…":saveStatus==="error"?"⚠ Save failed":"✓ Saved"}
+                </div>
+              </div>
+            </div>
             <div style={{background:C.white,borderRadius:10,border:`1px solid ${C.border}`,padding:24}}>
               <h3 style={{margin:"0 0 6px",fontSize:18,color:C.navy,fontWeight:800}}>🪟 WindowCAD7 Integration</h3>
               <p style={{margin:"0 0 20px",fontSize:13,color:C.slate}}>WindowCAD7 has its own CRM webhook (in WindowCAD7: Settings → CRM → API url) that posts a project's JSON to a URL you give it, whenever a chosen event fires. No formal docs exist for the payload shape yet, so this page just captures whatever comes through so we can see it and decide what to build against it.</p>
@@ -4471,7 +4582,8 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
               ))}
             </div>
           </div>
-        )}
+          );
+        })()}
 
         {/* ── WEBSITE ENQUIRY FORM ── */}
         {activeSection==="enquiryform"&&(
