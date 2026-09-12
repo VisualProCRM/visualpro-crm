@@ -250,6 +250,29 @@ A shared place for feature ideas, wherever they come from — the office, a fitt
 - Requested by: office (fitter feedback) — 2026-08-19
 - Survey, Installation, and the Fitter Photos upload buttons in the fitter mobile app all had `capture="environment"` set, which forces the phone's camera straight open instead of offering the native "Take Photo / Photo Library / Choose File" picker. Removed on all three so fitters can upload photos taken earlier instead of only being able to shoot one in the moment.
 
+### Dashboard accuracy pass — ✅ fixed 2026-09-12 (redesign still outstanding)
+- Raised by: office — 2026-09-12, "I think [the dashboard] needs re-doing" → then "before we re-design it, is it worth us making sure the data is accurate first?"
+- The office was right to fix the data first. Three separate accuracy bugs found and fixed, all verified against live API data before and after:
+  - **"Deals Won" showed jobs that were never won.** Root cause: `windowcad.js` stamped `wonAt: new Date().toISOString()` on *every* webhook-created job, unconditionally — and the Deals Won report filters purely on `wonAt`. Fixed so `wonAt` is only stamped when the mapped stage is actually an Installation stage (`isWonStage`). Data cleanup done the same day: cleared bogus `wonAt` on 8 jobs, backfilled 2 genuinely-won ones from `createdAt`, deleted 2 test jobs + their empty customers, re-staged 3 jobs back to "New Enquiry".
+  - **"Active Jobs" formula was backwards** — `j.status!=="Send Guarantees"`, which excluded one arbitrary mid-pipeline stage while counting completed jobs *and* sales-stage jobs as active.
+  - **Every sales-side figure was blind to Jobs.** Since WindowCAD7 quotes now create Jobs that land at Sales Pipeline stages, the dashboard's customer-only counts missed them entirely (8 jobs, ~£55k invisible). Quote Pipeline, Active Leads, Active Prospects, Deals Won and the Sales Pipeline bar chart now all count customers + Jobs sitting at `LEAD_STAGES`, via a shared `salesRecords` list.
+- **Invariant worth preserving**: the dashboard's Active Jobs count now equals the Installation Pipeline board's card count exactly, and the bar chart's denominator equals the Sales Pipeline board's card count exactly. If a future change breaks that equality, the dashboard has drifted from the boards again.
+- **Open question for the office**: Quote Pipeline was changed to count **open records only** — it previously summed every customer including Deal Won and Deal Lost, which made it meaningless as a "pipeline" figure. This is a definition change, not just a bug fix; confirm it's the wanted reading, or won/lost go back in.
+
+### Dashboard redesign — ⏸️ blocked on one question
+- Requested by: office — 2026-09-12
+- The accuracy pass above is done, so a redesign can now start from numbers that can be trusted. Proposed direction: reshape around "what needs my attention today, and how's the business doing?" — a short actionable block at the top, a tighter performance section below — rather than the current nine roughly equal-weight sections.
+- **Blocked on**: *who actually opens this dashboard, and what are they trying to find out when they do?* A morning "what needs chasing today" screen and a monthly performance-review screen are near-opposite designs, and the current one is attempting both. Don't start the redesign without this answered.
+
+### Deals Won: select rows in the results table — ❓ needs clarifying
+- Raised by: office — 2026-09-12, "can we make the lists in this view selectable (like they are in excel) so we can exclude certain entries or select multiple records at a time"
+- Built the direct reading: the Sector/Customer/Job **filter dropdowns** are now Excel-style tick-lists (`MultiSelectFilter` in `index.html`) with search, (Select All), and a Clear filters link.
+- The wording could also have meant ticking **individual rows in the results table** to total just those — an ad-hoc "what do these five jobs come to?" selection, independent of the filters. Not built; confirm which was meant before doing it.
+
+### Pipeline period filter: won date vs install date — ❓ needs a decision
+- Raised by: 2026-09-12, while adding Month/Quarter/YTD/All Time + Sold By filters to both pipeline boards
+- Both boards filter on `wonAt || createdAt`. On the Installation Pipeline that means "Month" currently shows 0 jobs — correct by the rule, but probably not what the office expects from an installation board, where **install date** is the more natural period axis. Flagged to the office, not yet answered.
+
 ---
 
 ## Resolved / not needed
