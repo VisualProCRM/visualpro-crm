@@ -54,6 +54,12 @@ function resolveMappedStage(windowcadStatus, mapping) {
 // -> Installation pipeline order, or apply a stage it doesn't recognise. The office's own
 // manual progress always wins from wherever it's already got to — this only ever advances a
 // record, it never regresses or resets one, however far behind the WindowCAD7 status is.
+// "Won" means the work is actually committed — i.e. the record has reached the Installation
+// Pipeline. A job still sitting at a Sales stage ("Quoted", "New Enquiry") has NOT been won,
+// however much has been quoted for it. This is what wonAt (and therefore the whole Deals Won
+// report) should key off — see the note on wonAt below.
+const isWonStage = (stage) => !!stage && INSTALL_STAGES.includes(stage);
+
 function maybeAdvanceStage(currentStage, mappedStage) {
   if (!mappedStage) return currentStage;
   const newRank = ALL_STAGES.indexOf(mappedStage);
@@ -213,6 +219,9 @@ async function applyWindowcadProject(pool, project, context) {
     // Installation Pipeline, per Settings → WindowCAD7 → Status Mapping — but only ever
     // forward; never regresses or resets stage progress the office has made by hand.
     patch.status = maybeAdvanceStage(linkedJob.status, mappedStage);
+    // The moment it actually crosses into the Installation Pipeline, it's genuinely won —
+    // stamp the won date then (and only then, and only once).
+    if (!patch.wonAt && isWonStage(patch.status)) patch.wonAt = new Date().toISOString();
     await updateJobRow(pool, linkedJob.id, patch);
     // Identity fields still belong on the linked customer, source-of-truth per the office.
     const cust = customers.find((c) => c.id === linkedJob.customerId);
@@ -269,7 +278,13 @@ async function applyWindowcadProject(pool, project, context) {
       installationValue: f.installationValue,
       windowcadStatus: f.windowcadStatus,
       windowcadModifiedAt: f.windowcadModifiedAt,
-      wonAt: new Date().toISOString(),
+      // Only stamp wonAt if this quote genuinely arrives already won (its mapped stage is an
+      // Installation one). This used to be stamped unconditionally on every job the webhook
+      // created, which silently reported every incoming quote — won or not — as won revenue
+      // in the dashboard's Deals Won report (found and cleaned up 2026-09-12). A quote that
+      // isn't won yet gets its wonAt later, the moment it actually advances into the
+      // Installation Pipeline (see the linked-job update path above).
+      ...(isWonStage(mappedStage) ? { wonAt: new Date().toISOString() } : {}),
       tabs: emptyTabs(),
     };
     const created = await insertJobRow(pool, newJob);

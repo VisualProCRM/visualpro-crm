@@ -336,9 +336,20 @@ const apiCreateCustomer = (data) => apiRequest("/customers", { method: "POST", b
 const apiUpdateCustomer = (data) => apiRequest(`/customers/${data.id}`, { method: "PUT", body: JSON.stringify(data) });
 const apiDeleteCustomer = (id) => apiRequest(`/customers/${id}`, { method: "DELETE" });
 
+// A job sitting at an Installation stage has, by definition, been won — that's the point at
+// which the work is committed rather than just quoted. wonAt is what the dashboard's Deals
+// Won report keys off, so this keeps that invariant true no matter which route the job took
+// to get there (office dragging it across the pipeline, editing it in the modal, etc.)
+// without every one of those save paths needing to remember. Never clears an existing date,
+// so a genuine won date set earlier always wins. The WindowCAD7 webhook sets its own wonAt at
+// the exact moment of conversion (see api/src/functions/windowcad.js); this is the fallback
+// for everything the office does by hand.
+const stampWonAt = (job) =>
+  (!job.wonAt && INSTALL_STAGES.includes(job.status)) ? { ...job, wonAt: new Date().toISOString() } : job;
+
 const apiListJobs = () => apiRequest("/jobs");
-const apiCreateJob = (data) => apiRequest("/jobs", { method: "POST", body: JSON.stringify(data) });
-const apiUpdateJob = (data) => apiRequest(`/jobs/${data.id}`, { method: "PUT", body: JSON.stringify(data) });
+const apiCreateJob = (data) => apiRequest("/jobs", { method: "POST", body: JSON.stringify(stampWonAt(data)) });
+const apiUpdateJob = (data) => apiRequest(`/jobs/${data.id}`, { method: "PUT", body: JSON.stringify(stampWonAt(data)) });
 const apiDeleteJob = (id) => apiRequest(`/jobs/${id}`, { method: "DELETE" });
 
 const apiGetSettings = () => apiRequest("/settings");
