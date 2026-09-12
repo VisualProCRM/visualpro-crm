@@ -2429,6 +2429,47 @@ const JobForm = ({initial={},customers,onSave,onCancel}) => {
 };
 
 // ── Kanban Column (shared) ────────────────────────────────────────────────────
+// ── Pipeline board filters ────────────────────────────────────────────────────
+// Period + Sold By, shared by both the Sales and Installation Pipeline boards, matching the
+// Dashboard's own Deals Won filter styling. Exists mainly because the Deal Won column keeps
+// every deal ever won, so the board grows forever without a way to narrow it to a period.
+const PIPELINE_PERIODS = [["month","Month"],["quarter","Quarter"],["ytd","YTD"],["all","All Time"]];
+
+const pipelinePeriodStart = (period) => {
+  const now=new Date();
+  if(period==="month")   return new Date(now.getFullYear(),now.getMonth(),1).toISOString();
+  if(period==="quarter") return new Date(now.getFullYear(),Math.floor(now.getMonth()/3)*3,1).toISOString();
+  if(period==="ytd")     return new Date(now.getFullYear(),0,1).toISOString();
+  return null; // "all" — no lower bound
+};
+
+// Which date a record gets filtered on: when it was actually won if it has been, otherwise
+// when it came in. So Deal Won / Installation columns narrow by when the deal actually
+// closed, while anything still in play narrows by when the enquiry arrived — rather than
+// one date meaning two different things depending on the column you're looking at.
+const pipelineRecordDate = (r) => r.wonAt||r.createdAt||"";
+
+const matchesPipelineFilters = (record, period, soldBy, soldByOf) => {
+  const start=pipelinePeriodStart(period);
+  if(start && !(pipelineRecordDate(record)>=start)) return false;
+  if(soldBy!=="all" && (soldByOf?soldByOf(record):(record.soldBy||""))!==soldBy) return false;
+  return true;
+};
+
+const PipelineFilters = ({period,setPeriod,soldBy,setSoldBy,staff}) => (
+  <div style={{marginLeft:"auto",display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+    {PIPELINE_PERIODS.map(([val,label])=>(
+      <button key={val} onClick={()=>setPeriod(val)}
+        style={{padding:"5px 12px",borderRadius:20,fontSize:12,fontWeight:600,cursor:"pointer",border:"none",background:period===val?C.sky:C.slateLight,color:period===val?"#fff":C.slate}}>{label}</button>
+    ))}
+    <select value={soldBy} onChange={e=>setSoldBy(e.target.value)}
+      style={{border:`1px solid ${C.border}`,borderRadius:6,padding:"6px 10px",fontSize:12,outline:"none",color:C.text,background:C.white}}>
+      <option value="all">All Sold By</option>
+      {staff.map(s=><option key={s} value={s}>{s}</option>)}
+    </select>
+  </div>
+);
+
 const KanbanCol = ({stage,meta,items,onAdd,renderCard,revenue,avgMargin}) => (
   <div style={{flex:"0 0 200px",display:"flex",flexDirection:"column"}}>
     <div style={{background:meta.bg,borderRadius:"8px 8px 0 0",padding:"10px 12px",borderBottom:`3px solid ${meta.text}`}}>
@@ -2543,10 +2584,17 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
     }
   });
 
+  const [period,setPeriod]=useState("all");
+  const [soldByFilter,setSoldByFilter]=useState("all");
+  // A Job carries its own soldBy when it came from a Deal Won conversion, but one created by
+  // the WindowCAD7 webhook won't — fall back to whoever is against the customer.
+  const jobSoldBy=j=>j.soldBy||customers.find(c=>c.id===j.customerId)?.soldBy||"";
+
   const filtered=useMemo(()=>{
     const q=search.toLowerCase();
-    return customers.filter(c=>!q||c.name.toLowerCase().includes(q)||c.phone.includes(q)||c.address.toLowerCase().includes(q));
-  },[customers,search]);
+    return customers.filter(c=>(!q||c.name.toLowerCase().includes(q)||c.phone.includes(q)||c.address.toLowerCase().includes(q))
+      &&matchesPipelineFilters(c,period,soldByFilter));
+  },[customers,search,period,soldByFilter]);
 
   const customerName=id=>customers.find(c=>c.id===id)?.name||"Unknown";
   // Jobs currently sitting at a Sales Pipeline stage (e.g. "Quoted") rather than an
@@ -2557,8 +2605,10 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
   // an Installation stage it moves over to the Installation Pipeline board instead.
   const filteredLeadJobs=useMemo(()=>{
     const q=search.toLowerCase();
-    return jobs.filter(j=>LEAD_STAGES.includes(j.status)&&(!q||(j.title||"").toLowerCase().includes(q)||customerName(j.customerId).toLowerCase().includes(q)));
-  },[jobs,customers,search]);
+    return jobs.filter(j=>LEAD_STAGES.includes(j.status)
+      &&(!q||(j.title||"").toLowerCase().includes(q)||customerName(j.customerId).toLowerCase().includes(q))
+      &&matchesPipelineFilters(j,period,soldByFilter,jobSoldBy));
+  },[jobs,customers,search,period,soldByFilter]);
 
   const margin=c=>calcMargin(totalQuoteValue(c),totalQuoteCost(c));
 
@@ -2731,6 +2781,7 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
         <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search pipeline…" style={{flex:1,maxWidth:300,border:`1px solid ${C.border}`,borderRadius:6,padding:"8px 12px",fontSize:14,outline:"none"}}/>
         <Btn variant="secondary" onClick={()=>setModal("addJob")}>+ Job for Existing Customer</Btn>
         <Btn onClick={()=>setModal("add")}>+ New Enquiry</Btn>
+        <PipelineFilters period={period} setPeriod={setPeriod} soldBy={soldByFilter} setSoldBy={setSoldByFilter} staff={settings?.staff||DEFAULT_STAFF}/>
       </div>
       <div style={{display:"flex",gap:10,overflowX:"auto",flex:1,paddingBottom:8,alignItems:"flex-start"}}>
         {LEAD_STAGES.map(stage=>{
@@ -2789,10 +2840,16 @@ const InstallPipelinePage = ({jobs,setJobs,customers,settings}) => {
   // Completed / archived jobs
   const completedJobs=useMemo(()=>jobs.filter(j=>j.status===COMPLETED_STAGE),[jobs]);
 
+  const [period,setPeriod]=useState("all");
+  const [soldByFilter,setSoldByFilter]=useState("all");
+  // Same fallback as the Sales board — a webhook-created Job has no soldBy of its own.
+  const jobSoldBy=j=>j.soldBy||customers.find(c=>c.id===j.customerId)?.soldBy||"";
+
   const filtered=useMemo(()=>{
     const q=search.toLowerCase();
-    return activeJobs.filter(j=>!q||j.title.toLowerCase().includes(q)||customerName(j.customerId).toLowerCase().includes(q));
-  },[activeJobs,search]);
+    return activeJobs.filter(j=>(!q||j.title.toLowerCase().includes(q)||customerName(j.customerId).toLowerCase().includes(q))
+      &&matchesPipelineFilters(j,period,soldByFilter,jobSoldBy));
+  },[activeJobs,customers,search,period,soldByFilter]);
 
   const filteredArchive=useMemo(()=>{
     const q=archiveSearch.toLowerCase();
@@ -2907,6 +2964,7 @@ const InstallPipelinePage = ({jobs,setJobs,customers,settings}) => {
           ✅ Completed Jobs {completedJobs.length>0&&<span style={{background:"#14532D",color:"#fff",borderRadius:10,padding:"1px 7px",fontSize:11}}>{completedJobs.length}</span>}
         </button>
         <Btn onClick={()=>setModal("add")}>+ Add Job</Btn>
+        <PipelineFilters period={period} setPeriod={setPeriod} soldBy={soldByFilter} setSoldBy={setSoldByFilter} staff={settings?.staff||DEFAULT_STAFF}/>
       </div>
       <div style={{display:"flex",gap:10,overflowX:"auto",flex:1,paddingBottom:8,alignItems:"flex-start"}}>
         {INSTALL_STAGES.filter(s=>s!==COMPLETED_STAGE).map(stage=>(
