@@ -4723,14 +4723,21 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
 const Dashboard = ({customers,jobs}) => {
   const today=new Date().toISOString().slice(0,10);
 
+  // Everything sitting on the Sales Pipeline board: customers plus any Job parked at a sales stage.
+  const salesRecords=useMemo(()=>[
+    ...customers,
+    ...jobs.filter(j=>LEAD_STAGES.includes(j.status)).map(j=>({...j,stage:j.status})),
+  ],[customers,jobs]);
+  const openSales=useMemo(()=>salesRecords.filter(r=>!["Deal Won","Deal Lost"].includes(r.stage)),[salesRecords]);
+
   const stats=useMemo(()=>({
     total:customers.length,
-    prospects:customers.filter(c=>c.stage==="Prospect List").length,
-    leads:customers.filter(c=>["New Enquiry","Contacted"].includes(c.stage)).length,
-    won:customers.filter(c=>c.stage==="Deal Won").length,
-    activeJobs:jobs.filter(j=>j.status!=="Send Guarantees").length,
-    pipeline:customers.reduce((s,c)=>s+totalQuoteValue(c),0),
-  }),[customers,jobs]);
+    prospects:salesRecords.filter(r=>r.stage==="Prospect List").length,
+    leads:salesRecords.filter(r=>["New Enquiry","Contacted"].includes(r.stage)).length,
+    won:salesRecords.filter(r=>r.stage==="Deal Won").length,
+    activeJobs:jobs.filter(j=>j.status!==COMPLETED_STAGE&&!LEAD_STAGES.includes(j.status)).length,
+    pipeline:openSales.reduce((s,r)=>s+totalQuoteValue(r),0),
+  }),[customers,jobs,salesRecords,openSales]);
 
   const recent=[...customers].sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)).slice(0,5);
   const activeProspects=customers.filter(c=>c.stage==="Prospect List").sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
@@ -4903,7 +4910,7 @@ const Dashboard = ({customers,jobs}) => {
       )}
 
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:14,marginBottom:28}}>
-        {[["Total Customers",stats.total,C.navy],["Active Prospects",stats.prospects,C.slate],["Active Leads",stats.leads,C.amber],["Deals Won",stats.won,C.mint],["Active Jobs",stats.activeJobs,C.sky],["Quote Pipeline",`£${stats.pipeline.toLocaleString()}`,C.mint]].map(([label,value,color])=>(
+        {[["Total Customers",stats.total,C.navy],["Active Prospects",stats.prospects,C.slate],["Active Leads",stats.leads,C.amber],["Deals Won",stats.won,C.mint],["Active Jobs",stats.activeJobs,C.sky],["Quote Pipeline",`£${Math.round(stats.pipeline).toLocaleString()}`,C.mint]].map(([label,value,color])=>(
           <div key={label} style={{background:C.white,borderRadius:10,padding:"18px 20px",border:`1px solid ${C.border}`,boxShadow:"0 1px 4px rgba(0,0,0,0.05)"}}>
             <div style={{fontSize:28,fontWeight:800,color}}>{value}</div>
             <div style={{fontSize:13,color:C.slate,marginTop:4}}>{label}</div>
@@ -4914,12 +4921,12 @@ const Dashboard = ({customers,jobs}) => {
         <h3 style={{margin:"0 0 16px",fontSize:15,color:C.navy,fontWeight:700}}>Sales Pipeline</h3>
         <div style={{display:"flex",gap:4}}>
           {LEAD_STAGES.map(stage=>{
-            const count=customers.filter(c=>c.stage===stage).length;
+            const count=salesRecords.filter(r=>r.stage===stage).length;
             const meta=STAGE_META[stage];
             return (
               <div key={stage} style={{flex:1,textAlign:"center"}}>
                 <div style={{height:8,background:meta.bg,borderRadius:4,marginBottom:6,border:`1px solid ${meta.text}30`}}>
-                  <div style={{height:"100%",width:customers.length?`${count/customers.length*100}%`:"0%",background:meta.text,borderRadius:4}}/>
+                  <div style={{height:"100%",width:salesRecords.length?`${count/salesRecords.length*100}%`:"0%",background:meta.text,borderRadius:4}}/>
                 </div>
                 <div style={{fontSize:18,fontWeight:800,color:meta.text}}>{count}</div>
                 <div style={{fontSize:10,color:C.slate}}>{stage}</div>
