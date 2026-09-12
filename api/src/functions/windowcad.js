@@ -33,6 +33,12 @@ function extractProjectFields(project) {
 
   return {
     reference: (info['Reference'] || '').trim(),
+    // WindowCAD7's own permanent internal project id (project.id, e.g.
+    // "6a8c6abe96162744e228d91e") — unlike Reference, this never changes even if the
+    // office later renames the Reference field. Used as the primary match key (see
+    // applyWindowcadProject); Reference stays a fallback for records linked before this
+    // existed, and as the human-readable label shown in the CRM.
+    windowcadProjectId: (project.id || '').trim(),
     name: (info['Name'] || '').trim(),
     email: (info['Email'] || '').trim(),
     phone: (info['Phone'] || '').trim(),
@@ -105,14 +111,23 @@ async function insertJobRow(pool, data) {
 }
 
 // Applies one WindowCAD7 project event to the CRM. Matching order:
-//   1. Already linked (windowcad field matches this Reference exactly) -> update in place.
-//   2. Existing customer found by email, then phone -> create a new Job under them (repeat/
+//   1. Already linked by WindowCAD7's own permanent project id -> update in place. This is
+//      the robust path: it survives the office renaming a project's Reference later, and it
+//      correctly tells apart two different real projects that happen to share one Reference
+//      (e.g. "Option A"/"Option B" quotes for the same address) rather than colliding them
+//      into a single record.
+//   2. Not found by id, but linked by Reference text on a record that has never been touched
+//      under the id-based system (windowcadProjectId not yet stored) -> update in place, and
+//      stamp its id now so every record self-upgrades onto path 1 the moment it's next
+//      touched. This is a one-time fallback purely for records linked before this existed —
+//      never used again for that record afterwards.
+//   3. Existing customer found by email, then phone -> create a new Job under them (repeat/
 //      concurrent business - the CRM already supports multiple Jobs per Customer for this).
-//   3. No match at all -> brand new Sales Pipeline lead.
+//   4. No match at all -> brand new Sales Pipeline lead.
 // Identity fields (name/email/phone/address) only ever apply to a Customer record - a Job
 // has no fields of its own for these, it reads them from its linked Customer. Deal-specific
-// fields (quoteValue/installationValue/windowcadStatus/windowcad reference) apply to
-// whichever record actually represents this specific WindowCAD7 project.
+// fields (quoteValue/installationValue/windowcadStatus/windowcad reference/project id) apply
+// to whichever record actually represents this specific WindowCAD7 project.
 async function applyWindowcadProject(pool, project, context) {
   const f = extractProjectFields(project);
   if (!f.reference) return { action: 'skipped', reason: 'no Reference on project' };
@@ -130,10 +145,17 @@ async function applyWindowcadProject(pool, project, context) {
   const isStale = (record) =>
     f.windowcadModifiedAt && record.windowcadModifiedAt && f.windowcadModifiedAt <= record.windowcadModifiedAt;
 
-  const linkedJob = jobs.find((j) => j.windowcad && norm(j.windowcad) === norm(f.reference));
+  const byProjectId = (r) => f.windowcadProjectId && r.windowcadProjectId && r.windowcadProjectId === f.windowcadProjectId;
+  // Deliberately excludes any record that already has its OWN windowcadProjectId stored —
+  // once a record is known to be a specific distinct project, a mere shared Reference string
+  // must never fold a different project into it.
+  const byLegacyReference = (r) => !r.windowcadProjectId && r.windowcad && norm(r.windowcad) === norm(f.reference);
+
+  const linkedJob = jobs.find(byProjectId) || jobs.find(byLegacyReference);
   if (linkedJob) {
     if (isStale(linkedJob)) return { action: 'skipped-stale', jobId: linkedJob.id };
     const patch = { ...linkedJob };
+    if (f.windowcadProjectId) patch.windowcadProjectId = f.windowcadProjectId;
     if (f.quoteValue) patch.quoteValue = f.quoteValue;
     if (f.installationValue) patch.installationValue = f.installationValue;
     if (f.windowcadStatus) patch.windowcadStatus = f.windowcadStatus;
@@ -152,10 +174,11 @@ async function applyWindowcadProject(pool, project, context) {
     return { action: 'updated-job', jobId: linkedJob.id };
   }
 
-  const linkedCustomer = customers.find((c) => c.windowcad && norm(c.windowcad) === norm(f.reference));
+  const linkedCustomer = customers.find(byProjectId) || customers.find(byLegacyReference);
   if (linkedCustomer) {
     if (isStale(linkedCustomer)) return { action: 'skipped-stale', customerId: linkedCustomer.id };
     const patch = { ...linkedCustomer };
+    if (f.windowcadProjectId) patch.windowcadProjectId = f.windowcadProjectId;
     if (f.name) patch.name = f.name;
     if (f.email) patch.email = f.email;
     if (f.phone) patch.phone = f.phone;
@@ -181,6 +204,7 @@ async function applyWindowcadProject(pool, project, context) {
       status: 'Book Survey',
       reference: f.reference,
       windowcad: f.reference,
+      windowcadProjectId: f.windowcadProjectId,
       quoteValue: f.quoteValue,
       installationValue: f.installationValue,
       windowcadStatus: f.windowcadStatus,
@@ -200,6 +224,7 @@ async function applyWindowcadProject(pool, project, context) {
     source: 'WindowCAD7',
     stage: f.quoteValue ? 'Quoted' : 'New Enquiry',
     windowcad: f.reference,
+    windowcadProjectId: f.windowcadProjectId,
     quoteValue: f.quoteValue,
     installationValue: f.installationValue,
     windowcadStatus: f.windowcadStatus,
