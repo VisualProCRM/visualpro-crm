@@ -8,6 +8,11 @@ A shared place for feature ideas, wherever they come from — the office, a fitt
 
 ## Requested
 
+### WindowCAD7 sync: flag "needs review" when a new Job is created under an ambiguous match
+- Requested by: office — 2026-09-12, after finding two real cases (AJ Sellwood, Whitman Building Services) where a WindowCAD7 update matched an existing customer by email but landed as a brand-new Job instead of updating the *correct* already-existing one — because matching by email alone can't tell two of a repeat customer's projects apart, or tell a genuinely new project from a pre-existing one that just never had a WindowCAD link yet.
+- Proposed: when `applyWindowcadProject` falls back to "matched by email/phone → create new Job" (i.e. no exact project-id or Reference match), and that customer already has ≥1 other Job, flag the newly-created Job as needing review rather than silently trusting it. Surface a "⚠ N updates may need review" alert on Settings → WindowCAD7 (where captured events already live), listing each flagged case with the customer, the new Job, and a quick way to either confirm it's genuinely separate or merge it into an existing Job/customer.
+- Not yet built/scoped in detail — needs a design pass on exactly what the merge UI looks like.
+
 ### App favicon — ✅ built 2026-09-10
 - Requested by: office — 2026-09-10
 - The app had no favicon (browser default globe in the tab). Added the dark GlazeStream "G" app icon (`assets/app-icon.png`) as both the browser-tab favicon and the iOS "add to home screen" icon.
