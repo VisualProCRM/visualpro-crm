@@ -2683,10 +2683,10 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
           <div style={{fontWeight:700,fontSize:13,color:C.text}}>{customerName(job.customerId)}</div>
           <span style={{background:"#EEF2FF",color:"#4338CA",fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:10,flexShrink:0,marginLeft:6}}>🔧 Job</span>
         </div>
-        {job.reference&&<div style={{fontSize:11,color:C.navy,fontWeight:700,marginBottom:3,background:C.skyLight,display:"inline-block",padding:"1px 7px",borderRadius:6}}>📍 {job.reference}</div>}
-        {cust?.phone&&<div style={{fontSize:12,color:C.slate,marginBottom:3,marginTop:job.reference?3:0}}>{cust.phone}</div>}
+        <div style={{fontSize:12,color:C.slate,marginBottom:3}}>{cust?.phone}</div>
+        <div style={{fontSize:11,color:C.muted,marginBottom:7}}>{job.reference||cust?.address}</div>
         {revenue>0&&(
-          <div style={{display:"flex",gap:5,marginBottom:5,marginTop:5}}>
+          <div style={{display:"flex",gap:5,marginBottom:5}}>
             <div style={{background:C.skyLight,borderRadius:5,padding:"3px 7px",flex:1}}>
               <div style={{fontSize:10,color:C.slate}}>Quote</div>
               <div style={{fontSize:12,fontWeight:800,color:C.navy}}>£{revenue.toLocaleString()}</div>
@@ -2697,6 +2697,15 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
             </div>}
           </div>
         )}
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+            {cust?.source&&<span style={{fontSize:10,background:C.slateLight,color:C.slate,padding:"2px 7px",borderRadius:10,fontWeight:500}}>{cust.source}</span>}
+            {cust?.sector&&SECTOR_META[cust.sector]&&(
+              <span style={{fontSize:10,background:SECTOR_META[cust.sector].bg,color:SECTOR_META[cust.sector].text,padding:"2px 7px",borderRadius:10,fontWeight:700}}>{SECTOR_META[cust.sector].icon} {cust.sector}</span>
+            )}
+          </div>
+          <span style={{fontSize:10,color:C.muted}}>{job.createdAt}</span>
+        </div>
       </div>
     );
   };
