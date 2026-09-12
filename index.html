@@ -2633,7 +2633,8 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
             </span>
           )}
         </div>
-        <div style={{fontSize:12,color:C.slate,marginBottom:3}}>{c.phone}</div>
+        {c.windowcad&&<div style={{fontSize:11,color:C.navy,fontWeight:700,marginBottom:3,background:C.skyLight,display:"inline-block",padding:"1px 7px",borderRadius:6}}>📍 {c.windowcad}</div>}
+        <div style={{fontSize:12,color:C.slate,marginBottom:3,marginTop:c.windowcad?3:0}}>{c.phone}</div>
         <div style={{fontSize:11,color:C.muted,marginBottom:totalQuoteValue(c)?7:0}}>{c.address}</div>
         {totalQuoteValue(c)>0&&(
           <div style={{display:"flex",gap:5,marginBottom:5}}>
