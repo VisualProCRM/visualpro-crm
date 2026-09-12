@@ -156,6 +156,10 @@ async function applyWindowcadProject(pool, project, context) {
     if (isStale(linkedJob)) return { action: 'skipped-stale', jobId: linkedJob.id };
     const patch = { ...linkedJob };
     if (f.windowcadProjectId) patch.windowcadProjectId = f.windowcadProjectId;
+    // Keep the displayed Reference label current too — matching by id means a rename in
+    // WindowCAD7 no longer breaks the link, but the office should still see the *current*
+    // Reference, not whatever it was called when first linked.
+    if (f.reference) patch.windowcad = f.reference;
     if (f.quoteValue) patch.quoteValue = f.quoteValue;
     if (f.installationValue) patch.installationValue = f.installationValue;
     if (f.windowcadStatus) patch.windowcadStatus = f.windowcadStatus;
@@ -179,6 +183,7 @@ async function applyWindowcadProject(pool, project, context) {
     if (isStale(linkedCustomer)) return { action: 'skipped-stale', customerId: linkedCustomer.id };
     const patch = { ...linkedCustomer };
     if (f.windowcadProjectId) patch.windowcadProjectId = f.windowcadProjectId;
+    if (f.reference) patch.windowcad = f.reference;
     if (f.name) patch.name = f.name;
     if (f.email) patch.email = f.email;
     if (f.phone) patch.phone = f.phone;
