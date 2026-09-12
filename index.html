@@ -1272,18 +1272,19 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
             </div>
           </div>
 
-          {/* WindowCAD quote attachment */}
-          <div style={{background:C.slateLight,borderRadius:8,padding:14}}>
-            <p style={{margin:"0 0 12px",fontSize:13,color:C.slate}}>Attach your WindowCAD7 quote PDF here once generated.</p>
-            <FileAttach files={data.tabs.quote.files} onAdd={f=>addFile("quote",f)} onRemove={i=>removeFile("quote",i)} accept=".pdf,application/pdf" label="Attach WindowCAD7 Quote (PDF)"/>
-          </div>
-
-          {/* Supplier's own quote — what they charge us, as distinct from the WindowCAD7
-              quote above (what we charge the customer). Kept as its own tab/file list so it
-              doesn't get mixed in with the customer-facing document. */}
-          <div style={{background:C.slateLight,borderRadius:8,padding:14}}>
-            <p style={{margin:"0 0 12px",fontSize:13,color:C.slate}}>Attach the quote you received back from your supplier here.</p>
-            <FileAttach files={data.tabs.supplierQuote?.files||[]} onAdd={f=>addFile("supplierQuote",f)} onRemove={i=>removeFile("supplierQuote",i)} accept=".pdf,application/pdf" label="Attach Supplier Quote (PDF)"/>
+          {/* WindowCAD quote attachment + the supplier's own quote (what they charge us, as
+              distinct from the WindowCAD7 quote which is what we charge the customer) side by
+              side — two separate file lists (tabs.quote vs tabs.supplierQuote), just shown as
+              a matching pair rather than stacked. */}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+            <div style={{background:C.slateLight,borderRadius:8,padding:14}}>
+              <p style={{margin:"0 0 12px",fontSize:13,color:C.slate}}>Attach your WindowCAD7 quote PDF here once generated.</p>
+              <FileAttach files={data.tabs.quote.files} onAdd={f=>addFile("quote",f)} onRemove={i=>removeFile("quote",i)} accept=".pdf,application/pdf" label="Attach WindowCAD7 Quote (PDF)"/>
+            </div>
+            <div style={{background:C.slateLight,borderRadius:8,padding:14}}>
+              <p style={{margin:"0 0 12px",fontSize:13,color:C.slate}}>Attach the quote you received back from your supplier here.</p>
+              <FileAttach files={data.tabs.supplierQuote?.files||[]} onAdd={f=>addFile("supplierQuote",f)} onRemove={i=>removeFile("supplierQuote",i)} accept=".pdf,application/pdf" label="Attach Supplier Quote (PDF)"/>
+            </div>
           </div>
 
           {/* Quote Financials */}
