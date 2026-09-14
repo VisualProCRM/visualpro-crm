@@ -188,13 +188,22 @@ async function applyWindowcadProject(pool, project, context) {
   const settings = settingsRow.length ? JSON.parse(settingsRow[0].DataJson) : {};
   const mappedStage = resolveMappedStage(f.windowcadStatus, settings.windowcadStatusMapping);
 
-  // Staleness guard: skip applying if this project's own modifiedDate is not newer than the
-  // last one we actually applied for it. Protects against any out-of-order or duplicate
-  // webhook delivery — from WindowCAD7 retrying, our own re-processing of an old capture, or
-  // anything else — ever overwriting newer data with older data. A record with no stored
+  // Staleness guard: skip applying only if this project's own modifiedDate is STRICTLY OLDER
+  // than the last one we actually applied for it. Protects against out-of-order or duplicate
+  // webhook delivery overwriting newer data with older data. A record with no stored
   // windowcadModifiedAt yet (never linked before) always applies.
+  //
+  // Deliberately `<` and not `<=`: WindowCAD7 does NOT reliably bump modifiedDate when a
+  // project's status or price changes — confirmed 2026-09-14 across the captured event log,
+  // where 6 of 14 multi-event projects sent real status/price changes under a modifiedDate
+  // frozen at creation time (e.g. Knights Property Services: four events, one modifiedDate,
+  // Enquiry/£0 → Quotation Sent/£58.20). Under `<=` every one of those genuine updates was
+  // rejected as stale and the office saw a permanently blank quote. An equal modifiedDate
+  // therefore means "WindowCAD7 didn't bump it", not "nothing changed" — and the event that
+  // arrived later is the better truth. A true duplicate redelivery just re-applies identical
+  // values, which is harmless; genuinely older replays are still rejected.
   const isStale = (record) =>
-    f.windowcadModifiedAt && record.windowcadModifiedAt && f.windowcadModifiedAt <= record.windowcadModifiedAt;
+    f.windowcadModifiedAt && record.windowcadModifiedAt && f.windowcadModifiedAt < record.windowcadModifiedAt;
 
   const byProjectId = (r) => f.windowcadProjectId && r.windowcadProjectId && r.windowcadProjectId === f.windowcadProjectId;
   // Deliberately excludes any record that already has its OWN windowcadProjectId stored —
