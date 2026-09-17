@@ -2489,12 +2489,16 @@ const PipelineFilters = ({period,setPeriod,soldBy,setSoldBy,staff}) => (
   </div>
 );
 
-const KanbanCol = ({stage,meta,items,onAdd,renderCard,revenue,avgMargin}) => (
+// `countOverride` lets a column report a count that isn't simply "how many cards am I holding"
+// — the Deal Won column reports deals won in the period while deliberately holding none, since
+// a won deal lives on in the Installation Pipeline rather than sitting here. `emptyNote`
+// replaces the bare "Empty" so that reads as intentional rather than broken.
+const KanbanCol = ({stage,meta,items,onAdd,renderCard,revenue,avgMargin,countOverride,emptyNote}) => (
   <div style={{flex:"0 0 200px",display:"flex",flexDirection:"column"}}>
     <div style={{background:meta.bg,borderRadius:"8px 8px 0 0",padding:"10px 12px",borderBottom:`3px solid ${meta.text}`}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:revenue!=null?6:0}}>
         <span style={{fontWeight:700,fontSize:12,color:meta.text,lineHeight:1.3}}>{stage}</span>
-        <span style={{background:meta.text,color:"#fff",borderRadius:12,padding:"1px 7px",fontSize:11,fontWeight:700,flexShrink:0,marginLeft:4}}>{items.length}</span>
+        <span style={{background:meta.text,color:"#fff",borderRadius:12,padding:"1px 7px",fontSize:11,fontWeight:700,flexShrink:0,marginLeft:4}}>{countOverride!=null?countOverride:items.length}</span>
       </div>
       {revenue!=null&&(
         <div style={{borderTop:`1px solid ${meta.text}25`,paddingTop:6,marginTop:2,display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
@@ -2515,7 +2519,7 @@ const KanbanCol = ({stage,meta,items,onAdd,renderCard,revenue,avgMargin}) => (
     </div>
     <div style={{flex:1,overflowY:"auto",background:"#F8FAFC",padding:"8px 6px",borderLeft:`1px solid ${C.border}`,borderRight:`1px solid ${C.border}`,minHeight:80}}>
       {items.map(item=>renderCard(item))}
-      {items.length===0&&<div style={{textAlign:"center",padding:"16px 6px",color:C.muted,fontSize:11}}>Empty</div>}
+      {items.length===0&&<div style={{textAlign:"center",padding:"16px 6px",color:C.muted,fontSize:11,lineHeight:1.5}}>{emptyNote||"Empty"}</div>}
     </div>
     <div style={{background:"#F8FAFC",borderRadius:"0 0 8px 8px",padding:6,border:`1px solid ${C.border}`,borderTop:"none"}}>
       <button onClick={()=>onAdd(stage)} style={{width:"100%",padding:5,border:`1px dashed ${C.border}`,borderRadius:5,background:"transparent",color:C.muted,fontSize:12,cursor:"pointer"}}>+ Add</button>
@@ -2631,40 +2635,88 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
 
   const margin=c=>calcMargin(totalQuoteValue(c),totalQuoteCost(c));
 
+  // Deals actually won within the board's current period/Sold By filter. Drives the Deal Won
+  // column's summary. Every won opportunity counts here wherever it has since travelled to in
+  // the Installation Pipeline — winning is a point in time, not a place.
+  const wonOpportunitiesInPeriod=useMemo(()=>{
+    const start=pipelinePeriodStart(period);
+    return jobs.filter(j=>j.wonAt
+      &&(!start||j.wonAt>=start)
+      &&(soldByFilter==="all"||jobSoldBy(j)===soldByFilter));
+  },[jobs,customers,period,soldByFilter]);
+
   // Takes the customer record AFTER it's been saved (so it has its real, server-assigned
   // id) — the installation job's customerId always correctly points at the right customer.
+  // Winning a deal PROMOTES the customer's sales data into an opportunity, then clears it from
+  // the customer — it no longer leaves a second, diverging copy behind. Phase 2 of the
+  // Customer/Opportunity model: a customer is a contact, an opportunity is the work.
+  //
+  // This path only exists while sales-stage *customers* still exist. Once the migration
+  // promotes the remaining ones, every sales record is already an opportunity and winning is
+  // purely a stage change (see handleJobSave below) — this function then goes away entirely.
   const handleDealWon=(savedCustomer)=>{
-    // Carries the customer's whole tabs + quote financials across into the new job —
-    // previously this started completely blank, so office staff would enter survey/quote/
-    // notes info onto the job post-conversion while the original customer record silently
-    // kept its own separate (now stale) copy, causing exactly the "wrote it here, why isn't
-    // it showing there" confusion. leadTemp/expectedSaleDate are Sales-Pipeline-only
-    // concepts (nothing reads them off a Job) so those two are dropped, not carried over.
-    // The customer's own tabs are deliberately left untouched afterward — once linked jobs
-    // exist, its card shows a Jobs list instead (see CardDetailModal), so that old copy is
-    // never seen or edited again; no need for a second write to reset it.
     const newJob={
       customerId:savedCustomer.id,
       title:savedCustomer.name,
+      // The site inherits the customer's address at promotion time; from here on the two are
+      // independent, so a later second job for the same customer can sit at a different site.
+      siteAddress:savedCustomer.address||"",
       products:savedCustomer.productsOfInterest||[],
       status:"Book Survey",
       surveyDate:"",installDate:"",installers:"",
+      // The WindowCAD7 linkage moves with the work, not the contact. The receiver matches
+      // jobs before customers, so handing these over keeps the project pointed at the
+      // opportunity — clearing them from the customer without this would orphan the link and
+      // the next webhook would create a duplicate.
       windowcad:savedCustomer.windowcad||"",
+      windowcadProjectId:savedCustomer.windowcadProjectId||"",
+      windowcadStatus:savedCustomer.windowcadStatus||"",
+      windowcadModifiedAt:savedCustomer.windowcadModifiedAt||"",
       value:totalQuoteValue(savedCustomer)||"",
       quoteValue:savedCustomer.quoteValue||"",
       quoteCost:savedCustomer.quoteCost||"",
       installationValue:savedCustomer.installationValue||"",
       installationCost:savedCustomer.installationCost||"",
-      notes:`Auto-created from Sales Pipeline deal won on ${new Date().toLocaleDateString("en-GB")}`,
+      notes:savedCustomer.notes||"",
       soldBy:savedCustomer.soldBy||"",
       wonAt:new Date().toISOString(),
+      // leadTemp/expectedSaleDate are Sales-Pipeline-only concepts — nothing reads them off an
+      // opportunity once it's won, so they're dropped rather than carried.
       tabs:{...savedCustomer.tabs,quote:{...savedCustomer.tabs.quote,leadTemp:"",expectedSaleDate:""}},
     };
     apiCreateJob(newJob).then(saved=>{
       setJobs(js=>[saved,...js]);
       setWonCustomer(savedCustomer.name);
       setShowConfetti(true);
+      // Strip the promoted data from the contact record. Stage stays "Deal Won" — it's true,
+      // and the Deal Won column shows no cards, so it doesn't clutter the board; the migration
+      // clears stages wholesale. What matters is that the *financials* and the WindowCAD7 link
+      // now live in exactly one place.
+      const cleared={...savedCustomer,quoteValue:"",quoteCost:"",installationValue:"",installationCost:"",
+        windowcad:"",windowcadProjectId:"",windowcadStatus:"",windowcadModifiedAt:"",tabs:emptyTabs()};
+      apiUpdateCustomer(cleared)
+        .then(c=>setCustomers(cs=>cs.map(x=>x.id===c.id?c:x)))
+        // A failure here is untidy, not harmful — the opportunity already owns the data, and
+        // the receiver matches jobs first, so the link stays correct either way.
+        .catch(err=>console.warn("Promoted the deal but could not tidy the customer record:",err));
     }).catch(err=>window.alert("Failed to create the installation job: "+err.message));
+  };
+
+  // An opportunity already on this board (a Job at a sales stage) that reaches "Deal Won"
+  // continues its journey rather than stopping: it re-stages to the first Installation stage
+  // and picks up its won date. Nothing is created and nothing is copied — the same record
+  // simply appears on the other board. Without this it would sit stuck in a Deal Won column
+  // that shows no cards, and effectively vanish.
+  const handleJobSave=(updated)=>{
+    let next=updated;
+    if(updated.status==="Deal Won"){
+      next={...updated,status:INSTALL_STAGES[0],wonAt:updated.wonAt||new Date().toISOString()};
+    }
+    return apiUpdateJob(next).then(saved=>{
+      setJobs(js=>js.map(j=>j.id===saved.id?saved:j));
+      if(next!==updated){ setWonCustomer(customerName(saved.customerId)||saved.title); setShowConfetti(true); }
+      return saved;
+    }).catch(err=>window.alert("Failed to save job: "+err.message));
   };
 
   const saveCustomer=(updated)=>{
@@ -2804,6 +2856,25 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
       </div>
       <div style={{display:"flex",gap:10,overflowX:"auto",flex:1,paddingBottom:8,alignItems:"flex-start"}}>
         {LEAD_STAGES.map(stage=>{
+          // "Deal Won" is a reporting column, not a holding pen. A won deal continues into the
+          // Installation Pipeline, so this column carries no cards — just the summary for
+          // whatever period the board is filtered to, which is what the office actually wants
+          // to see here. Measured from won opportunities (wonAt), the same source the
+          // dashboard uses, so the two can't disagree.
+          if(stage==="Deal Won"){
+            const won=wonOpportunitiesInPeriod;
+            const revenue=won.reduce((sum,j)=>sum+wonJobRevenue(j),0);
+            const ms=won.map(j=>calcMargin(wonJobRevenue(j),wonJobCost(j))).filter(Boolean);
+            return (
+              <KanbanCol key={stage} stage={stage} meta={STAGE_META[stage]}
+                items={[]} countOverride={won.length}
+                revenue={revenue}
+                avgMargin={ms.length?(ms.reduce((s,m)=>s+parseFloat(m.pct),0)/ms.length).toFixed(1):null}
+                emptyNote="Won deals continue in the Installation Pipeline"
+                renderCard={()=>null}
+              />
+            );
+          }
           const stageCustomers=filtered.filter(c=>c.stage===stage);
           const stageJobs=filteredLeadJobs.filter(j=>j.status===stage);
           const stageItems=[...stageCustomers,...stageJobs];
@@ -2833,7 +2904,7 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
         onSave={handleCardSave}
         onDelete={deleteCustomer} onClose={()=>{setDetailRecord(null);setPendingTab(null);}} onOpenJob={setViewingJob}/>}
       {viewingJob&&<CardDetailModal record={jobs.find(j=>j.id===viewingJob.id)||viewingJob} customers={customers} jobs={jobs} isJob={true} settings={settings}
-        onSave={updated=>apiUpdateJob(updated).then(saved=>setJobs(js=>js.map(j=>j.id===saved.id?saved:j))).catch(err=>window.alert("Failed to save job: "+err.message))}
+        onSave={handleJobSave}
         onDelete={id=>{if(!window.confirm("Delete this job?"))return;apiDeleteJob(id).then(()=>{setJobs(js=>js.filter(j=>j.id!==id));setViewingJob(null);}).catch(err=>window.alert("Failed to delete job: "+err.message));}}
         onClose={()=>setViewingJob(null)}/>}
       {showConfetti&&<Confetti onDone={()=>setShowConfetti(false)}/>}
@@ -4814,7 +4885,11 @@ const Dashboard = ({customers,jobs}) => {
     total:customers.length,
     prospects:salesRecords.filter(r=>r.stage==="Prospect List").length,
     leads:salesRecords.filter(r=>["New Enquiry","Contacted"].includes(r.stage)).length,
-    won:salesRecords.filter(r=>r.stage==="Deal Won").length,
+    // Won deals are counted from opportunities that carry a won date, not from customers
+    // parked at a "Deal Won" stage — a won deal moves on into the Installation Pipeline, and
+    // the stage it left behind is just a label the migration will clear. This is the same
+    // source the Sales Pipeline's own Deal Won column uses, so the two always agree.
+    won:jobs.filter(j=>j.wonAt).length,
     activeJobs:jobs.filter(j=>j.status!==COMPLETED_STAGE&&!LEAD_STAGES.includes(j.status)).length,
     pipeline:openSales.reduce((s,r)=>s+totalQuoteValue(r),0),
   }),[customers,jobs,salesRecords,openSales]);
@@ -5006,12 +5081,15 @@ const Dashboard = ({customers,jobs}) => {
         <h3 style={{margin:"0 0 16px",fontSize:15,color:C.navy,fontWeight:700}}>Sales Pipeline</h3>
         <div style={{display:"flex",gap:4}}>
           {LEAD_STAGES.map(stage=>{
-            const count=salesRecords.filter(r=>r.stage===stage).length;
+            // "Deal Won" counts won opportunities, matching the tile above and the Sales
+            // Pipeline board; every other stage counts what is actually sitting there.
+            const count=stage==="Deal Won"?stats.won:salesRecords.filter(r=>r.stage===stage).length;
+            const total=LEAD_STAGES.reduce((s,st)=>s+(st==="Deal Won"?stats.won:salesRecords.filter(r=>r.stage===st).length),0);
             const meta=STAGE_META[stage];
             return (
               <div key={stage} style={{flex:1,textAlign:"center"}}>
                 <div style={{height:8,background:meta.bg,borderRadius:4,marginBottom:6,border:`1px solid ${meta.text}30`}}>
-                  <div style={{height:"100%",width:salesRecords.length?`${count/salesRecords.length*100}%`:"0%",background:meta.text,borderRadius:4}}/>
+                  <div style={{height:"100%",width:total?`${count/total*100}%`:"0%",background:meta.text,borderRadius:4}}/>
                 </div>
                 <div style={{fontSize:18,fontWeight:800,color:meta.text}}>{count}</div>
                 <div style={{fontSize:10,color:C.slate}}>{stage}</div>
