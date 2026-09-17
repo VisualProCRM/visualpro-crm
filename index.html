@@ -2393,7 +2393,12 @@ const JobForm = ({initial={},customers,onSave,onCancel}) => {
         </div>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-        <Sel label="Stage" value={form.status} onChange={set("status")}>{INSTALL_STAGES.map(s=><option key={s}>{s}</option>)}</Sel>
+        {/* An opportunity spans the whole lifecycle, so it can start anywhere — a repeat
+            customer's new quote begins on the Sales board, not at Book Survey. */}
+        <Sel label="Stage" value={form.status} onChange={set("status")}>
+          <optgroup label="Sales Pipeline">{LEAD_STAGES.filter(s=>s!=="Deal Won").map(s=><option key={s}>{s}</option>)}</optgroup>
+          <optgroup label="Installation Pipeline">{INSTALL_STAGES.map(s=><option key={s}>{s}</option>)}</optgroup>
+        </Sel>
         <Inp label="Value (£)" type="number" value={form.value} onChange={set("value")}/>
       </div>
       <div style={{background:C.slateLight,borderRadius:8,padding:14}}>
@@ -2670,7 +2675,13 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
         quoteValue:"",quoteCost:"",installationValue:"",installationCost:"",value:"",
         soldBy:saved.soldBy||"",notes:saved.notes||"",
         tabs:emptyTabs(),
-      }).then(job=>setJobs(js=>[job,...js]));
+      }).then(job=>{
+        setJobs(js=>[job,...js]);
+        // Land in the full record rather than back on the board. The quick form only captures
+        // enough to create something; everything else — quote, survey, dates, documents — lives
+        // in the tabbed view, so opening it is where the user was heading anyway.
+        setViewingJob(job);
+      });
     }).then(()=>setModal(null))
       .catch(err=>window.alert("Failed to save customer: "+err.message));
   };
@@ -2695,6 +2706,8 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
     apiCreateJob(form).then(saved=>{
       setJobs(js=>[saved,...js]);
       setModal(null);
+      // Open the record we just made, same as a new enquiry does.
+      setViewingJob(saved);
     }).catch(err=>window.alert("Failed to save job: "+err.message));
   };
 
@@ -2783,8 +2796,8 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
           );
         })}
       </div>
-      {modal==="add"&&<Modal title="New Customer" onClose={()=>setModal(null)}><CustomerForm initial={{stage:defaultStage}} onSave={saveCustomer} onCancel={()=>setModal(null)}/></Modal>}
-      {modal==="addJob"&&<Modal title="New Job for Existing Customer" onClose={()=>setModal(null)}><JobForm customers={customers} onSave={saveJob} onCancel={()=>setModal(null)}/></Modal>}
+      {modal==="add"&&<Modal title="New Enquiry" onClose={()=>setModal(null)}><CustomerForm initial={{stage:defaultStage}} onSave={saveCustomer} onCancel={()=>setModal(null)}/></Modal>}
+      {modal==="addJob"&&<Modal title="New Job" onClose={()=>setModal(null)}><JobForm customers={customers} onSave={saveJob} onCancel={()=>setModal(null)}/></Modal>}
       {detailRecord&&<CardDetailModal record={customers.find(c=>c.id===detailRecord.id)||detailRecord} customers={customers} jobs={jobs} isJob={false} settings={settings}
         initialTab={pendingTab}
         onSave={handleCardSave}
@@ -6599,10 +6612,23 @@ const CustomerDirectoryPage = ({customers,setCustomers,jobs,setJobs,settings,onN
         setSelectedCustomer(saved);
       }).catch(err=>window.alert("Failed to save customer: "+err.message));
     } else {
-      const nc={...form,stage:"New Enquiry",tabs:{quote:{files:[],notes:""},invoices:{files:[],notes:""},notepad:{text:""},survey:{files:[],images:[],notes:"",date:"",fitter:"",time:"",endTime:""},orderConfirmation:{files:[],notes:""},bills:{files:[],costs:"",notes:""},installation:{date:"",fitters:[],fittersNotes:"",startTime:"",duration:"2",emailReminders:{week:{status:"pending",sentAt:""},day:{status:"pending",sentAt:""}},deliveries:[]},guarantee:{files:[],notes:""},tasks:[],serviceCall:{notes:"",officePhotos:[],fitterPhotos:[],supplierInvoices:[],bookings:[]}}};
+      // A contact plus its opening opportunity, same as "+ New Enquiry" on the Sales Pipeline.
+      // A contact created on its own would hold no stage and so appear on no board at all.
+      const nc={...form,stage:"New Enquiry",tabs:{}};
       apiCreateCustomer(nc).then(saved=>{
         setCustomers(cs=>[saved,...cs]);
         setSelectedCustomer(saved);
+        return apiCreateJob({
+          customerId:saved.id,
+          title:saved.name,
+          siteAddress:saved.address||"",
+          status:"New Enquiry",
+          products:canonProducts(saved.productsOfInterest||saved.products),
+          reference:"",windowcad:"",
+          quoteValue:"",quoteCost:"",installationValue:"",installationCost:"",value:"",
+          soldBy:saved.soldBy||"",notes:saved.notes||"",
+          tabs:emptyTabs(),
+        }).then(job=>setJobs(js=>[job,...js]));
       }).catch(err=>window.alert("Failed to save customer: "+err.message));
     }
     setShowAddModal(false);setEditModal(false);
