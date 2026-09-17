@@ -223,7 +223,17 @@ A shared place for feature ideas, wherever they come from — the office, a fitt
 - Business motivation: reduce reliance on external tools like OneDrive, and make the CRM "stickier" for customers if/when the business is sold — worth keeping in mind as this gets scoped, since it suggests the storage should feel like a first-class part of the product, not a bolted-on file dump.
 - Not yet scoped: folder/organisation structure, permissions (office-only vs fitters too), search/filtering, file size limits. Office has said they're not sure how this should look yet — needs a proper design conversation before building.
 
-### Customer/Opportunity model — 🔨 IN PROGRESS: phases 1 and 2 shipped 2026-09-17
+### Customer/Opportunity model — ✅ PHASES 1–4 SHIPPED 2026-09-17. Only phase 5 remains.
+- **Status**: Phase 1 `672f88c` · Phase 2 `7f65c38` · Phase 3 (live migration) applied · Phase 4 `d63db40` · follow-ups `0ea9dfc`. **Phase 5 (multiple install bookings per opportunity) is NOT started** — see its own entry below, it needs decisions before any code.
+- **The model is live.** A Customer is a contact (no stage, no quote, no WindowCAD7 reference, one Details tab). An Opportunity is one record per WindowCAD7 reference spanning `Prospect List → … → Job Completed ✓`, carrying its own **site address**, stage, financials and tabs. Winning is a **stage change**, not a record creation.
+- **Migration result, verified against the plan**: 42 customers → **35**, 32 jobs → **52 opportunities**, open pipeline £407,732.80 → **£406,216.80** (moved by exactly the £1,516 confirmed stale copy), won deals **22** and won revenue **£122,163.40** both unchanged. Zero orphans, zero customers holding money or a WindowCAD7 reference, zero duplicate customers. Whitman Building Services went 4 customer records → 1 customer with 4 opportunities across 4 sites.
+- **Board and dashboard now agree by construction** — both read opportunities. Sales board 48 cards → **30**; Deals Won 22 on both; Active Jobs 20 = Installation board count.
+- **⚠️ Still to do (small, needs the office)**: 11 of 52 opportunities have no site address. Four are the real second-site cases deliberately left blank because the customer address would have been wrong — `#48` ("7 Greenside"), `#45` ("12 Springfield"), `#44` ("Oaken Copse"), `#35` ("21 Darby Vale"). The rest had no customer address to inherit.
+- **Customers.Stage is now vestigial** — still written (the column is NOT NULL) and never read. Don't reintroduce reads of it.
+- **Bugs found by the office testing these phases, all fixed**: two separate product vocabularies with only 2 values in common, so products silently vanished on every deal-won conversion since July (`32f69f0`); two product controls on one record in two different styles (`0285ec2`); website-enquiry products written to a field customers never read; modal titles not matching their buttons and the job form offering only installation stages (`0ea9dfc`).
+- Design + build plan: **https://claude.ai/artifact/FJJVhCrTMSz7rY6pZ7qYT9**
+
+### Customer/Opportunity model — phases 1 and 2, shipped 2026-09-17
 - **Progress**: Phase 1 ✅ live (`672f88c`) · Phase 2 ✅ live (`7f65c38`) · **Phase 3 (migration) is next** · Phases 4–5 not started.
 - **Phase 1 — site address on the opportunity (done).** New `siteAddress` on a job, editable in `JobForm` and the job Details tab. The Customer Info panel and Google Maps embed point at the site, falling back to the customer's address, labelled "Site" vs "Address" so the difference is visible. The WindowCAD7 receiver stamps the project address on jobs it creates and keeps it current on update. **26 of 32 jobs backfilled**, verified no other field changed.
   - **⚠️ 6 jobs still need a real site address from the office**: `#48` (ref "7 Greenside"), `#45` ("12 Springfield"), `#44` ("Oaken Copse"), `#35` ("21 Darby Vale") — these four were deliberately NOT backfilled because their reference names a *different* site from the customer address, i.e. they are exactly the second-site cases this work exists to fix; writing the customer address would have recorded a known-wrong site. `#64`/`#61` (Visual Glazing Ltd) simply have no customer address to inherit. All six display as before via the fallback.
@@ -260,7 +270,17 @@ A shared place for feature ideas, wherever they come from — the office, a fitt
 - Requested by: office — 2026-07-30
 - Connect the existing "WindowCAD7 Reference" field to a real API instead of it just being a free-text label.
 
-### Multiple installation dates per job (phased installs)
+### Phase 5 — multiple install bookings per opportunity — ⏭️ NEXT, but needs decisions first
+- This is the last phase of the Customer/Opportunity work and folds in the phased-installs request below. Not started. **Do not start it without answering the questions here** — they determine the data shape, so guessing means building it twice.
+- **Why it is the riskiest of the five**: a job's install date is read in **27 places** in `index.html` plus `reminderTimer.js` and `reminderCore.js`. That timer runs daily at 7am and sends **real install reminders to real customers**. Plausible failures are a customer told the wrong date, duplicate reminders per phase, or reminders silently stopping. Unlike phases 1–4 it can't be fully verified against reconciled numbers — it needs a reminder watched firing correctly.
+- **Questions for the office**:
+  1. Does each phase get its **own reminder emails** (a two-phase install means two sets), or does the job send one reminder for the *next* phase only?
+  2. On the Fitter Calendar, is a two-phase job **two entries** or one block spanning both?
+  3. Does **"Install Completed"** mean every phase is done, or does each phase complete independently?
+- **Likely shape once answered**: `tabs.installation.bookings[]`, mirroring the existing `serviceCall.bookings` pattern (which already handles multiple bookings per job, including per-booking email status) rather than inventing a new one. Keep `tabs.installation.date` populated with the first/next booking so the 27 existing readers keep working during the transition.
+- Real data already needs this: Whitman's `16 Darby Green Phase 1` and `Phase 2` are two opportunities working around its absence.
+
+### Multiple installation dates per job (phased installs) — ⬆️ folded into Phase 5 above
 - Requested by: Dan — 2026-08-07
 - "Please can we add an option to add another installation date so we have the option to book more than one install date per job card. As we will get it a lot where we will do installations in phases."
 - Bigger than it first looks: a Job's install date is currently a single field, read from directly by the automatic email reminder timer, the Fitter Calendar, Kanban card badges, and Dashboard delivery tracking — all of these would need to handle multiple dates/phases, not just the Installation tab's own booking UI. Needs a proper design pass before building, not a quick add.
