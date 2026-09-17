@@ -70,7 +70,8 @@ const SECTOR_META = {
   Trade:{bg:"#FFF7ED",text:"#C2410C",icon:"🔧"},
   Commercial:{bg:"#F5F3FF",text:"#6D28D9",icon:"🏢"},
 };
-const PRODUCT_TYPES = ["Casement Windows","Sash Windows","French Doors","Bi-fold Doors","Patio Doors","Composite Door","Roof Lantern","Conservatory","Other"];
+// (The job-side PRODUCT_TYPES list was merged into PRODUCTS_OF_INTEREST on 2026-09-17 — see
+// the comment there. There is one product list now, used on customers and opportunities alike.)
 const DEFAULT_FITTERS = ["Tom Bailey","Steve Marsh","Dan Rees","Chris Wood"];
 const DEFAULT_STAFF   = ["James Owen","Rachel Kent"];
 const DEFAULT_SUPPLIERS = ["Epwin Group","Rehau","Deceuninck","Liniar","Veka","Other"];
@@ -105,7 +106,27 @@ const DEFAULT_TRIM_CATALOG = [
   {category:"Rigid angle",name:"Unequal rigid angle",width:"100 × 80mm",length:5000,supplier:"Eurocell"},
   {category:"Hollow angle",name:"Hollow rigid angle",width:"100 × 80mm",length:5000,supplier:"Eurocell"},
 ].map((t,i)=>({...t,width:t.width.replace(/mm$/,""),id:"seed-"+i}));
-const PRODUCTS_OF_INTEREST = ["UPVC Windows","UPVC Doors","Composite Door","Bifold Door","Sliding Door","Aluminium Windows","Roof Lanterns","Flat Glass Rooflights","Glass Units","Other"];
+// ONE product list, used on customers and on opportunities alike.
+//
+// These used to be two separate vocabularies — customers were tagged by material (UPVC
+// Windows, Aluminium Windows) and jobs by style (Casement Windows, Sash Windows), with only
+// "Composite Door" and "Other" in common. Winning a deal copied the customer's products onto
+// the job, where none of them matched a checkbox, so they rendered as nothing selected and
+// staff re-ticked from the job's own list — leaving records holding the same product twice
+// under two spellings (job #26 carried both "Bifold Door" and "Bi-fold Doors"). 12 of 21 jobs
+// with products had values that could not be displayed at all. Merged 2026-09-17.
+const PRODUCTS_OF_INTEREST = [
+  "UPVC Windows","Aluminium Windows","Casement Windows","Sash Windows",
+  "UPVC Doors","Composite Door","French Doors","Patio Doors","Sliding Door","Bifold Door",
+  "Conservatory","Roof Lanterns","Flat Glass Rooflights","Glass Units","Other",
+];
+// The job list's spellings for products the customer list already had. Canonical form is
+// whichever spelling was more widely used in the live data, to keep the rewrite small.
+const PRODUCT_ALIASES = {"Bi-fold Doors":"Bifold Door","Roof Lantern":"Roof Lanterns"};
+// Read products through this everywhere: it maps legacy spellings onto the merged list and
+// drops the duplicates that re-ticking created, so historic records display correctly whether
+// or not the migration has normalised them yet.
+const canonProducts = (arr) => [...new Set((arr||[]).map(p=>PRODUCT_ALIASES[p]||p))];
 const CARD_TABS     = ["Details","Tasks","Quote","Invoices","Notes","Survey","Order Confirmation","Bills","Installation","Guarantee","Service Call"];
 
 const DEFAULT_EMAIL_TEMPLATES = {
@@ -1028,14 +1049,14 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
                 <div style={{position:"relative"}}>
                   <details style={{border:`1px solid ${C.border}`,borderRadius:6,background:C.white}}>
                     <summary style={{padding:"8px 12px",cursor:"pointer",fontSize:14,color:(data.productsOfInterest||[]).length>0?C.text:C.muted,listStyle:"none",display:"flex",justifyContent:"space-between",alignItems:"center",userSelect:"none"}}>
-                      <span>{(data.productsOfInterest||[]).length>0?(data.productsOfInterest||[]).join(", "):"— Select products —"}</span>
+                      <span>{canonProducts(data.productsOfInterest).length>0?canonProducts(data.productsOfInterest).join(", "):"— Select products —"}</span>
                       <span style={{fontSize:11,color:C.muted}}>▾</span>
                     </summary>
                     <div style={{borderTop:`1px solid ${C.border}`,padding:"6px 0"}}>
                       {PRODUCTS_OF_INTEREST.map(p=>{
-                        const sel=(data.productsOfInterest||[]).includes(p);
+                        const sel=canonProducts(data.productsOfInterest).includes(p);
                         return (
-                          <div key={p} onClick={()=>setData(d=>({...d,productsOfInterest:sel?(d.productsOfInterest||[]).filter(x=>x!==p):[...(d.productsOfInterest||[]),p]}))}
+                          <div key={p} onClick={()=>setData(d=>({...d,productsOfInterest:sel?canonProducts(d.productsOfInterest).filter(x=>x!==p):[...canonProducts(d.productsOfInterest),p]}))}
                             style={{display:"flex",alignItems:"center",gap:10,padding:"8px 14px",cursor:"pointer",background:sel?C.skyLight:C.white,transition:"background 0.1s"}}
                             onMouseEnter={e=>!sel&&(e.currentTarget.style.background=C.slateLight)}
                             onMouseLeave={e=>!sel&&(e.currentTarget.style.background=C.white)}
@@ -1065,9 +1086,11 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
               <div>
                 <label style={{fontSize:12,fontWeight:600,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",display:"block",marginBottom:8}}>Products</label>
                 <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                  {PRODUCT_TYPES.map(p=>{
-                    const sel=(data.products||[]).includes(p);
-                    return <button key={p} onClick={()=>setData(d=>({...d,products:sel?d.products.filter(x=>x!==p):[...d.products,p]}))} style={{padding:"4px 12px",borderRadius:20,fontSize:12,cursor:"pointer",fontWeight:500,background:sel?C.sky:C.slateLight,color:sel?"#fff":C.slate,border:"none"}}>{p}</button>;
+                  {PRODUCTS_OF_INTEREST.map(p=>{
+                    // Read through canonProducts so a product stored under the old job-side
+                    // spelling still shows as selected, migration or no migration.
+                    const sel=canonProducts(data.products).includes(p);
+                    return <button key={p} onClick={()=>setData(d=>({...d,products:sel?canonProducts(d.products).filter(x=>x!==p):[...canonProducts(d.products),p]}))} style={{padding:"4px 12px",borderRadius:20,fontSize:12,cursor:"pointer",fontWeight:500,background:sel?C.sky:C.slateLight,color:sel?"#fff":C.slate,border:"none"}}>{p}</button>;
                   })}
                 </div>
               </div>
@@ -1181,14 +1204,14 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
                 <label style={{fontSize:12,fontWeight:600,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",display:"block",marginBottom:8}}>Products of Interest</label>
                 <details style={{border:`1px solid ${C.border}`,borderRadius:6,background:C.white}}>
                   <summary style={{padding:"8px 12px",cursor:"pointer",fontSize:14,color:(data.productsOfInterest||[]).length>0?C.text:C.muted,listStyle:"none",display:"flex",justifyContent:"space-between",alignItems:"center",userSelect:"none"}}>
-                    <span>{(data.productsOfInterest||[]).length>0?(data.productsOfInterest||[]).join(", "):"— Select products —"}</span>
+                    <span>{canonProducts(data.productsOfInterest).length>0?canonProducts(data.productsOfInterest).join(", "):"— Select products —"}</span>
                     <span style={{fontSize:11,color:C.muted}}>▾</span>
                   </summary>
                   <div style={{borderTop:`1px solid ${C.border}`,padding:"6px 0"}}>
                     {PRODUCTS_OF_INTEREST.map(p=>{
-                      const sel=(data.productsOfInterest||[]).includes(p);
+                      const sel=canonProducts(data.productsOfInterest).includes(p);
                       return (
-                        <div key={p} onClick={()=>setData(d=>({...d,productsOfInterest:sel?(d.productsOfInterest||[]).filter(x=>x!==p):[...(d.productsOfInterest||[]),p]}))}
+                        <div key={p} onClick={()=>setData(d=>({...d,productsOfInterest:sel?canonProducts(d.productsOfInterest).filter(x=>x!==p):[...canonProducts(d.productsOfInterest),p]}))}
                           style={{display:"flex",alignItems:"center",gap:10,padding:"8px 14px",cursor:"pointer",background:sel?C.skyLight:C.white}}
                           onMouseEnter={e=>!sel&&(e.currentTarget.style.background=C.slateLight)}
                           onMouseLeave={e=>!sel&&(e.currentTarget.style.background=C.white)}
@@ -2381,7 +2404,7 @@ const CustomerForm = ({initial={},onSave,onCancel}) => {
 const JobForm = ({initial={},customers,onSave,onCancel}) => {
   const [form,setForm]=useState({customerId:customers[0]?.id||"",title:"",reference:"",siteAddress:"",products:[],status:"Book Survey",surveyDate:"",installDate:"",installers:"",windowcad:"",value:"",quoteValue:"",quoteCost:"",installationValue:"",installationCost:"",notes:"",...initial,products:initial.products||[]});
   const set=k=>e=>setForm(f=>({...f,[k]:e.target.value}));
-  const toggleProd=p=>setForm(f=>({...f,products:f.products.includes(p)?f.products.filter(x=>x!==p):[...f.products,p]}));
+  const toggleProd=p=>setForm(f=>{const cur=canonProducts(f.products);return{...f,products:cur.includes(p)?cur.filter(x=>x!==p):[...cur,p]};});
   const margin=calcMargin(totalQuoteValue(form),totalQuoteCost(form));
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
@@ -2398,7 +2421,7 @@ const JobForm = ({initial={},customers,onSave,onCancel}) => {
       <div>
         <label style={{fontSize:12,fontWeight:600,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",display:"block",marginBottom:8}}>Products</label>
         <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-          {PRODUCT_TYPES.map(p=>{const s=form.products.includes(p);return(<button key={p} onClick={()=>toggleProd(p)} style={{padding:"4px 12px",borderRadius:20,fontSize:12,cursor:"pointer",fontWeight:500,background:s?C.sky:C.slateLight,color:s?"#fff":C.slate,border:"none"}}>{p}</button>);})}
+          {PRODUCTS_OF_INTEREST.map(p=>{const s=canonProducts(form.products).includes(p);return(<button key={p} onClick={()=>toggleProd(p)} style={{padding:"4px 12px",borderRadius:20,fontSize:12,cursor:"pointer",fontWeight:500,background:s?C.sky:C.slateLight,color:s?"#fff":C.slate,border:"none"}}>{p}</button>);})}
         </div>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
@@ -3866,7 +3889,7 @@ const WebsiteEnquiryForm = ({companyName,onSubmit}) => {
   const [form,setForm]=useState({name:"",email:"",phone:"",address:"",message:"",products:[],source:"Website"});
   const [submitted,setSubmitted]=useState(false);
   const set=k=>e=>setForm(f=>({...f,[k]:e.target.value}));
-  const toggleProd=p=>setForm(f=>({...f,products:f.products.includes(p)?f.products.filter(x=>x!==p):[...f.products,p]}));
+  const toggleProd=p=>setForm(f=>{const cur=canonProducts(f.products);return{...f,products:cur.includes(p)?cur.filter(x=>x!==p):[...cur,p]};});
 
   const handleSubmit=()=>{
     if(!form.name||!form.phone) return;
@@ -3940,7 +3963,7 @@ const WebsiteEnquiryForm = ({companyName,onSubmit}) => {
           <label style={labelStyle}>Products of Interest</label>
           <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
             {PRODUCTS_OF_INTEREST.map(p=>{
-              const sel=form.products.includes(p);
+              const sel=canonProducts(form.products).includes(p);
               return (
                 <button key={p} onClick={()=>toggleProd(p)} style={{padding:"6px 14px",borderRadius:20,fontSize:13,cursor:"pointer",fontWeight:500,background:sel?C.navy:C.slateLight,color:sel?"#fff":C.slate,border:`1px solid ${sel?C.navy:C.border}`,transition:"all 0.1s"}}>
                   {p}
