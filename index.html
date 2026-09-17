@@ -889,6 +889,13 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
   // for a brand new enquiry.
   const linkedJobs=!isJob?(jobs||[]).filter(j=>j.customerId===data.id):[];
 
+  // Where the work actually happens. A job's own site address wins; the customer's address is
+  // the fallback for jobs recorded before site addresses existed, and for retail customers
+  // whose home is the site. `siteIsOwn` drives the label, so the office can tell at a glance
+  // whether they're looking at this job's site or just the customer's address.
+  const jobSite=isJob?((data.siteAddress||"").trim()||customer?.address||""):"";
+  const siteIsOwn=isJob&&!!(data.siteAddress||"").trim();
+
   const setTab=(key,val)=>setData(d=>({...d,tabs:{...d.tabs,[key]:{...d.tabs[key],...val}}}));
 
   // data carries _settings for this modal's own internal use (dropdowns etc.) — strip it
@@ -957,6 +964,8 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
                 </div>
               )}
               <Inp label="Reference" value={data.reference||""} onChange={e=>setData(d=>({...d,reference:e.target.value}))} placeholder="e.g. 4 Morres Grove — used to tell concurrent jobs for the same customer apart"/>
+              {/* Site address lives on the job, not the customer — see JobForm for why. */}
+              <Inp label="Site Address (where the work happens)" value={data.siteAddress||""} onChange={e=>setData(d=>({...d,siteAddress:e.target.value}))} placeholder="Leave blank to use the customer's own address"/>
               <Sel label="Customer" value={data.customerId} onChange={e=>setData(d=>({...d,customerId:Number(e.target.value)}))}>
                 {customers.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
               </Sel>
@@ -975,25 +984,30 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
                     )}
                   </div>
                 ))}
-                {/* Address with map link */}
-                {customer?.address&&(
+                {/* Site address with map link — the job's own site when it has one, otherwise
+                    the customer's address, labelled so the difference is obvious. */}
+                {jobSite&&(
                   <div style={{padding:"5px 0",borderBottom:`1px solid ${C.border}`,display:"flex",gap:8,alignItems:"flex-start"}}>
-                    <span style={{color:C.slate,minWidth:90,flexShrink:0,fontSize:13}}>📍 Address</span>
+                    <span style={{color:C.slate,minWidth:90,flexShrink:0,fontSize:13}}>📍 {siteIsOwn?"Site":"Address"}</span>
                     <div style={{flex:1}}>
-                      <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(customer.address)}`} target="_blank" rel="noreferrer"
+                      <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(jobSite)}`} target="_blank" rel="noreferrer"
                         style={{fontSize:13,fontWeight:600,color:C.sky,textDecoration:"none",display:"block",marginBottom:6}}>
-                        {customer.address} ↗
+                        {jobSite} ↗
                       </a>
+                      {siteIsOwn&&customer?.address&&customer.address.trim()!==jobSite&&(
+                        <div style={{fontSize:11,color:C.muted}}>Customer address: {customer.address}</div>
+                      )}
                     </div>
                   </div>
                 )}
               </div>
-              {/* Google Maps embed */}
-              {customer?.address&&(
+              {/* Google Maps embed — points at the site, so fitters get directions to where
+                  the work is rather than to a trade customer's office. */}
+              {jobSite&&(
                 <div style={{borderRadius:10,overflow:"hidden",border:`1px solid ${C.border}`,position:"relative"}}>
                   <div style={{background:C.navy,padding:"8px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                    <span style={{fontSize:12,fontWeight:700,color:"#fff"}}>📍 {customer.address}</span>
-                    <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(customer.address)}`} target="_blank" rel="noreferrer"
+                    <span style={{fontSize:12,fontWeight:700,color:"#fff"}}>📍 {jobSite}</span>
+                    <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(jobSite)}`} target="_blank" rel="noreferrer"
                       style={{fontSize:11,color:"rgba(255,255,255,0.7)",textDecoration:"none",background:"rgba(255,255,255,0.15)",padding:"3px 10px",borderRadius:8,fontWeight:600}}>
                       Open in Google Maps ↗
                     </a>
@@ -1004,7 +1018,7 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
                     height="220"
                     style={{border:"none",display:"block"}}
                     loading="lazy"
-                    src={`https://maps.google.com/maps?q=${encodeURIComponent(customer.address)}&output=embed&z=15`}
+                    src={`https://maps.google.com/maps?q=${encodeURIComponent(jobSite)}&output=embed&z=15`}
                   />
                 </div>
               )}
@@ -2365,7 +2379,7 @@ const CustomerForm = ({initial={},onSave,onCancel}) => {
 
 // ── Job Form (add new) ────────────────────────────────────────────────────────
 const JobForm = ({initial={},customers,onSave,onCancel}) => {
-  const [form,setForm]=useState({customerId:customers[0]?.id||"",title:"",reference:"",products:[],status:"Book Survey",surveyDate:"",installDate:"",installers:"",windowcad:"",value:"",quoteValue:"",quoteCost:"",installationValue:"",installationCost:"",notes:"",...initial,products:initial.products||[]});
+  const [form,setForm]=useState({customerId:customers[0]?.id||"",title:"",reference:"",siteAddress:"",products:[],status:"Book Survey",surveyDate:"",installDate:"",installers:"",windowcad:"",value:"",quoteValue:"",quoteCost:"",installationValue:"",installationCost:"",notes:"",...initial,products:initial.products||[]});
   const set=k=>e=>setForm(f=>({...f,[k]:e.target.value}));
   const toggleProd=p=>setForm(f=>({...f,products:f.products.includes(p)?f.products.filter(x=>x!==p):[...f.products,p]}));
   const margin=calcMargin(totalQuoteValue(form),totalQuoteCost(form));
@@ -2376,6 +2390,11 @@ const JobForm = ({initial={},customers,onSave,onCancel}) => {
       </Sel>
       <Inp label="Job Title" value={form.title} onChange={set("title")} placeholder="e.g. Front elevation windows"/>
       <Inp label="Reference (e.g. site address — for distinguishing concurrent jobs)" value={form.reference} onChange={set("reference")} placeholder="e.g. 4 Morres Grove"/>
+      {/* The job's own site address. A trade customer's billing address and the address we're
+          actually glazing are routinely different — without this the only way to record a
+          second site was a whole second customer record, which is how Whitman Building
+          Services ended up with four. Blank falls back to the customer's address. */}
+      <Inp label="Site Address (where the work happens)" value={form.siteAddress||""} onChange={set("siteAddress")} placeholder="Leave blank to use the customer's own address"/>
       <div>
         <label style={{fontSize:12,fontWeight:600,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",display:"block",marginBottom:8}}>Products</label>
         <div style={{display:"flex",flexWrap:"wrap",gap:6}}>

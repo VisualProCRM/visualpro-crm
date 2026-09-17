@@ -224,6 +224,8 @@ async function applyWindowcadProject(pool, project, context) {
     if (f.installationValue) patch.installationValue = f.installationValue;
     if (f.windowcadStatus) patch.windowcadStatus = f.windowcadStatus;
     if (f.windowcadModifiedAt) patch.windowcadModifiedAt = f.windowcadModifiedAt;
+    // Keep this job's own site address current with WindowCAD7's, same as the Reference label.
+    if (f.address) patch.siteAddress = f.address;
     // Auto-advances this Job onto (or further along) the mapped stage — Sales or
     // Installation Pipeline, per Settings → WindowCAD7 → Status Mapping — but only ever
     // forward; never regresses or resets stage progress the office has made by hand.
@@ -281,6 +283,11 @@ async function applyWindowcadProject(pool, project, context) {
       title: f.name || matched.name || f.reference,
       status: mappedStage || 'Book Survey',
       reference: f.reference,
+      // This project's own site, not the customer's address. A trade customer's second site
+      // used to have nowhere to go but a whole new customer record — which is how Whitman
+      // Building Services accumulated four. Falls back to the customer's address when
+      // WindowCAD7 sends no address of its own.
+      siteAddress: f.address || matched.address || '',
       windowcad: f.reference,
       windowcadProjectId: f.windowcadProjectId,
       quoteValue: f.quoteValue,
