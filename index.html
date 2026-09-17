@@ -127,6 +127,13 @@ const PRODUCT_ALIASES = {"Bi-fold Doors":"Bifold Door","Roof Lantern":"Roof Lant
 // drops the duplicates that re-ticking created, so historic records display correctly whether
 // or not the migration has normalised them yet.
 const canonProducts = (arr) => [...new Set((arr||[]).map(p=>PRODUCT_ALIASES[p]||p))];
+// Everything a record has recorded as its products, from either field. An opportunity ended up
+// with two — `products` (its own) and `productsOfInterest` (carried over from the customer when
+// the deal was won) — which the Details tab showed as two separate controls in two different
+// styles. 12 opportunities hold data in both. Reading the union means nothing is hidden; the
+// single control writes back to `products` and empties the other, so a record consolidates the
+// first time anyone touches it and the migration finishes the rest.
+const recordProducts = (r) => canonProducts([...((r&&r.products)||[]),...((r&&r.productsOfInterest)||[])]);
 const CARD_TABS     = ["Details","Tasks","Quote","Invoices","Notes","Survey","Order Confirmation","Bills","Installation","Guarantee","Service Call"];
 
 const DEFAULT_EMAIL_TEMPLATES = {
@@ -1043,54 +1050,16 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
                   />
                 </div>
               )}
-              {/* Products of Interest */}
-              <div>
-                <label style={{fontSize:12,fontWeight:600,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",display:"block",marginBottom:8}}>Products of Interest</label>
-                <div style={{position:"relative"}}>
-                  <details style={{border:`1px solid ${C.border}`,borderRadius:6,background:C.white}}>
-                    <summary style={{padding:"8px 12px",cursor:"pointer",fontSize:14,color:(data.productsOfInterest||[]).length>0?C.text:C.muted,listStyle:"none",display:"flex",justifyContent:"space-between",alignItems:"center",userSelect:"none"}}>
-                      <span>{canonProducts(data.productsOfInterest).length>0?canonProducts(data.productsOfInterest).join(", "):"— Select products —"}</span>
-                      <span style={{fontSize:11,color:C.muted}}>▾</span>
-                    </summary>
-                    <div style={{borderTop:`1px solid ${C.border}`,padding:"6px 0"}}>
-                      {PRODUCTS_OF_INTEREST.map(p=>{
-                        const sel=canonProducts(data.productsOfInterest).includes(p);
-                        return (
-                          <div key={p} onClick={()=>setData(d=>({...d,productsOfInterest:sel?canonProducts(d.productsOfInterest).filter(x=>x!==p):[...canonProducts(d.productsOfInterest),p]}))}
-                            style={{display:"flex",alignItems:"center",gap:10,padding:"8px 14px",cursor:"pointer",background:sel?C.skyLight:C.white,transition:"background 0.1s"}}
-                            onMouseEnter={e=>!sel&&(e.currentTarget.style.background=C.slateLight)}
-                            onMouseLeave={e=>!sel&&(e.currentTarget.style.background=C.white)}
-                          >
-                            <div style={{width:16,height:16,borderRadius:4,border:`2px solid ${sel?C.sky:C.border}`,background:sel?C.sky:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                              {sel&&<span style={{color:"#fff",fontSize:11,fontWeight:700}}>✓</span>}
-                            </div>
-                            <span style={{fontSize:14,color:sel?C.navy:C.text,fontWeight:sel?600:400}}>{p}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </details>
-                </div>
-                {(data.productsOfInterest||[]).length>0&&(
-                  <div style={{display:"flex",flexWrap:"wrap",gap:5,marginTop:8}}>
-                    {(data.productsOfInterest||[]).map(p=>(
-                      <span key={p} style={{background:C.skyLight,color:C.navy,fontSize:12,fontWeight:600,padding:"2px 10px",borderRadius:20,display:"inline-flex",alignItems:"center",gap:5}}>
-                        {p}
-                        <button onClick={()=>setData(d=>({...d,productsOfInterest:(d.productsOfInterest||[]).filter(x=>x!==p)}))} style={{background:"none",border:"none",color:C.slate,cursor:"pointer",fontSize:13,lineHeight:1,padding:0}}>×</button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
               {/* Products (window types) */}
               <div>
                 <label style={{fontSize:12,fontWeight:600,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",display:"block",marginBottom:8}}>Products</label>
                 <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
                   {PRODUCTS_OF_INTEREST.map(p=>{
-                    // Read through canonProducts so a product stored under the old job-side
-                    // spelling still shows as selected, migration or no migration.
-                    const sel=canonProducts(data.products).includes(p);
-                    return <button key={p} onClick={()=>setData(d=>({...d,products:sel?canonProducts(d.products).filter(x=>x!==p):[...canonProducts(d.products),p]}))} style={{padding:"4px 12px",borderRadius:20,fontSize:12,cursor:"pointer",fontWeight:500,background:sel?C.sky:C.slateLight,color:sel?"#fff":C.slate,border:"none"}}>{p}</button>;
+                    // Reads the union of both product fields so nothing carried over from the
+                    // customer is hidden; writes back to `products` and empties the other, so
+                    // the record consolidates onto one field the first time it's edited.
+                    const sel=recordProducts(data).includes(p);
+                    return <button key={p} onClick={()=>setData(d=>{const cur=recordProducts(d);return{...d,products:sel?cur.filter(x=>x!==p):[...cur,p],productsOfInterest:[]};})} style={{padding:"4px 12px",borderRadius:20,fontSize:12,cursor:"pointer",fontWeight:500,background:sel?C.sky:C.slateLight,color:sel?"#fff":C.slate,border:"none"}}>{p}</button>;
                   })}
                 </div>
               </div>
@@ -1202,39 +1171,14 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
               <Inp label="WindowCAD7 Reference" value={data.windowcad||""} onChange={e=>setData(d=>({...d,windowcad:e.target.value}))} placeholder="WC-2025-001"/>
               <div>
                 <label style={{fontSize:12,fontWeight:600,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",display:"block",marginBottom:8}}>Products of Interest</label>
-                <details style={{border:`1px solid ${C.border}`,borderRadius:6,background:C.white}}>
-                  <summary style={{padding:"8px 12px",cursor:"pointer",fontSize:14,color:(data.productsOfInterest||[]).length>0?C.text:C.muted,listStyle:"none",display:"flex",justifyContent:"space-between",alignItems:"center",userSelect:"none"}}>
-                    <span>{canonProducts(data.productsOfInterest).length>0?canonProducts(data.productsOfInterest).join(", "):"— Select products —"}</span>
-                    <span style={{fontSize:11,color:C.muted}}>▾</span>
-                  </summary>
-                  <div style={{borderTop:`1px solid ${C.border}`,padding:"6px 0"}}>
-                    {PRODUCTS_OF_INTEREST.map(p=>{
-                      const sel=canonProducts(data.productsOfInterest).includes(p);
-                      return (
-                        <div key={p} onClick={()=>setData(d=>({...d,productsOfInterest:sel?canonProducts(d.productsOfInterest).filter(x=>x!==p):[...canonProducts(d.productsOfInterest),p]}))}
-                          style={{display:"flex",alignItems:"center",gap:10,padding:"8px 14px",cursor:"pointer",background:sel?C.skyLight:C.white}}
-                          onMouseEnter={e=>!sel&&(e.currentTarget.style.background=C.slateLight)}
-                          onMouseLeave={e=>!sel&&(e.currentTarget.style.background=C.white)}
-                        >
-                          <div style={{width:16,height:16,borderRadius:4,border:`2px solid ${sel?C.sky:C.border}`,background:sel?C.sky:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                            {sel&&<span style={{color:"#fff",fontSize:11,fontWeight:700}}>✓</span>}
-                          </div>
-                          <span style={{fontSize:14,color:sel?C.navy:C.text,fontWeight:sel?600:400}}>{p}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </details>
-                {(data.productsOfInterest||[]).length>0&&(
-                  <div style={{display:"flex",flexWrap:"wrap",gap:5,marginTop:8}}>
-                    {(data.productsOfInterest||[]).map(p=>(
-                      <span key={p} style={{background:C.skyLight,color:C.navy,fontSize:12,fontWeight:600,padding:"2px 10px",borderRadius:20,display:"inline-flex",alignItems:"center",gap:5}}>
-                        {p}
-                        <button onClick={()=>setData(d=>({...d,productsOfInterest:(d.productsOfInterest||[]).filter(x=>x!==p)}))} style={{background:"none",border:"none",color:C.slate,cursor:"pointer",fontSize:13,lineHeight:1,padding:0}}>×</button>
-                      </span>
-                    ))}
-                  </div>
-                )}
+                {/* Same pill control as the opportunity Details tab and both forms — one
+                    product list, one interaction, wherever products are picked. */}
+                <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                  {PRODUCTS_OF_INTEREST.map(p=>{
+                    const sel=canonProducts(data.productsOfInterest).includes(p);
+                    return <button key={p} onClick={()=>setData(d=>{const cur=canonProducts(d.productsOfInterest);return{...d,productsOfInterest:sel?cur.filter(x=>x!==p):[...cur,p]};})} style={{padding:"4px 12px",borderRadius:20,fontSize:12,cursor:"pointer",fontWeight:500,background:sel?C.sky:C.slateLight,color:sel?"#fff":C.slate,border:"none"}}>{p}</button>;
+                  })}
+                </div>
               </div>
               <Sel label="Sold By" value={data.soldBy||""} onChange={e=>setData(d=>({...d,soldBy:e.target.value}))}>
                 <option value="">— Select staff member —</option>
@@ -3895,6 +3839,12 @@ const WebsiteEnquiryForm = ({companyName,onSubmit}) => {
     if(!form.name||!form.phone) return;
     const lead={
       ...form,
+      // A customer's products live on `productsOfInterest`; this form was writing `products`,
+      // the opportunity-side field name, so everything a website enquirer ticked landed in a
+      // field the customer record never reads and was silently lost. Same class of mismatch as
+      // the two product vocabularies (see PRODUCTS_OF_INTEREST).
+      products:undefined,
+      productsOfInterest:canonProducts(form.products),
       id:uid(),
       stage:"New Enquiry",
       createdAt:new Date().toISOString().slice(0,10),
