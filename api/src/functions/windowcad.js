@@ -247,24 +247,37 @@ async function applyWindowcadProject(pool, project, context) {
     return { action: 'updated-job', jobId: linkedJob.id };
   }
 
+  // A customer that still carries a WindowCAD7 link from before the Customer/Opportunity
+  // migration. Customers are contacts now, so rather than writing the quote back onto the
+  // contact, give this project its own opportunity and hand the link over to it — after which
+  // the byProjectId match above finds the opportunity and this path is never taken again.
   const linkedCustomer = customers.find(byProjectId) || customers.find(byLegacyReference);
   if (linkedCustomer) {
     if (isStale(linkedCustomer)) return { action: 'skipped-stale', customerId: linkedCustomer.id };
-    const patch = { ...linkedCustomer };
-    if (f.windowcadProjectId) patch.windowcadProjectId = f.windowcadProjectId;
-    if (f.reference) patch.windowcad = f.reference;
-    if (f.name) patch.name = f.name;
-    if (f.email) patch.email = f.email;
-    if (f.phone) patch.phone = f.phone;
-    if (f.address) patch.address = f.address;
-    if (f.quoteValue) patch.quoteValue = f.quoteValue;
-    if (f.installationValue) patch.installationValue = f.installationValue;
-    if (f.windowcadStatus) patch.windowcadStatus = f.windowcadStatus;
-    if (f.windowcadModifiedAt) patch.windowcadModifiedAt = f.windowcadModifiedAt;
-    // Same forward-only stage advancement as the linked-Job path above.
-    patch.stage = maybeAdvanceStage(linkedCustomer.stage, mappedStage);
-    await updateCustomerRow(pool, linkedCustomer.id, patch);
-    return { action: 'updated-customer', customerId: linkedCustomer.id };
+    const created = await insertJobRow(pool, {
+      customerId: linkedCustomer.id,
+      title: f.name || f.reference || linkedCustomer.name,
+      status: mappedStage || 'New Enquiry',
+      reference: f.reference,
+      siteAddress: f.address || linkedCustomer.address || '',
+      windowcad: f.reference,
+      windowcadProjectId: f.windowcadProjectId,
+      windowcadStatus: f.windowcadStatus,
+      windowcadModifiedAt: f.windowcadModifiedAt,
+      quoteValue: f.quoteValue,
+      installationValue: f.installationValue,
+      ...(isWonStage(mappedStage) ? { wonAt: new Date().toISOString() } : {}),
+      tabs: emptyTabs(),
+    });
+    // Strip the link and any stale figures off the contact so only the opportunity holds them.
+    await updateCustomerRow(pool, linkedCustomer.id, {
+      ...linkedCustomer,
+      ...(f.email ? { email: f.email } : {}),
+      ...(f.phone ? { phone: f.phone } : {}),
+      windowcad: '', windowcadProjectId: '', windowcadStatus: '', windowcadModifiedAt: '',
+      quoteValue: '', quoteCost: '', installationValue: '', installationCost: '',
+    });
+    return { action: 'created-job', jobId: created.id, customerId: linkedCustomer.id };
   }
 
   // Not yet linked - look for an existing customer by identity (email, then phone only;
@@ -307,23 +320,37 @@ async function applyWindowcadProject(pool, project, context) {
     return { action: 'created-job', jobId: created.id, customerId: matched.id };
   }
 
-  const newCustomer = {
+  // Brand new business: create the contact AND its first opportunity. The contact holds only
+  // contact details; the project's reference, status and money live on the opportunity, which
+  // is what every later webhook for this project will match against. Creating a customer that
+  // held the quote is what used to produce a second customer record per site.
+  const stage = mappedStage || (f.quoteValue ? 'Quoted' : 'New Enquiry');
+  const createdCustomer = await insertCustomerRow(pool, {
     name: f.name || f.reference,
     email: f.email,
     phone: f.phone,
     address: f.address,
     source: 'WindowCAD7',
-    stage: mappedStage || (f.quoteValue ? 'Quoted' : 'New Enquiry'),
+    // Retained because the column is NOT NULL; nothing reads it any more.
+    stage,
+    tabs: {},
+  });
+  const createdJob = await insertJobRow(pool, {
+    customerId: createdCustomer.id,
+    title: f.name || f.reference,
+    status: stage,
+    reference: f.reference,
+    siteAddress: f.address || '',
     windowcad: f.reference,
     windowcadProjectId: f.windowcadProjectId,
-    quoteValue: f.quoteValue,
-    installationValue: f.installationValue,
     windowcadStatus: f.windowcadStatus,
     windowcadModifiedAt: f.windowcadModifiedAt,
+    quoteValue: f.quoteValue,
+    installationValue: f.installationValue,
+    ...(isWonStage(stage) ? { wonAt: new Date().toISOString() } : {}),
     tabs: emptyTabs(),
-  };
-  const created = await insertCustomerRow(pool, newCustomer);
-  return { action: 'created-customer', customerId: created.id };
+  });
+  return { action: 'created-customer-and-job', customerId: createdCustomer.id, jobId: createdJob.id };
 }
 
 // Discovery-phase receiver for WindowCAD7's own CRM webhook (configured inside WindowCAD7

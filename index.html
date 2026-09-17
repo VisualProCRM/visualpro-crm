@@ -51,6 +51,29 @@ const COMPLETED_STAGE = "Job Completed ✓";
 // status needs to be compared against "how far along is this already" (see the API's own
 // mirrored copy in api/src/functions/windowcad.js, which must be kept in sync).
 const ALL_PIPELINE_STAGES = [...LEAD_STAGES, ...INSTALL_STAGES];
+
+// ── Opportunity buckets ──────────────────────────────────────────────────────
+// How a customer's opportunities are summarised: enquiries that haven't been quoted yet,
+// live quotes, and work that's been won. "Won" deliberately covers Deal Won plus every
+// Installation stage — a job halfway through installation is still a won deal, it has just
+// travelled further. Deal Lost is reportable but belongs to no bucket.
+const ENQUIRY_STAGES = ["Prospect List","New Enquiry","Contacted"];
+const QUOTED_STAGES  = ["Quoted","Followed Up"];
+const oppBucket = (status) =>
+  status==="Deal Lost" ? "lost"
+  : ENQUIRY_STAGES.includes(status) ? "enquiry"
+  : QUOTED_STAGES.includes(status) ? "quoted"
+  : "won";
+// Counts and totals across one customer's opportunities, for the Customer Directory summary
+// and the customer record's own header.
+const summariseOpps = (opps) => {
+  const out={enquiry:0,quoted:0,won:0,lost:0,value:0,cost:0};
+  (opps||[]).forEach(o=>{
+    out[oppBucket(o.status)]++;
+    if(oppBucket(o.status)!=="lost"){ out.value+=totalQuoteValue(o); out.cost+=totalQuoteCost(o); }
+  });
+  return out;
+};
 // Settings → WindowCAD7 → Status Mapping default seed — editable by the office (see
 // SettingsPage), tells the sync which CRM stage a given WindowCAD7 status should place a
 // new/updated Customer or Job at. A brand-new tenant with no saved mapping yet falls back to
@@ -921,6 +944,10 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
   // the fallback for jobs recorded before site addresses existed, and for retail customers
   // whose home is the site. `siteIsOwn` drives the label, so the office can tell at a glance
   // whether they're looking at this job's site or just the customer's address.
+  // A contact's standing, summarised from its opportunities: how many are enquiries, live
+  // quotes, or won, and what they're worth in total.
+  const custSummary=useMemo(()=>summariseOpps(linkedJobs),[linkedJobs]);
+
   const jobSite=isJob?((data.siteAddress||"").trim()||customer?.address||""):"";
   const siteIsOwn=isJob&&!!(data.siteAddress||"").trim();
 
@@ -977,7 +1004,9 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
     <Modal title={isJob?data.title:data.name} onClose={save} wide>
       {/* Tab bar — collapses to just Details for a Customer once they have linked Jobs */}
       <div style={{display:"flex",gap:0,borderBottom:`1px solid ${C.border}`,marginBottom:20,overflowX:"auto"}}>
-        {(!isJob&&linkedJobs.length>0?["Details"]:CARD_TABS).map(t=><button key={t} style={tabStyle(t)} onClick={()=>setActiveTab(t)}>{t}</button>)}
+        {/* A customer is a contact: one Details tab, plus the list of its jobs. Every tab of
+            real content — quote, survey, installation, guarantee — belongs to an opportunity. */}
+        {(isJob?CARD_TABS:["Details"]).map(t=><button key={t} style={tabStyle(t)} onClick={()=>setActiveTab(t)}>{t}</button>)}
       </div>
 
       {/* ── DETAILS TAB ── */}
@@ -1112,7 +1141,10 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
               {/* Customer info panel — mirrors the read-only summary shown on a Job's Details tab, for visual consistency between the Sales and Installation Pipeline cards */}
               <div style={{background:C.slateLight,borderRadius:8,padding:12}}>
                 <div style={{fontSize:12,fontWeight:600,color:C.slate,marginBottom:8}}>CUSTOMER INFO</div>
-                {[["📧",data.email],...(data.email2?[["📧 Secondary",data.email2]]:[]),["📞",data.phone],["🔗 Source",data.source],["🏷️ Sector",data.sector],...(data.windowcadStatus?[["🪟 WindowCAD7 Status",data.windowcadStatus]]:[]),["💰 Quote",totalQuoteValue(data)?`£${totalQuoteValue(data).toLocaleString()}`:"—"],["📊 Margin",totalQuoteValue(data)&&totalQuoteCost(data)?(()=>{const m=calcMargin(totalQuoteValue(data),totalQuoteCost(data));return m?`${m.pct}% (£${m.profit.toLocaleString()})`:"—"})():"—"]].map(([icon,val])=>(
+                {/* Quote and Margin now summarise the customer's opportunities rather than the
+                    customer's own (retired) quote fields — a customer is a contact, so its
+                    money is simply the sum of the work. Lost opportunities are excluded. */}
+                {[["📧",data.email],...(data.email2?[["📧 Secondary",data.email2]]:[]),["📞",data.phone],["🔗 Source",data.source],["🏷️ Sector",data.sector],["💰 Quoted",custSummary.value?`£${custSummary.value.toLocaleString()}`:"—"],["📊 Margin",(()=>{const m=calcMargin(custSummary.value,custSummary.cost);return m?`${m.pct}% (£${m.profit.toLocaleString()})`:"—"})()]].map(([icon,val])=>(
                   <div key={icon} style={{fontSize:13,color:C.text,padding:"5px 0",borderBottom:`1px solid ${C.border}`,display:"flex",gap:8,alignItems:"center"}}>
                     <span style={{color:C.slate,minWidth:90,flexShrink:0}}>{icon}</span>
                     {icon==="🏷️ Sector"&&val&&SECTOR_META[val]?(
@@ -1156,19 +1188,18 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
                     src={`https://maps.google.com/maps?q=${encodeURIComponent(data.address)}&output=embed&z=15`}/>
                 </div>
               )}
+              {/* No Pipeline Stage or WindowCAD7 Reference here any more — a stage belongs to a
+                  piece of work, and a customer has as many of those as they have jobs. Both
+                  live on the opportunity now. */}
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-                <Sel label="Pipeline Stage" value={data.stage} onChange={e=>setData(d=>({...d,stage:e.target.value}))}>
-                  {LEAD_STAGES.map(s=><option key={s}>{s}</option>)}
-                </Sel>
                 <Sel label="Lead Source" value={data.source||""} onChange={e=>setData(d=>({...d,source:e.target.value}))}>
                   {SOURCES.map(s=><option key={s}>{s}</option>)}
                 </Sel>
+                <Sel label="Sector" value={data.sector||""} onChange={e=>setData(d=>({...d,sector:e.target.value}))}>
+                  <option value="">— Not set —</option>
+                  {SECTORS.map(s=><option key={s}>{s}</option>)}
+                </Sel>
               </div>
-              <Sel label="Sector" value={data.sector||""} onChange={e=>setData(d=>({...d,sector:e.target.value}))}>
-                <option value="">— Not set —</option>
-                {SECTORS.map(s=><option key={s}>{s}</option>)}
-              </Sel>
-              <Inp label="WindowCAD7 Reference" value={data.windowcad||""} onChange={e=>setData(d=>({...d,windowcad:e.target.value}))} placeholder="WC-2025-001"/>
               <div>
                 <label style={{fontSize:12,fontWeight:600,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",display:"block",marginBottom:8}}>Products of Interest</label>
                 {/* Same pill control as the opportunity Details tab and both forms — one
@@ -1187,9 +1218,26 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
               <TA label="Notes" value={data.notes||""} onChange={e=>setData(d=>({...d,notes:e.target.value}))}/>
             </>
           )}
-          {!isJob&&linkedJobs.length>0&&(
+          {!isJob&&(
             <div style={{background:C.slateLight,borderRadius:8,padding:14}}>
-              <div style={{fontSize:12,fontWeight:700,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:12}}>Jobs ({linkedJobs.length})</div>
+              <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:12}}>
+                <span style={{fontSize:12,fontWeight:700,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em"}}>Jobs ({linkedJobs.length})</span>
+                {/* The at-a-glance standing the office asked for: how many enquiries, live
+                    quotes and won jobs this customer has, without opening any of them. */}
+                {[["enquiry","enquiry","enquiries",C.slate,C.slateLight],["quoted","quoted","quoted",C.sky,C.skyLight],["won","won","won","#15803D","#F0FDF4"],["lost","lost","lost",C.muted,"#F8FAFC"]]
+                  .filter(([k])=>custSummary[k]>0)
+                  .map(([k,one,many,fg,bg])=>(
+                    <span key={k} style={{fontSize:11,fontWeight:700,color:fg,background:bg,border:`1px solid ${fg}25`,padding:"2px 9px",borderRadius:10}}>
+                      {custSummary[k]} {custSummary[k]===1?one:many}
+                    </span>
+                  ))}
+                {custSummary.value>0&&(
+                  <span style={{marginLeft:"auto",fontSize:12,fontWeight:700,color:C.navy}}>£{custSummary.value.toLocaleString()}</span>
+                )}
+              </div>
+              {linkedJobs.length===0&&(
+                <div style={{fontSize:13,color:C.muted,padding:"4px 0"}}>No jobs yet — add one from the Sales Pipeline.</div>
+              )}
               {linkedJobs.map(job=>{
                 const isCompleted=job.status===COMPLETED_STAGE;
                 return (
@@ -2289,9 +2337,11 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
 
 // ── Customer / Lead Form (add new) ────────────────────────────────────────────
 const CustomerForm = ({initial={},onSave,onCancel}) => {
-  const [form,setForm]=useState({name:"",email:"",email2:"",phone:"",address:"",source:"Website",sector:"",stage:"New Enquiry",notes:"",windowcad:"",quoteValue:"",quoteCost:"",installationValue:"",installationCost:"",...initial});
+  // A new enquiry captures the contact plus the stage its opening opportunity starts at.
+  // Quote financials and the WindowCAD7 reference belong to that opportunity, not here, and
+  // are filled in on the job itself once there is something to quote.
+  const [form,setForm]=useState({name:"",email:"",email2:"",phone:"",address:"",source:"Website",sector:"",stage:"New Enquiry",notes:"",...initial});
   const set=k=>e=>setForm(f=>({...f,[k]:e.target.value}));
-  const margin=calcMargin(totalQuoteValue(form),totalQuoteCost(form));
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
       <Inp label="Full Name / Company" value={form.name} onChange={set("name")} placeholder="e.g. John Smith"/>
@@ -2302,39 +2352,13 @@ const CustomerForm = ({initial={},onSave,onCancel}) => {
       <Inp label="Secondary Email (optional)" type="email" value={form.email2} onChange={set("email2")} placeholder="e.g. a partner or business contact — also gets every automated email"/>
       <Inp label="Address" value={form.address} onChange={set("address")}/>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-        <Sel label="Pipeline Stage" value={form.stage} onChange={set("stage")}>{LEAD_STAGES.map(s=><option key={s}>{s}</option>)}</Sel>
+        <Sel label="Starting Stage" value={form.stage} onChange={set("stage")}>{LEAD_STAGES.filter(x=>x!=="Deal Won").map(s=><option key={s}>{s}</option>)}</Sel>
         <Sel label="Lead Source" value={form.source} onChange={set("source")}>{SOURCES.map(s=><option key={s}>{s}</option>)}</Sel>
       </div>
       <Sel label="Sector" value={form.sector} onChange={set("sector")}>
         <option value="">— Not set —</option>
         {SECTORS.map(s=><option key={s}>{s}</option>)}
       </Sel>
-      <Inp label="WindowCAD7 Reference" value={form.windowcad} onChange={set("windowcad")} placeholder="WC-2025-001"/>
-      <div style={{background:C.slateLight,borderRadius:8,padding:14}}>
-        <div style={{fontSize:12,fontWeight:700,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:12}}>Quote Financials</div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
-          <Inp label="Product Value (£)" type="number" value={form.quoteValue} onChange={set("quoteValue")} placeholder="4200"/>
-          <Inp label="Product Cost (£)" type="number" value={form.quoteCost} onChange={set("quoteCost")} placeholder="2650"/>
-        </div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
-          <Inp label="Installation Value (£)" type="number" value={form.installationValue} onChange={set("installationValue")} placeholder="800"/>
-          <Inp label="Installation Cost (£)" type="number" value={form.installationCost} onChange={set("installationCost")} placeholder="400"/>
-        </div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:margin?12:0}}>
-          <Inp label="Total Quote Value (£)" type="number" value={totalQuoteValue(form)||""} readOnly style={{background:C.white,color:C.slate}}/>
-          <Inp label="Total Quote Cost (£)" type="number" value={totalQuoteCost(form)||""} readOnly style={{background:C.white,color:C.slate}}/>
-        </div>
-        {margin&&(
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-            {[["Gross Profit",`£${margin.profit.toLocaleString()}`,margin.profit>=0?C.mint:C.red],["Margin",`${margin.pct}%`,margin.profit>=0?C.mint:C.red]].map(([l,v,col])=>(
-              <div key={l} style={{background:C.white,borderRadius:6,padding:"10px 12px",border:`1px solid ${C.border}`}}>
-                <div style={{fontSize:11,color:C.slate,marginBottom:2}}>{l}</div>
-                <div style={{fontSize:18,fontWeight:800,color:col}}>{v}</div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
       <TA label="Notes" value={form.notes} onChange={set("notes")}/>
       <div style={{display:"flex",gap:10,justifyContent:"flex-end",paddingTop:8}}>
         <Btn variant="secondary" onClick={onCancel}>Cancel</Btn>
@@ -2580,12 +2604,6 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
   // the WindowCAD7 webhook won't — fall back to whoever is against the customer.
   const jobSoldBy=j=>j.soldBy||customers.find(c=>c.id===j.customerId)?.soldBy||"";
 
-  const filtered=useMemo(()=>{
-    const q=search.toLowerCase();
-    return customers.filter(c=>(!q||c.name.toLowerCase().includes(q)||c.phone.includes(q)||c.address.toLowerCase().includes(q))
-      &&matchesPipelineFilters(c,period,soldByFilter));
-  },[customers,search,period,soldByFilter]);
-
   const customerName=id=>customers.find(c=>c.id===id)?.name||"Unknown";
   // Jobs currently sitting at a Sales Pipeline stage (e.g. "Quoted") rather than an
   // Installation one — a repeat WindowCAD7 quote that hasn't been won yet. Shown alongside
@@ -2600,8 +2618,6 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
       &&matchesPipelineFilters(j,period,soldByFilter,jobSoldBy));
   },[jobs,customers,search,period,soldByFilter]);
 
-  const margin=c=>calcMargin(totalQuoteValue(c),totalQuoteCost(c));
-
   // Deals actually won within the board's current period/Sold By filter. Drives the Deal Won
   // column's summary. Every won opportunity counts here wherever it has since travelled to in
   // the Installation Pipeline — winning is a point in time, not a place.
@@ -2614,61 +2630,6 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
 
   // Takes the customer record AFTER it's been saved (so it has its real, server-assigned
   // id) — the installation job's customerId always correctly points at the right customer.
-  // Winning a deal PROMOTES the customer's sales data into an opportunity, then clears it from
-  // the customer — it no longer leaves a second, diverging copy behind. Phase 2 of the
-  // Customer/Opportunity model: a customer is a contact, an opportunity is the work.
-  //
-  // This path only exists while sales-stage *customers* still exist. Once the migration
-  // promotes the remaining ones, every sales record is already an opportunity and winning is
-  // purely a stage change (see handleJobSave below) — this function then goes away entirely.
-  const handleDealWon=(savedCustomer)=>{
-    const newJob={
-      customerId:savedCustomer.id,
-      title:savedCustomer.name,
-      // The site inherits the customer's address at promotion time; from here on the two are
-      // independent, so a later second job for the same customer can sit at a different site.
-      siteAddress:savedCustomer.address||"",
-      products:savedCustomer.productsOfInterest||[],
-      status:"Book Survey",
-      surveyDate:"",installDate:"",installers:"",
-      // The WindowCAD7 linkage moves with the work, not the contact. The receiver matches
-      // jobs before customers, so handing these over keeps the project pointed at the
-      // opportunity — clearing them from the customer without this would orphan the link and
-      // the next webhook would create a duplicate.
-      windowcad:savedCustomer.windowcad||"",
-      windowcadProjectId:savedCustomer.windowcadProjectId||"",
-      windowcadStatus:savedCustomer.windowcadStatus||"",
-      windowcadModifiedAt:savedCustomer.windowcadModifiedAt||"",
-      value:totalQuoteValue(savedCustomer)||"",
-      quoteValue:savedCustomer.quoteValue||"",
-      quoteCost:savedCustomer.quoteCost||"",
-      installationValue:savedCustomer.installationValue||"",
-      installationCost:savedCustomer.installationCost||"",
-      notes:savedCustomer.notes||"",
-      soldBy:savedCustomer.soldBy||"",
-      wonAt:new Date().toISOString(),
-      // leadTemp/expectedSaleDate are Sales-Pipeline-only concepts — nothing reads them off an
-      // opportunity once it's won, so they're dropped rather than carried.
-      tabs:{...savedCustomer.tabs,quote:{...savedCustomer.tabs.quote,leadTemp:"",expectedSaleDate:""}},
-    };
-    apiCreateJob(newJob).then(saved=>{
-      setJobs(js=>[saved,...js]);
-      setWonCustomer(savedCustomer.name);
-      setShowConfetti(true);
-      // Strip the promoted data from the contact record. Stage stays "Deal Won" — it's true,
-      // and the Deal Won column shows no cards, so it doesn't clutter the board; the migration
-      // clears stages wholesale. What matters is that the *financials* and the WindowCAD7 link
-      // now live in exactly one place.
-      const cleared={...savedCustomer,quoteValue:"",quoteCost:"",installationValue:"",installationCost:"",
-        windowcad:"",windowcadProjectId:"",windowcadStatus:"",windowcadModifiedAt:"",tabs:emptyTabs()};
-      apiUpdateCustomer(cleared)
-        .then(c=>setCustomers(cs=>cs.map(x=>x.id===c.id?c:x)))
-        // A failure here is untidy, not harmful — the opportunity already owns the data, and
-        // the receiver matches jobs first, so the link stays correct either way.
-        .catch(err=>console.warn("Promoted the deal but could not tidy the customer record:",err));
-    }).catch(err=>window.alert("Failed to create the installation job: "+err.message));
-  };
-
   // An opportunity already on this board (a Job at a sales stage) that reaches "Deal Won"
   // continues its journey rather than stopping: it re-stages to the first Installation stage
   // and picks up its won date. Nothing is created and nothing is copied — the same record
@@ -2686,27 +2647,38 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
     }).catch(err=>window.alert("Failed to save job: "+err.message));
   };
 
+  // A new enquiry creates BOTH a contact and its opening opportunity. The board only shows
+  // opportunities, so a customer saved on its own would be invisible — and the first thing
+  // anyone does with a new enquiry is quote it, which is an opportunity's job anyway.
   const saveCustomer=(updated)=>{
-    const prev=customers.find(c=>c.id===updated.id);
-    const wasAlreadyWon=prev?.stage==="Deal Won";
     const isAdd=modal==="add";
-    const persist=isAdd?apiCreateCustomer(updated):apiUpdateCustomer(updated);
-    persist.then(saved=>{
-      setCustomers(cs=>isAdd?[saved,...cs]:cs.map(c=>c.id===saved.id?saved:c));
-      if(saved.stage==="Deal Won"&&!wasAlreadyWon) handleDealWon(saved);
-      setModal(null);
-    }).catch(err=>window.alert("Failed to save customer: "+err.message));
+    if(!isAdd){
+      apiUpdateCustomer(updated)
+        .then(saved=>{setCustomers(cs=>cs.map(c=>c.id===saved.id?saved:c));setModal(null);})
+        .catch(err=>window.alert("Failed to save customer: "+err.message));
+      return;
+    }
+    apiCreateCustomer(updated).then(saved=>{
+      setCustomers(cs=>[saved,...cs]);
+      return apiCreateJob({
+        customerId:saved.id,
+        title:saved.name,
+        siteAddress:saved.address||"",
+        status:updated.stage||defaultStage||"New Enquiry",
+        products:canonProducts(saved.productsOfInterest),
+        reference:"",windowcad:"",
+        quoteValue:"",quoteCost:"",installationValue:"",installationCost:"",value:"",
+        soldBy:saved.soldBy||"",notes:saved.notes||"",
+        tabs:emptyTabs(),
+      }).then(job=>setJobs(js=>[job,...js]));
+    }).then(()=>setModal(null))
+      .catch(err=>window.alert("Failed to save customer: "+err.message));
   };
 
-  // Also handle stage changes via kanban card detail inline save
-  const handleCardSave=(updated)=>{
-    const prev=customers.find(c=>c.id===updated.id);
-    const justWon=updated.stage==="Deal Won"&&prev?.stage!=="Deal Won";
-    apiUpdateCustomer(updated).then(saved=>{
-      setCustomers(cs=>cs.map(c=>c.id===saved.id?saved:c));
-      if(justWon) handleDealWon(saved);
-    }).catch(err=>window.alert("Failed to save customer: "+err.message));
-  };
+  const handleCardSave=(updated)=>
+    apiUpdateCustomer(updated)
+      .then(saved=>setCustomers(cs=>cs.map(c=>c.id===saved.id?saved:c)))
+      .catch(err=>window.alert("Failed to save customer: "+err.message));
 
   const deleteCustomer=(id)=>{
     if(!window.confirm("Delete this customer?")) return;
@@ -2726,56 +2698,6 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
     }).catch(err=>window.alert("Failed to save job: "+err.message));
   };
 
-  // Matches InstallPipelinePage's own job card layout field-for-field (title, then Reference
-  // badge, then a customer-name+sector row, phone, quote/margin, products, date) — the office
-  // wants one consistent card format across both pipeline boards, not two different ones. A
-  // plain customer has no separate "title" (it IS the name), so the customer-name+sector row
-  // just becomes the sector badge on its own, and lead temperature/source — real Sales-only
-  // concepts with no Installation equivalent — are dropped from the card for that consistency
-  // (still fully editable inside the record itself, just not shown on the card face).
-  const renderCard=(c)=>{
-    const m=margin(c);
-    return (
-      <div key={c.id} onClick={()=>setDetailRecord(c)}
-        style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:8,padding:"11px 13px",marginBottom:7,cursor:"pointer",boxShadow:"0 1px 3px rgba(0,0,0,0.06)"}}
-        onMouseEnter={e=>e.currentTarget.style.boxShadow="0 4px 12px rgba(0,0,0,0.1)"}
-        onMouseLeave={e=>e.currentTarget.style.boxShadow="0 1px 3px rgba(0,0,0,0.06)"}
-      >
-        <div style={{fontWeight:700,fontSize:13,color:C.text,marginBottom:3,lineHeight:1.3}}>{c.name}</div>
-        {c.windowcad&&<div style={{fontSize:11,color:C.navy,fontWeight:700,marginBottom:3,background:C.skyLight,display:"inline-block",padding:"1px 7px",borderRadius:6}}>📍 {c.windowcad}</div>}
-        {c.sector&&SECTOR_META[c.sector]&&(
-          <div style={{marginBottom:3}}>
-            <span style={{fontSize:10,background:SECTOR_META[c.sector].bg,color:SECTOR_META[c.sector].text,padding:"2px 7px",borderRadius:10,fontWeight:700}}>{SECTOR_META[c.sector].icon} {c.sector}</span>
-          </div>
-        )}
-        {c.phone&&<div style={{fontSize:12,color:C.slate,marginBottom:3}}>{c.phone}</div>}
-        {totalQuoteValue(c)>0&&(
-          <div style={{display:"flex",gap:5,marginBottom:5}}>
-            <div style={{background:C.skyLight,borderRadius:5,padding:"3px 7px",flex:1}}>
-              <div style={{fontSize:10,color:C.slate}}>Quote</div>
-              <div style={{fontSize:12,fontWeight:800,color:C.navy}}>£{totalQuoteValue(c).toLocaleString()}</div>
-            </div>
-            {m&&<div style={{background:m.profit>=0?"#F0FDF4":"#FEF2F2",borderRadius:5,padding:"3px 7px",flex:1}}>
-              <div style={{fontSize:10,color:C.slate}}>Margin</div>
-              <div style={{fontSize:12,fontWeight:800,color:m.profit>=0?C.mint:C.red}}>{m.pct}%</div>
-            </div>}
-          </div>
-        )}
-        {c.productsOfInterest?.length>0&&<div style={{fontSize:11,color:C.muted,marginTop:3}}>{c.productsOfInterest.join(", ")}</div>}
-        {c.tabs?.quote?.expectedSaleDate?(
-          <div style={{fontSize:11,color:C.slate,marginTop:3}}>📅 {c.tabs.quote.expectedSaleDate}</div>
-        ):(
-          <div style={{fontSize:11,color:C.muted,marginTop:3}}>{c.createdAt}</div>
-        )}
-      </div>
-    );
-  };
-
-  // A repeat WindowCAD7 quote (its own distinct Reference, own Job record) shown on this
-  // board while it's still just quoted — not yet won. Field-for-field identical to
-  // InstallPipelinePage's own job card (see comment on renderCard above) so a Job reads the
-  // same wherever it's currently shown. Opens the Job's own detail via the same viewingJob
-  // state/modal CardDetailModal already uses elsewhere on this page.
   const renderJobCard=(job)=>{
     const revenue=wonJobRevenue(job);
     const m=calcMargin(revenue,wonJobCost(job));
@@ -2842,24 +2764,21 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
               />
             );
           }
-          const stageCustomers=filtered.filter(c=>c.stage===stage);
+          // Opportunities only. Customers are contacts now — they carry no stage and no value,
+          // so rendering them here would show every opportunity twice and inflate the counts.
           const stageJobs=filteredLeadJobs.filter(j=>j.status===stage);
-          const stageItems=[...stageCustomers,...stageJobs];
-          const stageRevenue=stageCustomers.reduce((sum,c)=>sum+totalQuoteValue(c),0)+stageJobs.reduce((sum,j)=>sum+wonJobRevenue(j),0);
-          const marginsWithData=[
-            ...stageCustomers.map(c=>calcMargin(totalQuoteValue(c),totalQuoteCost(c))),
-            ...stageJobs.map(j=>calcMargin(wonJobRevenue(j),wonJobCost(j))),
-          ].filter(Boolean);
+          const stageRevenue=stageJobs.reduce((sum,j)=>sum+wonJobRevenue(j),0);
+          const marginsWithData=stageJobs.map(j=>calcMargin(wonJobRevenue(j),wonJobCost(j))).filter(Boolean);
           const avgMargin=marginsWithData.length>0
             ?(marginsWithData.reduce((sum,m)=>sum+parseFloat(m.pct),0)/marginsWithData.length).toFixed(1)
             :null;
           return (
             <KanbanCol key={stage} stage={stage} meta={STAGE_META[stage]}
-              items={stageItems}
+              items={stageJobs}
               revenue={stageRevenue}
               avgMargin={avgMargin}
               onAdd={s=>{setDefaultStage(s);setModal("add");}}
-              renderCard={item=>item.customerId!==undefined?renderJobCard(item):renderCard(item)}
+              renderCard={item=>renderJobCard(item)}
             />
           );
         })}
@@ -3075,19 +2994,11 @@ const CalendarPage = ({customers,jobs,settings,onNavigate}) => {
 
   const fmtDate=(y,m,d)=>`${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
 
-  // Survey bookings can live in two places: a Customer's own Survey tab (used pre-Deal Won,
-  // while there's no Job yet) or a Job's Survey tab (used once a deal converts — see
-  // handleDealWon, which creates a fresh Job with empty tabs, so from that point on the
-  // Job's own Survey tab is what office staff actually book/edit). Excluding Deal Won
-  // customers here avoids showing a stale customer-level booking alongside — or instead of —
-  // whatever's actually booked on the Job, which is what caused the calendar to show
-  // out-of-date survey info after a deal converted.
+  // Surveys are booked on the opportunity. They used to be bookable on a Customer too, back
+  // when a customer held its own sales record, which meant the calendar had to reconcile two
+  // sources and could show a stale customer-level booking instead of the real one. Customers
+  // are contacts now and carry no tabs, so there is a single source.
   const surveyEvents=[
-    ...customers.filter(c=>c.stage!=="Deal Won").flatMap(c=>{
-      const s=c.tabs?.survey;
-      if(!s?.date||!s?.fitter) return [];
-      return [{date:s.date,fitter:s.fitter,label:c.name,type:"Survey",color:C.sky,time:s.time||"",endTime:s.endTime||"",customerId:c.id}];
-    }),
     ...jobs.flatMap(j=>{
       const s=j.tabs?.survey;
       if(!s?.date||!s?.fitter) return [];
@@ -4848,27 +4759,27 @@ const Dashboard = ({customers,jobs}) => {
   const today=new Date().toISOString().slice(0,10);
 
   // Everything sitting on the Sales Pipeline board: customers plus any Job parked at a sales stage.
-  const salesRecords=useMemo(()=>[
-    ...customers,
-    ...jobs.filter(j=>LEAD_STAGES.includes(j.status)).map(j=>({...j,stage:j.status})),
-  ],[customers,jobs]);
-  const openSales=useMemo(()=>salesRecords.filter(r=>!["Deal Won","Deal Lost"].includes(r.stage)),[salesRecords]);
+  // Everything on the Sales Pipeline board is an opportunity now — customers are contacts and
+  // carry no stage or value — so every sales figure here reads from jobs, exactly as the board
+  // does. Counting customers as well is what used to double them.
+  const salesRecords=useMemo(()=>jobs.filter(j=>LEAD_STAGES.includes(j.status)),[jobs]);
+  const openSales=useMemo(()=>salesRecords.filter(r=>!["Deal Won","Deal Lost"].includes(r.status)),[salesRecords]);
 
   const stats=useMemo(()=>({
     total:customers.length,
-    prospects:salesRecords.filter(r=>r.stage==="Prospect List").length,
-    leads:salesRecords.filter(r=>["New Enquiry","Contacted"].includes(r.stage)).length,
-    // Won deals are counted from opportunities that carry a won date, not from customers
-    // parked at a "Deal Won" stage — a won deal moves on into the Installation Pipeline, and
-    // the stage it left behind is just a label the migration will clear. This is the same
-    // source the Sales Pipeline's own Deal Won column uses, so the two always agree.
+    prospects:salesRecords.filter(r=>r.status==="Prospect List").length,
+    leads:salesRecords.filter(r=>["New Enquiry","Contacted"].includes(r.status)).length,
+    // Won deals come from opportunities carrying a won date — a won deal travels on into the
+    // Installation Pipeline, so counting by stage would lose it the moment it moved.
     won:jobs.filter(j=>j.wonAt).length,
     activeJobs:jobs.filter(j=>j.status!==COMPLETED_STAGE&&!LEAD_STAGES.includes(j.status)).length,
     pipeline:openSales.reduce((s,r)=>s+totalQuoteValue(r),0),
   }),[customers,jobs,salesRecords,openSales]);
 
-  const recent=[...customers].sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)).slice(0,5);
-  const activeProspects=customers.filter(c=>c.stage==="Prospect List").sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+  const customerOf=id=>customers.find(c=>c.id===id);
+  // The newest opportunities, and anything still sitting on the prospect list.
+  const recent=[...salesRecords].sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)).slice(0,5);
+  const activeProspects=salesRecords.filter(r=>r.status==="Prospect List").sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
 
   // ── Deals Won reporting ──
   // null = "all"; an array = an explicit tick-list from the Excel-style dropdowns.
@@ -5056,8 +4967,8 @@ const Dashboard = ({customers,jobs}) => {
           {LEAD_STAGES.map(stage=>{
             // "Deal Won" counts won opportunities, matching the tile above and the Sales
             // Pipeline board; every other stage counts what is actually sitting there.
-            const count=stage==="Deal Won"?stats.won:salesRecords.filter(r=>r.stage===stage).length;
-            const total=LEAD_STAGES.reduce((s,st)=>s+(st==="Deal Won"?stats.won:salesRecords.filter(r=>r.stage===st).length),0);
+            const count=stage==="Deal Won"?stats.won:salesRecords.filter(r=>r.status===stage).length;
+            const total=LEAD_STAGES.reduce((s,st)=>s+(st==="Deal Won"?stats.won:salesRecords.filter(r=>r.status===st).length),0);
             const meta=STAGE_META[stage];
             return (
               <div key={stage} style={{flex:1,textAlign:"center"}}>
@@ -5081,7 +4992,7 @@ const Dashboard = ({customers,jobs}) => {
         };
         const tempCounts={hot:0,warm:0,cold:0};
         const tempValue={hot:0,warm:0,cold:0};
-        customers.filter(c=>!["Deal Won","Deal Lost"].includes(c.stage)).forEach(c=>{
+        openSales.forEach(c=>{
           const t=c.tabs?.quote?.leadTemp;
           if(t&&tempCounts[t]!==undefined){tempCounts[t]++;tempValue[t]+=totalQuoteValue(c);}
         });
@@ -5105,7 +5016,7 @@ const Dashboard = ({customers,jobs}) => {
             {tempCounts.hot>0&&(
               <div>
                 <div style={{fontSize:12,fontWeight:700,color:"#DC2626",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>🔥 Hot Leads — Action Now</div>
-                {customers.filter(c=>c.tabs?.quote?.leadTemp==="hot"&&!["Deal Won","Deal Lost"].includes(c.stage))
+                {openSales.filter(c=>c.tabs?.quote?.leadTemp==="hot")
                   .sort((a,b)=>(a.tabs?.quote?.expectedSaleDate||"9999").localeCompare(b.tabs?.quote?.expectedSaleDate||"9999"))
                   .map(c=>{
                     const saleDate=c.tabs?.quote?.expectedSaleDate;
@@ -5114,9 +5025,9 @@ const Dashboard = ({customers,jobs}) => {
                       <div key={c.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:`1px solid ${C.border}`}}>
                         <span style={{fontSize:18,flexShrink:0}}>🔥</span>
                         <div style={{flex:1,minWidth:0}}>
-                          <div style={{fontSize:14,fontWeight:700,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name}</div>
+                          <div style={{fontSize:14,fontWeight:700,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{customerOf(c.customerId)?.name||c.title}</div>
                           <div style={{fontSize:12,color:C.slate,marginTop:1,display:"flex",alignItems:"center",gap:6}}>
-                            <Badge label={c.stage}/>
+                            <Badge label={c.status}/>
                             {c.soldBy&&<span style={{color:C.muted}}>· {c.soldBy}</span>}
                           </div>
                         </div>
@@ -5136,8 +5047,8 @@ const Dashboard = ({customers,jobs}) => {
       {/* ── Quotes Forecast ── */}
       {(()=>{
         const todayStr=new Date().toISOString().slice(0,10);
-        const quotesWithDates=customers
-          .filter(c=>c.tabs?.quote?.expectedSaleDate&&!["Deal Won","Deal Lost"].includes(c.stage))
+        const quotesWithDates=openSales
+          .filter(c=>c.tabs?.quote?.expectedSaleDate)
           .sort((a,b)=>a.tabs.quote.expectedSaleDate.localeCompare(b.tabs.quote.expectedSaleDate));
         if(quotesWithDates.length===0) return null;
         const tempStyle={hot:{icon:"🔥",color:"#DC2626"},warm:{icon:"🌡️",color:"#92400E"},cold:{icon:"🥶",color:"#1D4ED8"}};
@@ -5162,8 +5073,8 @@ const Dashboard = ({customers,jobs}) => {
               return (
                 <div key={c.id} style={{display:"grid",gridTemplateColumns:"1fr 100px 70px 90px 80px",gap:8,padding:"10px 0 10px 8px",borderBottom:`1px solid ${C.border}`,alignItems:"center",background:isPast?"#FEF2F2":"transparent",borderRadius:6,marginBottom:2}}>
                   <div style={{minWidth:0}}>
-                    <div style={{fontSize:13,fontWeight:700,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name}</div>
-                    <div style={{marginTop:2}}><Badge label={c.stage}/></div>
+                    <div style={{fontSize:13,fontWeight:700,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{customerOf(c.customerId)?.name||c.title}</div>
+                    <div style={{marginTop:2}}><Badge label={c.status}/></div>
                   </div>
                   <div>
                     <div style={{fontSize:12,fontWeight:600,color:isPast?C.red:isClose?"#92400E":C.text}}>{new Date(saleDate).toLocaleDateString("en-GB",{day:"numeric",month:"short"})}</div>
@@ -5259,10 +5170,10 @@ const Dashboard = ({customers,jobs}) => {
         {recent.map(c=>(
           <div key={c.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:`1px solid ${C.border}`}}>
             <div>
-              <div style={{fontWeight:600,fontSize:14,color:C.text}}>{c.name}</div>
-              <div style={{fontSize:12,color:C.slate}}>{c.address}</div>
+              <div style={{fontWeight:600,fontSize:14,color:C.text}}>{customerOf(c.customerId)?.name||c.title}</div>
+              <div style={{fontSize:12,color:C.slate}}>{c.siteAddress||customerOf(c.customerId)?.address||""}</div>
             </div>
-            <Badge label={c.stage}/>
+            <Badge label={c.status}/>
           </div>
         ))}
       </div>
@@ -5274,10 +5185,10 @@ const Dashboard = ({customers,jobs}) => {
           {activeProspects.map(c=>(
             <div key={c.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:`1px solid ${C.border}`}}>
               <div>
-                <div style={{fontWeight:600,fontSize:14,color:C.text}}>{c.name}</div>
-                <div style={{fontSize:12,color:C.slate}}>{c.address}</div>
+                <div style={{fontWeight:600,fontSize:14,color:C.text}}>{customerOf(c.customerId)?.name||c.title}</div>
+                <div style={{fontSize:12,color:C.slate}}>{c.siteAddress||customerOf(c.customerId)?.address||""}</div>
               </div>
-              <Badge label={c.stage}/>
+              <Badge label={c.status}/>
             </div>
           ))}
         </div>
@@ -6740,10 +6651,20 @@ const CustomerDirectoryPage = ({customers,setCustomers,jobs,setJobs,settings,onN
                 </div>
                 <div style={{fontSize:12,color:C.slate,marginBottom:2}}>{c.phone}</div>
                 <div style={{fontSize:11,color:C.muted,marginBottom:5,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.address}</div>
-                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                  {cJobs.length>0&&<span style={{fontSize:10,background:C.skyLight,color:C.sky,padding:"1px 7px",borderRadius:8,fontWeight:600}}>{cJobs.length} job{cJobs.length!==1?"s":""}</span>}
-                  <span style={{fontSize:10,background:C.slateLight,color:C.slate,padding:"1px 7px",borderRadius:8}}>{c.stage||"Enquiry"}</span>
-                </div>
+                {/* The customer's standing across all their work, rather than a single stage —
+                    a trade customer routinely has enquiries, live quotes and won jobs at once,
+                    which one stage could never express. */}
+                {(()=>{const sm=summariseOpps(cJobs);return (
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+                    {[["enquiry","enquiry",C.slate,C.slateLight],["quoted","quoted",C.sky,C.skyLight],["won","won","#15803D","#F0FDF4"]]
+                      .filter(([k])=>sm[k]>0)
+                      .map(([k,label,fg,bg])=>(
+                        <span key={k} style={{fontSize:10,fontWeight:700,background:bg,color:fg,padding:"1px 7px",borderRadius:8}}>{sm[k]} {label}</span>
+                      ))}
+                    {cJobs.length===0&&<span style={{fontSize:10,background:C.slateLight,color:C.muted,padding:"1px 7px",borderRadius:8}}>no jobs</span>}
+                    {sm.value>0&&<span style={{fontSize:10,color:C.navy,fontWeight:700,marginLeft:"auto"}}>£{sm.value.toLocaleString()}</span>}
+                  </div>
+                );})()}
               </div>
             );
           })}
@@ -6836,7 +6757,7 @@ const CustomerDirectoryPage = ({customers,setCustomers,jobs,setJobs,settings,onN
                 ["Email",cust.email||"—"],
                 ["Address",cust.address||"—"],
                 ["Lead Source",cust.source||"—"],
-                ["Stage",cust.stage||"—"],
+                ["Jobs",(()=>{const sm=summariseOpps(customerJobs(cust.id));const bits=[sm.enquiry&&`${sm.enquiry} enquiry`,sm.quoted&&`${sm.quoted} quoted`,sm.won&&`${sm.won} won`].filter(Boolean);return bits.length?bits.join(" · "):"—";})()],
               ]).map(([label,val])=>(
                 <div key={label} style={{padding:"8px 12px",background:C.slateLight,borderRadius:8}}>
                   <div style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:3}}>{label}</div>
