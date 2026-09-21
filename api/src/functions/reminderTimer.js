@@ -1,6 +1,6 @@
 const { app } = require('@azure/functions');
 const { getPool } = require('../db');
-const { sendJobReminder, sendSurveyReminderEmail, sendServiceCallReminderEmail } = require('../reminderCore');
+const { sendJobReminder, sendSurveyReminderEmail, sendServiceCallReminderEmail, bookingFitters } = require('../reminderCore');
 
 // Runs once daily at 07:00 UTC (~7-8am UK time depending on BST) and sends any reminder
 // that's due and hasn't been sent yet. Uses "due within N days, not yet sent" rather than
@@ -54,7 +54,7 @@ app.timer('reminderTimer', {
         const surveyDateStr = job.tabs?.survey?.date;
         if (
           surveyDateStr &&
-          job.tabs?.survey?.fitter &&
+          bookingFitters(job.tabs?.survey).length &&
           job.tabs?.survey?.notifyEnabled !== false &&
           job.tabs?.survey?.reminderSent?.status !== 'sent'
         ) {
@@ -75,7 +75,7 @@ app.timer('reminderTimer', {
         const scNotifyEnabled = job.tabs?.serviceCall?.notifyEnabled !== false;
         const scBookings = job.tabs?.serviceCall?.bookings || [];
         for (const booking of scBookings) {
-          if (!booking.date || !booking.fitter || !scNotifyEnabled || booking.reminderSent?.status === 'sent') continue;
+          if (!booking.date || !bookingFitters(booking).length || !scNotifyEnabled || booking.reminderSent?.status === 'sent') continue;
           const bookingDate = new Date(booking.date);
           bookingDate.setHours(0, 0, 0, 0);
           const bookingDaysUntil = Math.round((bookingDate - today) / 86400000);

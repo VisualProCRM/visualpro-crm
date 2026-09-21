@@ -157,6 +157,12 @@ const canonProducts = (arr) => [...new Set((arr||[]).map(p=>PRODUCT_ALIASES[p]||
 // single control writes back to `products` and empties the other, so a record consolidates the
 // first time anyone touches it and the migration finishes the rest.
 const recordProducts = (r) => canonProducts([...((r&&r.products)||[]),...((r&&r.productsOfInterest)||[])]);
+// Who is booked on a survey or a service call. Both used to hold a single name in `fitter`;
+// they now hold a list in `fitters`, the same shape installations already use (2026-09-21).
+// Read through this everywhere so anything booked before the change still appears in the
+// fitter's app, on the calendar and in mileage. Once `fitters` exists it is authoritative,
+// even when empty — the pickers clear the old `fitter` field whenever they write the list.
+const bookingFitters = (b) => !b ? [] : Array.isArray(b.fitters) ? b.fitters : (b.fitter ? [b.fitter] : []);
 const CARD_TABS     = ["Details","Tasks","Quote","Invoices","Notes","Survey","Order Confirmation","Bills","Installation","Guarantee","Service Call"];
 
 const DEFAULT_EMAIL_TEMPLATES = {
@@ -1404,14 +1410,27 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
       {activeTab==="Survey"&&(
         <div style={{display:"flex",flexDirection:"column",gap:16}}>
           <div style={{background:C.slateLight,borderRadius:8,padding:14}}>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:12,marginBottom:0}}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
               <Inp label="Survey Date" type="date" value={data.tabs.survey.date} onChange={e=>setTab("survey",{date:e.target.value})}/>
               <Inp label="Start Time" type="time" value={data.tabs.survey.time||""} onChange={e=>setTab("survey",{time:e.target.value})}/>
               <Inp label="End Time" type="time" value={data.tabs.survey.endTime||""} onChange={e=>setTab("survey",{endTime:e.target.value})}/>
-              <Sel label="Assign Fitter" value={data.tabs.survey.fitter} onChange={e=>setTab("survey",{fitter:e.target.value})}>
-                <option value="">— Select Fitter —</option>
-                {(settings?.fitters||DEFAULT_FITTERS).map(f=><option key={f}>{f}</option>)}
-              </Sel>
+            </div>
+            {/* Same toggle buttons as the Installation tab — a survey can be attended by more than
+                one fitter. Writes the list and clears the old single-name field. */}
+            <label style={{fontSize:12,fontWeight:600,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",display:"block",marginBottom:8}}>Assign Fitters</label>
+            <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+              {(settings?.fitters||DEFAULT_FITTERS).map(f=>{
+                const current=bookingFitters(data.tabs.survey);
+                const selected=current.includes(f);
+                return (
+                  <button key={f} onClick={()=>setTab("survey",{fitters:selected?current.filter(n=>n!==f):[...current,f],fitter:""})}
+                    style={{padding:"6px 14px",borderRadius:20,fontSize:13,cursor:"pointer",fontWeight:600,
+                      background:selected?C.navy:C.white,color:selected?"#fff":C.slate,
+                      border:`1px solid ${selected?C.navy:C.border}`,transition:"all 0.15s"}}>
+                    👷 {f}
+                  </button>
+                );
+              })}
             </div>
             {/* Duration indicator */}
             {data.tabs.survey.time&&data.tabs.survey.endTime&&(()=>{
@@ -1425,9 +1444,9 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
               return <div style={{marginTop:10,fontSize:12,color:C.slate,fontWeight:600}}>⏱ Duration: <span style={{color:C.navy}}>{label}</span></div>;
             })()}
           </div>
-          {data.tabs.survey.date&&data.tabs.survey.fitter&&(
+          {data.tabs.survey.date&&bookingFitters(data.tabs.survey).length>0&&(
             <div style={{background:"#F0FDF4",border:"1px solid #86EFAC",borderRadius:8,padding:12,fontSize:13,color:"#15803D",fontWeight:600}}>
-              ✅ Survey booked — {data.tabs.survey.fitter} on {new Date(data.tabs.survey.date).toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}
+              ✅ Survey booked — {bookingFitters(data.tabs.survey).join(", ")} on {new Date(data.tabs.survey.date).toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}
               {data.tabs.survey.time&&<span> {data.tabs.survey.time}{data.tabs.survey.endTime&&` – ${data.tabs.survey.endTime}`}</span>}
               <div style={{marginTop:6,fontSize:12,fontWeight:600}}>
                 {data.tabs.survey.emailSent?.status==="sent"
@@ -2167,7 +2186,7 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
           e.target.value="";
         };
         const removeSupplierInvoice=(i)=>updateSC("supplierInvoices",(sc.supplierInvoices||[]).filter((_,idx)=>idx!==i));
-        const addBooking=()=>updateSC("bookings",[...(sc.bookings||[]),{id:uid(),date:"",startTime:"",endTime:"",fitter:"",notes:""}]);
+        const addBooking=()=>updateSC("bookings",[...(sc.bookings||[]),{id:uid(),date:"",startTime:"",endTime:"",fitters:[],notes:""}]);
         const updateBooking=(bid,field,val)=>updateSC("bookings",(sc.bookings||[]).map(b=>b.id===bid?{...b,[field]:val}:b));
         const removeBooking=(bid)=>updateSC("bookings",(sc.bookings||[]).filter(b=>b.id!==bid));
         const calcDuration=(start,end)=>{
@@ -2304,12 +2323,23 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
                       ))}
                     </div>
                     <div style={{marginBottom:10}}>
-                      <label style={{fontSize:11,fontWeight:600,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",display:"block",marginBottom:4}}>Assign Fitter</label>
-                      <select value={b.fitter||""} onChange={e=>updateBooking(b.id,"fitter",e.target.value)}
-                        style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:6,padding:"7px 10px",fontSize:13,outline:"none",background:C.white}}>
-                        <option value="">— Select Fitter —</option>
-                        {(settings?.fitters||DEFAULT_FITTERS).map(f=><option key={f}>{f}</option>)}
-                      </select>
+                      <label style={{fontSize:11,fontWeight:600,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",display:"block",marginBottom:6}}>Assign Fitters</label>
+                      {/* Same toggle buttons as the Installation tab — several fitters can attend. */}
+                      <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+                        {(settings?.fitters||DEFAULT_FITTERS).map(f=>{
+                          const current=bookingFitters(b);
+                          const selected=current.includes(f);
+                          return (
+                            <button key={f} onClick={()=>updateSC("bookings",(sc.bookings||[]).map(x=>x.id===b.id
+                                ?{...x,fitters:selected?current.filter(n=>n!==f):[...current,f],fitter:""}:x))}
+                              style={{padding:"6px 14px",borderRadius:20,fontSize:13,cursor:"pointer",fontWeight:600,
+                                background:selected?C.navy:C.white,color:selected?"#fff":C.slate,
+                                border:`1px solid ${selected?C.navy:C.border}`,transition:"all 0.15s"}}>
+                              👷 {f}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
                     <div>
                       <label style={{fontSize:11,fontWeight:600,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",display:"block",marginBottom:4}}>Booking Notes</label>
@@ -2317,9 +2347,9 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
                         placeholder="e.g. Check rear door seal and bedroom window handle"
                         style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:6,padding:"7px 10px",fontSize:13,outline:"none",background:C.white,boxSizing:"border-box"}}/>
                     </div>
-                    {b.date&&b.fitter&&(
+                    {b.date&&bookingFitters(b).length>0&&(
                       <div style={{marginTop:10,background:"#F0FDF4",border:"1px solid #86EFAC",borderRadius:6,padding:"8px 12px",fontSize:12,color:"#15803D",fontWeight:600}}>
-                        ✅ {b.fitter} · {new Date(b.date).toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short",year:"numeric"})}
+                        ✅ {bookingFitters(b).join(", ")} · {new Date(b.date).toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short",year:"numeric"})}
                         {b.startTime&&` · ${b.startTime}${b.endTime?` – ${b.endTime}`:""}`}
                         {dur&&<span style={{fontWeight:400,color:"#166534"}}> ({dur})</span>}
                         <div style={{marginTop:4,fontWeight:600}}>
@@ -3032,9 +3062,10 @@ const CalendarPage = ({customers,jobs,settings,onNavigate}) => {
   const surveyEvents=[
     ...jobs.flatMap(j=>{
       const s=j.tabs?.survey;
-      if(!s?.date||!s?.fitter) return [];
+      if(!s?.date) return [];
       const cust=customers.find(c=>c.id===j.customerId);
-      return [{date:s.date,fitter:s.fitter,label:cust?.name||j.title,type:"Survey",color:C.sky,time:s.time||"",endTime:s.endTime||"",notes:s.notes||"",job:j}];
+      // One event per assigned fitter, so the survey shows under each of them.
+      return bookingFitters(s).map(fitter=>({date:s.date,fitter,label:cust?.name||j.title,type:"Survey",color:C.sky,time:s.time||"",endTime:s.endTime||"",notes:s.notes||"",job:j}));
     }),
   ];
   // Installation bookings from job installation tab — expanded across working days
@@ -3076,8 +3107,9 @@ const CalendarPage = ({customers,jobs,settings,onNavigate}) => {
   // Service call bookings from job cards
   const serviceCallEvents=jobs.flatMap(j=>{
     return (j.tabs?.serviceCall?.bookings||[]).flatMap(b=>{
-      if(!b.date||!b.fitter) return [];
-      return [{date:b.date,fitter:b.fitter,label:j.title,type:"Service Call",color:"#7C3AED",notes:b.notes||"",time:b.startTime||"",endTime:b.endTime||"",job:j}];
+      if(!b.date) return [];
+      // One event per assigned fitter, so the booking shows under each of them — as installs do.
+      return bookingFitters(b).map(fitter=>({date:b.date,fitter,label:j.title,type:"Service Call",color:"#7C3AED",notes:b.notes||"",time:b.startTime||"",endTime:b.endTime||"",job:j}));
     });
   });
   const allEvents=[...surveyEvents,...installTabEvents,...installFieldEvents,...serviceCallEvents]
@@ -5306,12 +5338,12 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
           current=new Date(current);current.setDate(current.getDate()+1);
         }
       }
-      if(survey?.date&&survey?.fitter===fitterName){
+      if(survey?.date&&bookingFitters(survey).includes(fitterName)){
         evts.push({type:"Survey",date:survey.date,time:survey.time||"",job:j});
       }
       // Service call bookings
       (j.tabs?.serviceCall?.bookings||[]).forEach(b=>{
-        if(b.date&&b.fitter===fitterName){
+        if(b.date&&bookingFitters(b).includes(fitterName)){
           evts.push({type:"Service Call",date:b.date,time:b.startTime||"",endTime:b.endTime||"",job:j,notes:b.notes||""});
         }
       });
@@ -5513,7 +5545,7 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
                   </div>
                   <div style={{flex:1,textAlign:"center",background:C.skyLight,borderRadius:8,padding:12}}>
                     <div style={{fontSize:11,color:C.slate}}>Surveyor</div>
-                    <div style={{fontSize:15,fontWeight:800,color:C.navy}}>{job.tabs?.survey?.fitter||"TBC"}</div>
+                    <div style={{fontSize:15,fontWeight:800,color:C.navy}}>{bookingFitters(job.tabs?.survey).join(", ")||"TBC"}</div>
                   </div>
                 </div>
               </div>
@@ -5812,10 +5844,10 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
                 )}
               </div>
               {/* Upcoming bookings for this fitter */}
-              {(job.tabs?.serviceCall?.bookings||[]).filter(b=>b.fitter===fitterName).length>0&&(
+              {(job.tabs?.serviceCall?.bookings||[]).filter(b=>bookingFitters(b).includes(fitterName)).length>0&&(
                 <div style={{background:C.white,borderRadius:12,padding:16,border:`1px solid ${C.border}`}}>
                   <div style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:10}}>📅 Your Service Call Bookings</div>
-                  {(job.tabs.serviceCall.bookings||[]).filter(b=>b.fitter===fitterName).map((b,i)=>(
+                  {(job.tabs.serviceCall.bookings||[]).filter(b=>bookingFitters(b).includes(fitterName)).map((b,i)=>(
                     <div key={i} style={{background:"#FAF5FF",borderRadius:8,padding:12,marginBottom:8,border:"1px solid #C4B5FD"}}>
                       <div style={{fontSize:14,fontWeight:700,color:"#6D28D9"}}>
                         📅 {b.date?new Date(b.date).toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short",year:"numeric"}):"TBC"}
@@ -6517,11 +6549,11 @@ const MileagePage = ({jobs,customers,settings}) => {
     jobs.forEach(job=>{
       const cust=customers.find(c=>c.id===job.customerId);
       const survey=job.tabs?.survey;
-      if(survey?.date&&survey?.fitter===fitter) evts.push({type:"Survey",date:survey.date,address:cust?.address||""});
+      if(survey?.date&&bookingFitters(survey).includes(fitter)) evts.push({type:"Survey",date:survey.date,address:cust?.address||""});
       const inst=job.tabs?.installation;
       if(inst?.date&&(inst.fitters||[]).includes(fitter)) evts.push({type:"Install",date:inst.date,address:cust?.address||""});
       (job.tabs?.serviceCall?.bookings||[]).forEach(b=>{
-        if(b.date&&b.fitter===fitter) evts.push({type:"Service Call",date:b.date,address:cust?.address||""});
+        if(b.date&&bookingFitters(b).includes(fitter)) evts.push({type:"Service Call",date:b.date,address:cust?.address||""});
       });
     });
     return evts

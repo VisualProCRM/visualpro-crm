@@ -503,7 +503,7 @@ async function sendSurveyBookedEmail({ pool, jobId, testEmailOverride }) {
     surveyDate: surveyDate
       ? new Date(surveyDate).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
       : '',
-    fitterName: job.tabs?.survey?.fitter || '',
+    fitterName: bookingFitters(job.tabs?.survey).join(', '),
     companyName: settings.companyName || 'VisualPro',
     companyPhone: settings.companyPhone || '',
   };
@@ -577,7 +577,7 @@ async function sendServiceCallBookedEmail({ pool, jobId, bookingId, testEmailOve
     serviceCallDate: booking.date
       ? new Date(booking.date).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
       : '',
-    fitterName: booking.fitter || '',
+    fitterName: bookingFitters(booking).join(', '),
     companyName: settings.companyName || 'VisualPro',
     companyPhone: settings.companyPhone || '',
   };
@@ -647,7 +647,7 @@ async function sendSurveyReminderEmail({ pool, jobId, testEmailOverride }) {
     surveyDate: surveyDate
       ? new Date(surveyDate).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
       : '',
-    fitterName: job.tabs?.survey?.fitter || '',
+    fitterName: bookingFitters(job.tabs?.survey).join(', '),
     companyName: settings.companyName || 'VisualPro',
     companyPhone: settings.companyPhone || '',
   };
@@ -719,7 +719,7 @@ async function sendServiceCallReminderEmail({ pool, jobId, bookingId, testEmailO
     serviceCallDate: booking.date
       ? new Date(booking.date).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
       : '',
-    fitterName: booking.fitter || '',
+    fitterName: bookingFitters(booking).join(', '),
     companyName: settings.companyName || 'VisualPro',
     companyPhone: settings.companyPhone || '',
   };
@@ -877,7 +877,7 @@ async function sendSurveyCompleteEmail({ pool, jobId, testEmailOverride }) {
     surveyDate: surveyDate
       ? new Date(surveyDate).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
       : '',
-    fitterName: job.tabs?.survey?.fitter || '',
+    fitterName: bookingFitters(job.tabs?.survey).join(', '),
     itemCount: String((digitised.items || []).length),
     companyName: settings.companyName || 'VisualPro',
     companyPhone: settings.companyPhone || '',
@@ -915,7 +915,18 @@ async function sendSurveyCompleteEmail({ pool, jobId, testEmailOverride }) {
   return { sent: true, to: recipientList.join(', '), senderAddress, messageId: result.id };
 }
 
+// Who is booked on a survey or a service call booking. Both used to hold one name in
+// `fitter`; they now hold a list in `fitters`, matching installations (2026-09-21). Mirrors
+// the frontend's bookingFitters so anything booked before the change still sends its emails.
+// Once `fitters` exists it is authoritative, even when empty.
+function bookingFitters(b) {
+  if (!b) return [];
+  if (Array.isArray(b.fitters)) return b.fitters;
+  return b.fitter ? [b.fitter] : [];
+}
+
 module.exports = {
+  bookingFitters,
   sendJobReminder,
   sendInstallBookedEmail,
   sendSurveyBookedEmail,

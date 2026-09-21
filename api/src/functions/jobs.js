@@ -2,7 +2,7 @@ const { app } = require('@azure/functions');
 const { getPool, sql } = require('../db');
 const { mapJobRow } = require('../mapRow');
 const { requireAuth } = require('../auth');
-const { sendInstallBookedEmail, sendSurveyBookedEmail, sendServiceCallBookedEmail, sendFeedbackReviewEmail, feedbackQualifiesForReview, sendSurveyCompleteEmail } = require('../reminderCore');
+const { sendInstallBookedEmail, sendSurveyBookedEmail, sendServiceCallBookedEmail, sendFeedbackReviewEmail, feedbackQualifiesForReview, sendSurveyCompleteEmail, bookingFitters } = require('../reminderCore');
 
 app.http('jobsList', {
   methods: ['GET'],
@@ -104,8 +104,8 @@ app.http('jobsUpdate', {
         );
       if (!result.recordset.length) return { status: 404, jsonBody: { error: 'Not found' } };
 
-      const wasBooked = !!(before?.tabs?.survey?.date && before?.tabs?.survey?.fitter);
-      const isNowBooked = !!(body.tabs?.survey?.date && body.tabs?.survey?.fitter);
+      const wasBooked = !!(before?.tabs?.survey?.date && bookingFitters(before?.tabs?.survey).length);
+      const isNowBooked = !!(body.tabs?.survey?.date && bookingFitters(body.tabs?.survey).length);
       const surveyNotifyEnabled = body.tabs?.survey?.notifyEnabled !== false; // default on
       const surveyAlreadySent = !!body.tabs?.survey?.emailSent;
       let sentAny = false;
@@ -148,9 +148,9 @@ app.http('jobsUpdate', {
       const beforeBookingsById = new Map((before?.tabs?.serviceCall?.bookings || []).map((b) => [b.id, b]));
       const scNotifyEnabled = body.tabs?.serviceCall?.notifyEnabled !== false; // default on
       const newBookings = (body.tabs?.serviceCall?.bookings || []).filter((b) => {
-        if (!b.date || !b.fitter || b.emailSent) return false;
+        if (!b.date || !bookingFitters(b).length || b.emailSent) return false;
         const prior = beforeBookingsById.get(b.id);
-        const wasFullyBooked = !!(prior && prior.date && prior.fitter);
+        const wasFullyBooked = !!(prior && prior.date && bookingFitters(prior).length);
         return !wasFullyBooked;
       });
       if (scNotifyEnabled && newBookings.length) {
