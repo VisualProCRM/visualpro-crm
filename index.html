@@ -395,8 +395,13 @@ const apiDeleteCustomer = (id) => apiRequest(`/customers/${id}`, { method: "DELE
 // so a genuine won date set earlier always wins. The WindowCAD7 webhook sets its own wonAt at
 // the exact moment of conversion (see api/src/functions/windowcad.js); this is the fallback
 // for everything the office does by hand.
-const stampWonAt = (job) =>
-  (!job.wonAt && INSTALL_STAGES.includes(job.status)) ? { ...job, wonAt: new Date().toISOString() } : job;
+// Applied to every job save, from any screen. "Deal Won" is a moment rather than a place — the
+// Sales board's Deal Won column holds no cards — so an opportunity set to it continues straight
+// to the first Installation stage. Reaching any Installation stage stamps the won date once.
+const stampWonAt = (job) => {
+  const j = job.status==="Deal Won" ? { ...job, status: INSTALL_STAGES[0] } : job;
+  return (!j.wonAt && INSTALL_STAGES.includes(j.status)) ? { ...j, wonAt: new Date().toISOString() } : j;
+};
 
 const apiListJobs = () => apiRequest("/jobs");
 const apiCreateJob = (data) => apiRequest("/jobs", { method: "POST", body: JSON.stringify(stampWonAt(data)) });
@@ -1106,8 +1111,21 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
                 <option value="">— Select staff member —</option>
                 {(settings?.staff||DEFAULT_STAFF).map(s=><option key={s}>{s}</option>)}
               </Sel>
-              <Sel label="Pipeline Stage" value={data.status} onChange={e=>setData(d=>({...d,status:e.target.value}))}>
-                {INSTALL_STAGES.map(s=><option key={s}>{s}</option>)}
+              {/* Both pipelines. This used to list only installation stages, so an opportunity
+                  still at a sales stage (e.g. Quoted) had no option matching its real stage —
+                  the dropdown showed the wrong one, and any touch picked an installation stage.
+                  On save that counted as winning the deal: it got a won date and left the
+                  Sales board (job #66, 2026-09-21). Moving from an open sales stage into
+                  installation now asks first, because it is the act of winning. */}
+              <Sel label="Pipeline Stage" value={data.status} onChange={e=>{
+                const next=e.target.value;
+                const wasOpenSale=LEAD_STAGES.includes(data.status)&&!["Deal Won","Deal Lost"].includes(data.status);
+                const winning=next==="Deal Won"||INSTALL_STAGES.includes(next);
+                if(wasOpenSale&&winning&&!window.confirm("Mark this deal as won? It will move to the Installation Pipeline.")) return;
+                setData(d=>({...d,status:next}));
+              }}>
+                <optgroup label="Sales Pipeline">{LEAD_STAGES.map(s=><option key={s}>{s}</option>)}</optgroup>
+                <optgroup label="Installation Pipeline">{INSTALL_STAGES.map(s=><option key={s}>{s}</option>)}</optgroup>
               </Sel>
               <TA label="Notes" value={data.notes||""} onChange={e=>setData(d=>({...d,notes:e.target.value}))}/>
               {/* Mark as completed */}
