@@ -2,19 +2,19 @@ const { app } = require('@azure/functions');
 const { getPool } = require('../db');
 const { sign, requireAuth } = require('../auth');
 const { getPrincipal, isOfficeUser } = require('../principal');
+const { verifyPassword } = require('../passwords');
 
 // Issues a signed session token, required by every other endpoint (see auth.js). Two paths:
 //
-// - Fitter: verified server-side against the real, currently-saved password in
-//   dbo.Settings.fitterPasswords — matches the existing "no password set = login allowed"
-//   behavior the app already has.
-// - Office: the frontend only calls this after /.auth/me (a same-origin, cookie-gated
-//   Static Web Apps endpoint) has already confirmed a real Entra ID session. This endpoint
-//   trusts that claim rather than independently re-verifying the Entra token itself, which
-//   would need the Function App formally linked as the Static Web App's backend — a bigger
-//   change, deliberately deferred. Accepted trade-off: closes off anonymous/casual API
-//   access entirely, but doesn't defend against someone reading the frontend's source and
-//   replaying the office login call directly.
+// - Office: requires a Microsoft (Entra ID) sign-in, verified by the Static Web App and
+//   passed to the API in the x-ms-client-principal header (see principal.js). Nothing the
+//   browser says in the request body is trusted.
+// - Fitter: the name must be a fitter listed in Settings, with a password set, and the
+//   password must match its stored hash (see passwords.js).
+//
+// Until 2026-09-21 neither path checked anything meaningful: the office path trusted the
+// browser's claim of a Microsoft sign-in, and the fitter path accepted any name with no
+// password. Either gave full access to every customer's details.
 app.http('login', {
   methods: ['POST'],
   route: 'login',
@@ -49,7 +49,9 @@ app.http('login', {
       if (!storedPassword) {
         return { status: 401, jsonBody: { error: 'No password has been set for this fitter — ask the office to set one in Settings.' } };
       }
-      if (storedPassword !== password) {
+      // Checked against the stored hash (or, for a password not yet hashed, compared in
+      // constant time). The stored value is never sent back or logged.
+      if (!verifyPassword(password || '', storedPassword)) {
         return { status: 401, jsonBody: { error: 'Invalid password' } };
       }
 

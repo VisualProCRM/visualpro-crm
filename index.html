@@ -3360,7 +3360,9 @@ const DEFAULT_SETTINGS = {
   emailTemplates:{...DEFAULT_EMAIL_TEMPLATES},
   feedbackQuestions:[...DEFAULT_FEEDBACK_QUESTIONS],
   checklistItems:[...DEFAULT_CHECKLIST_ITEMS],
-  fitterPasswords:{"Tom Bailey":"glazing1","Steve Marsh":"glazing2","Dan Rees":"glazing3","Chris Wood":"glazing4"},
+  // No default passwords: a new company's fitters can't log in until the office sets one.
+  // (These used to ship as glazing1…glazing4 — guessable, and identical for every company.)
+  fitterPasswords:{},
   fitterPhotos:{},
   supplierLogos:{},
   fitterHomes:{},
@@ -3929,6 +3931,9 @@ const WebsiteEnquiryForm = ({companyName,onSubmit}) => {
 // ── FitterRow (own component so useState is at top level) ─────────────────────
 const FitterRow = ({fitter,index,pw,settings,setSettings}) => {
   const [showPw,setShowPw]=useState(false);
+  const [changingPw,setChangingPw]=useState(false);
+  const pwBeforeChange=useRef("");
+  const pwIsHashed=typeof pw==="string"&&pw.startsWith("scrypt$");
   const [uploadingPhoto,setUploadingPhoto]=useState(false);
   const photo=settings.fitterPhotos?.[fitter];
   const handlePhoto=async(e)=>{
@@ -3991,18 +3996,34 @@ const FitterRow = ({fitter,index,pw,settings,setSettings}) => {
       </div>
       <div>
         <label style={{fontSize:11,fontWeight:700,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",display:"block",marginBottom:6}}>🔒 Portal Password</label>
-        <div style={{display:"flex",gap:8,alignItems:"center"}}>
-          <div style={{flex:1,position:"relative"}}>
-            <input type={showPw?"text":"password"} value={pw}
-              onChange={e=>setSettings(s=>({...s,fitterPasswords:{...s.fitterPasswords,[fitter]:e.target.value}}))}
-              placeholder="Set a password for this fitter"
-              style={{width:"100%",border:`1px solid ${pw?C.mint:C.border}`,borderRadius:6,padding:"8px 36px 8px 12px",fontSize:14,outline:"none",background:C.white,boxSizing:"border-box"}}/>
-            <button onClick={()=>setShowPw(p=>!p)} style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",color:C.muted,fontSize:14,padding:0}}>{showPw?"🙈":"👁️"}</button>
+        {/* Passwords are stored hashed (2026-09-21), so a saved one can't be shown — only
+            replaced. A stored hash shows as "Password set" with a Change button; the input
+            appears only while a new password is being typed, and the server hashes it on save. */}
+        {pwIsHashed&&!changingPw?(
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            <div style={{flex:1,fontSize:13,color:C.slate,padding:"8px 12px",border:`1px solid ${C.border}`,borderRadius:6,background:C.slateLight}}>
+              •••••••• <span style={{color:C.muted,fontSize:11}}>stored securely — can be changed, not viewed</span>
+            </div>
+            <button onClick={()=>{pwBeforeChange.current=pw;setChangingPw(true);}}
+              style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:6,padding:"7px 12px",fontSize:12,fontWeight:600,color:C.navy,cursor:"pointer",whiteSpace:"nowrap"}}>Change password</button>
           </div>
-          {pw?<div style={{background:"#F0FDF4",color:C.mint,fontSize:11,fontWeight:700,padding:"4px 10px",borderRadius:8,border:"1px solid #86EFAC",whiteSpace:"nowrap"}}>✓ Set</div>
-             :<div style={{color:C.amber,fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>⚠ No password</div>}
-        </div>
-        {!pw&&<div style={{fontSize:11,color:C.muted,marginTop:4}}>Without a password this fitter can log in without authentication.</div>}
+        ):(
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            <div style={{flex:1,position:"relative"}}>
+              <input type={showPw?"text":"password"} value={pwIsHashed?"":pw} autoFocus={changingPw}
+                onChange={e=>setSettings(s=>({...s,fitterPasswords:{...s.fitterPasswords,[fitter]:e.target.value}}))}
+                placeholder={changingPw?"Type the new password":"Set a password for this fitter"}
+                style={{width:"100%",border:`1px solid ${pw&&!pwIsHashed?C.mint:C.border}`,borderRadius:6,padding:"8px 36px 8px 12px",fontSize:14,outline:"none",background:C.white,boxSizing:"border-box"}}/>
+              <button onClick={()=>setShowPw(p=>!p)} style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",color:C.muted,fontSize:14,padding:0}}>{showPw?"🙈":"👁️"}</button>
+            </div>
+            {changingPw&&(
+              <button onClick={()=>{setSettings(s=>({...s,fitterPasswords:{...s.fitterPasswords,[fitter]:pwBeforeChange.current}}));setChangingPw(false);}}
+                style={{background:"none",border:"none",fontSize:12,color:C.slate,cursor:"pointer",whiteSpace:"nowrap"}}>Cancel</button>
+            )}
+            {pw&&!pwIsHashed&&<div style={{background:"#F0FDF4",color:C.mint,fontSize:11,fontWeight:700,padding:"4px 10px",borderRadius:8,border:"1px solid #86EFAC",whiteSpace:"nowrap"}}>✓ Saves automatically</div>}
+          </div>
+        )}
+        {!pw&&<div style={{fontSize:11,color:C.amber,marginTop:4,fontWeight:600}}>⚠ No password — this fitter can't log in until one is set.</div>}
       </div>
     </div>
   );
