@@ -7272,8 +7272,10 @@ function App() {
               </>
             ):(
               <>
-                <div style={{background:"#FFFBEB",border:`1px solid ${C.amber}`,borderRadius:8,padding:"12px 14px",fontSize:13,color:"#92400E",marginBottom:16}}>⚠️ No password set. Contact your admin to set one up in Settings.</div>
-                <button onClick={()=>{apiLogin(selectedFitter,"").then(({token})=>{setAuthToken(token);setUserRole(selectedFitter);}).catch(()=>setPwError(true));}} style={{width:"100%",background:C.mint,color:"#fff",border:"none",borderRadius:10,padding:"14px",fontSize:16,fontWeight:700,cursor:"pointer",marginBottom:10}}>Continue Without Password →</button>
+                {/* Logging in without a password was removed on 2026-09-21: the server now
+                    refuses it, because a password-less login was an open door to every
+                    customer's details. The office sets the password in Settings → Fitters. */}
+                <div style={{background:"#FFFBEB",border:`1px solid ${C.amber}`,borderRadius:8,padding:"12px 14px",fontSize:13,color:"#92400E",marginBottom:16,lineHeight:1.5}}>⚠️ No password has been set for you yet. Ask the office to set one in <strong>Settings → Fitters</strong>, then log in here.</div>
               </>
             )}
             <button onClick={resetLogin} style={{width:"100%",background:"none",border:"none",color:C.slate,fontSize:14,cursor:"pointer",padding:"8px"}}>← Back to login</button>

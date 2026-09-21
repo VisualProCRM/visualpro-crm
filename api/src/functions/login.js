@@ -1,6 +1,7 @@
 const { app } = require('@azure/functions');
 const { getPool } = require('../db');
 const { sign, requireAuth } = require('../auth');
+const { getPrincipal, isOfficeUser } = require('../principal');
 
 // Issues a signed session token, required by every other endpoint (see auth.js). Two paths:
 //
@@ -24,15 +25,31 @@ app.http('login', {
       if (!role) return { status: 400, jsonBody: { error: 'role is required' } };
 
       if (role === 'office') {
-        return { jsonBody: { token: sign({ role: 'office' }) } };
+        // Verified by the Static Web App, not claimed by the browser. Until 2026-09-21 this
+        // issued an office token to anyone who asked — no sign-in needed — which exposed every
+        // customer's contact details and every fitter's password to anyone who tried.
+        const principal = getPrincipal(request);
+        if (!isOfficeUser(principal)) {
+          return { status: 401, jsonBody: { error: 'Office sign-in required' } };
+        }
+        return { jsonBody: { token: sign({ role: 'office', email: principal.email }) } };
       }
 
       const pool = await getPool();
       const result = await pool.request().query('SELECT * FROM dbo.Settings WHERE TenantId = 1');
       const settings = result.recordset.length ? JSON.parse(result.recordset[0].DataJson) : {};
+      // Only a real fitter, with a password, may sign in as one. This used to accept any name
+      // at all, and let a name with no stored password straight in — so a made-up name was
+      // enough to get a token that could read every customer (confirmed live 2026-09-21).
+      const isKnownFitter = Array.isArray(settings.fitters) && settings.fitters.includes(role);
+      if (!isKnownFitter) {
+        return { status: 401, jsonBody: { error: 'Unknown fitter' } };
+      }
       const storedPassword = settings.fitterPasswords?.[role] || '';
-
-      if (storedPassword && storedPassword !== password) {
+      if (!storedPassword) {
+        return { status: 401, jsonBody: { error: 'No password has been set for this fitter — ask the office to set one in Settings.' } };
+      }
+      if (storedPassword !== password) {
         return { status: 401, jsonBody: { error: 'Invalid password' } };
       }
 
@@ -57,7 +74,15 @@ app.http('loginRefresh', {
   handler: async (request, context) => {
     try {
       const payload = requireAuth(request);
-      const { exp, ...identity } = payload;
+      const { exp, v, ...identity } = payload;
+      // An office session is only renewed while the same Microsoft sign-in is still present,
+      // so signing out of Microsoft ends the CRM session at the next refresh rather than never.
+      if (identity.role === 'office') {
+        const principal = getPrincipal(request);
+        if (!isOfficeUser(principal) || principal.email !== identity.email) {
+          return { status: 401, jsonBody: { error: 'Office sign-in required' } };
+        }
+      }
       return { jsonBody: { token: sign(identity) } };
     } catch (err) {
       context.error('loginRefresh failed', err);

@@ -9,6 +9,11 @@ const crypto = require('crypto');
 
 const SECRET = process.env.SESSION_TOKEN_SECRET;
 const DEFAULT_TTL_SECONDS = 12 * 60 * 60; // a working day
+// Bumped whenever a change makes previously issued tokens untrustworthy. Version 2
+// (2026-09-21): before this, the office login issued a token to anyone who asked, so every
+// token from that era must stop working — including the ones the silent refresh would
+// otherwise have kept alive indefinitely. Anyone signed in is asked to log in once more.
+const TOKEN_VERSION = 2;
 
 function base64url(str) {
   return Buffer.from(str, 'utf8').toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -20,7 +25,7 @@ function base64urlDecode(str) {
 }
 
 function sign(payload, ttlSeconds = DEFAULT_TTL_SECONDS) {
-  const encoded = base64url(JSON.stringify({ ...payload, exp: Date.now() + ttlSeconds * 1000 }));
+  const encoded = base64url(JSON.stringify({ ...payload, v: TOKEN_VERSION, exp: Date.now() + ttlSeconds * 1000 }));
   const signature = crypto.createHmac('sha256', SECRET).update(encoded).digest('hex');
   return `${encoded}.${signature}`;
 }
@@ -39,6 +44,7 @@ function verify(token) {
     return null;
   }
   if (!payload.exp || payload.exp < Date.now()) return null;
+  if (payload.v !== TOKEN_VERSION) return null;
   return payload;
 }
 
