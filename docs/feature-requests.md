@@ -42,7 +42,11 @@ A shared place for feature ideas, wherever they come from — the office, a fitt
 - **Not quick, deliberately not attempted blind**: this is the same category of problem as the Delivery PDF digitisation idea already on this list — unlike WindowCAD7's own survey PDF (one fixed, known template, which is why that extraction was buildable), a "supplier quote PDF" could come from any of several different suppliers, each with their own layout, with no fixed template to write extraction rules against. Needs a real sample PDF (or several, if multiple suppliers are used) before any parsing code gets written — same lesson learned building the WindowCAD7 survey extraction, where a guessed-at fixture completely failed against the real file's actual layout.
 - **Design note**: auto-fill should be a *suggestion the user confirms*, not a silent write — an extraction that quietly puts a wrong number into a financial field is worse than no extraction, because nobody looks at a field that filled itself. Show the extracted figure, where it came from in the PDF, and let the office accept or correct it (the PDF survey extractor's office-review step is the pattern to copy).
 
-### Multiple fitters on a service call booking — requested, not started
+### Multiple fitters on surveys and service calls — ✅ built 2026-09-21 (`8ffacab`)
+- **Built.** Surveys were added to the request mid-build. Both now store `fitters: []` like installations and use the Installation tab's toggle-button picker. A shared `bookingFitters` helper (frontend and `reminderCore.js`) reads the list and falls back to the old single `fitter`, so earlier bookings keep working. Every assigned fitter sees the job in their app; the calendar shows one entry per fitter; emails name every fitter (comma-separated, matching install emails). Tested: adding a second fitter to an existing booking does **not** resend the booked email. Mileage also reads the list (a reader not listed in the original request below).
+- **Worth watching once**: the next real booked email and day-before reminder for a multi-fitter booking.
+
+*Original request:*
 - Requested by: office — 2026-09-21, while booking a service call: "I can only assign one fitter — would be useful if I could select multiple fitters in the same way we do for installations."
 - **Same pattern as the other "two representations" bugs.** Installations store fitters as a list (`tabs.installation.fitters: []`); a service call booking stores a single name (`tabs.serviceCall.bookings[].fitter: ""`). Making the booking a list brings the two into line — build it as `fitters: []` to match installations, not as a second fitter field.
 - **Small, but not just the picker.** The single `fitter` string is read in five places that all need to handle a list:
@@ -282,7 +286,10 @@ A shared place for feature ideas, wherever they come from — the office, a fitt
 - Requested by: office — 2026-07-30
 - Connect the existing "WindowCAD7 Reference" field to a real API instead of it just being a free-text label.
 
-### Phase 5 — multiple install bookings per opportunity — ⏭️ NEXT, but needs decisions first
+### Phase 5 — multiple install bookings per opportunity — ⏸️ PARKED 2026-09-21
+- **Parked by the office**: separate jobs for each phase is an acceptable workaround now that phases 1–4 are live. Before the redesign that workaround created duplicate *customers*; now it creates sibling jobs under one customer, each with its own site address, which is clean. Remaining cost is minor: a single quote fitted in two visits reports as two won deals with the value split. Worth confirming with Dan, who originally asked for it (2026-08-07), before closing it for good.
+
+*Original scope, kept for if it is revived:*
 - This is the last phase of the Customer/Opportunity work and folds in the phased-installs request below. Not started. **Do not start it without answering the questions here** — they determine the data shape, so guessing means building it twice.
 - **Why it is the riskiest of the five**: a job's install date is read in **27 places** in `index.html` plus `reminderTimer.js` and `reminderCore.js`. That timer runs daily at 7am and sends **real install reminders to real customers**. Plausible failures are a customer told the wrong date, duplicate reminders per phase, or reminders silently stopping. Unlike phases 1–4 it can't be fully verified against reconciled numbers — it needs a reminder watched firing correctly.
 - **Questions for the office**:
