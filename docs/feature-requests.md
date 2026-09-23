@@ -8,12 +8,12 @@ A shared place for feature ideas, wherever they come from — the office, a fitt
 
 ## Requested
 
-### Incident: "tomorrow" reminders sent on the day, and emails showing a blank or wrong address — ✅ fixed 2026-09-23 ()
+### Incident: "tomorrow" reminders sent on the day, and emails showing a blank or wrong address — ✅ fixed 2026-09-23 (`b754d7b`)
 - Raised by: office — 2026-09-23. Three reminders fired at 08:01 saying the appointment was "tomorrow" while showing that day's date; the appointments were that day. One also had an empty Address line.
 - **Cause 1 — day-before reminders fired at 0 OR 1 days out.** That range was a deliberate catch-up for a missed run, but the word "tomorrow" is fixed text in the template. Evidence: the timer *did* run on the 22nd (it sent job #36's install week reminder), and all three appointments were booked later that day, after the single 08:00 run. First opportunity was therefore the morning of the appointment.
 - **Fix**: reminders now fire only at exactly 1 day out (surveys, service calls and installs alike), **and the check runs hourly 07:00–19:00 UTC** instead of once at 07:00. The hourly run is the important half: suppressing same-day reminders on its own would have meant anything booked after 08:00 the day before got **nothing**, silently. Anything booked after the last run on the day before still gets no reminder, by design — the booking confirmation already states the date.
-  - **Winter caveat**: the schedule is UTC, so once BST ends the window becomes 07:00–19:00 UK. Setting  on the Function App would pin it to UK local time year-round — small infra change, not done.
-- **Cause 2 — every email read the address from the CUSTOMER.** Site addresses moved onto jobs on 2026-09-17 and customer addresses were cleared, but the eight email builders in  were never updated. Of 60 jobs: **38 emails showed a blank address, and 4 showed a DIFFERENT site** belonging to the same trade customer (all four Conservatory Renovators sites quoted "4 Earle Croft"). Now uses . Verified against live data.
+  - **Winter caveat**: the schedule is UTC, so once BST ends the window becomes 07:00–19:00 UK. Setting `WEBSITE_TIME_ZONE` on the Function App would pin it to UK local time year-round — small infra change, not done.
+- **Cause 2 — every email read the address from the CUSTOMER.** Site addresses moved onto jobs on 2026-09-17 and customer addresses were cleared, but the eight email builders in `reminderCore.js` were never updated. Of 60 jobs: **38 emails showed a blank address, and 4 showed a DIFFERENT site** belonging to the same trade customer (all four Conservatory Renovators sites quoted "4 Earle Croft"). Now uses `job.siteAddress || customer.address`. Verified against live data.
 - **General lesson**: when a field moves between record types, grep for every reader — the Customer/Opportunity migration checked the UI thoroughly but not the email templates, which are the part customers actually see.
 
 ### 🚨 Launch readiness — must be done before any other business uses GlazeStream
