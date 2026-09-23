@@ -90,6 +90,18 @@ app.http('jobsUpdate', {
       const beforeResult = await pool.request().input('Id', sql.Int, id).query('SELECT DataJson FROM dbo.Jobs WHERE Id = @Id AND TenantId = 1');
       const before = beforeResult.recordset.length ? JSON.parse(beforeResult.recordset[0].DataJson) : null;
 
+      // Check-ins are never taken from the client. A job save sends the whole record, so a
+      // client holding a copy from before a fitter checked in or out would erase it — which is
+      // how a real check-out was lost on 2026-09-23. Times are stamped only by the check-in
+      // endpoint, so whatever is stored always wins here.
+      if (before?.tabs?.installation?.checkIns) {
+        body.tabs = body.tabs || {};
+        body.tabs.installation = body.tabs.installation || {};
+        body.tabs.installation.checkIns = before.tabs.installation.checkIns;
+      }
+
+
+
       const result = await pool
         .request()
         .input('Id', sql.Int, id)
@@ -164,32 +176,6 @@ app.http('jobsUpdate', {
         }
       }
 
-      // Fitter checked in / out → office notification. Fires the moment a fitter taps the
-      // button in their app, which stamps inAt / outAt on their entry in
-      // tabs.installation.checkIns. Each is sent once: sendFitterCheckEmail marks the entry,
-      // and a transition only counts when the timestamp was previously unset.
-      const checkInsBefore = new Map(((before?.tabs?.installation?.checkIns) || []).map((c) => [c.fitter, c]));
-      for (const entry of (body.tabs?.installation?.checkIns) || []) {
-        const prior = checkInsBefore.get(entry.fitter);
-        for (const kind of ['in', 'out']) {
-          const stamp = kind === 'out' ? 'outAt' : 'inAt';
-          const sentFlag = kind === 'out' ? 'outEmailSent' : 'inEmailSent';
-          const justHappened = !!entry[stamp] && !(prior && prior[stamp]);
-          if (!justHappened || entry[sentFlag]) continue;
-          try {
-            const ciRow = await pool.request().query('SELECT DataJson FROM dbo.Settings WHERE TenantId = 1');
-            const ciSettings = ciRow.recordset.length ? JSON.parse(ciRow.recordset[0].DataJson) : {};
-            const ciTmpl = ciSettings.emailTemplates?.[kind === 'out' ? 'fitterCheckOut' : 'fitterCheckIn'];
-            if (!ciTmpl || ciTmpl.enabled !== false) {
-              await sendFitterCheckEmail({ pool, jobId: id, fitter: entry.fitter, kind });
-              sentAny = true;
-            }
-          } catch (err) {
-            context.error('sendFitterCheckEmail failed', err);
-          }
-        }
-      }
-
       // Survey completed → office notification — fires the first time the fitter marks the
       // whole digital survey complete (digitised.completedAt set). Recipient + which sections
       // to include are configured on the surveyComplete template in Settings.
@@ -257,6 +243,75 @@ app.http('jobsDelete', {
       return { status: 204 };
     } catch (err) {
       context.error('jobsDelete failed', err);
+      return { status: err.status || 500, jsonBody: { error: err.message } };
+    }
+  },
+});
+
+// Records a fitter checking in or out, and emails the office.
+//
+// Deliberately its own endpoint rather than part of a normal job save. Saving a job writes the
+// whole record, so any client holding a slightly older copy silently wipes newer fields — which
+// is exactly what happened on 2026-09-23: a fitter checked out on their phone, the email went,
+// and a stale save from the office view then erased the check-out time. Check-in/out is the one
+// thing two devices touch at the same moment, so it reads and writes only the checkIns array,
+// server-side, under its own request.
+app.http('jobCheckIn', {
+  methods: ['POST'],
+  route: 'jobs/{id}/checkin',
+  authLevel: 'anonymous',
+  handler: async (request, context) => {
+    try {
+      requireAuth(request);
+      const id = Number(request.params.id);
+      const { fitter, kind } = await request.json();
+      if (!fitter || !['in', 'out'].includes(kind)) {
+        return { status: 400, jsonBody: { error: 'fitter and kind ("in" or "out") are required' } };
+      }
+
+      const pool = await getPool();
+      const rows = await pool.request().input('Id', sql.Int, id).query('SELECT DataJson FROM dbo.Jobs WHERE Id = @Id AND TenantId = 1');
+      if (!rows.recordset.length) return { status: 404, jsonBody: { error: 'Not found' } };
+
+      const job = JSON.parse(rows.recordset[0].DataJson);
+      job.tabs = job.tabs || {};
+      job.tabs.installation = job.tabs.installation || {};
+      const list = job.tabs.installation.checkIns || [];
+      let entry = list.find((c) => c.fitter === fitter);
+      if (!entry) {
+        entry = { fitter };
+        list.push(entry);
+      }
+      const stamp = kind === 'out' ? 'outAt' : 'inAt';
+      // Already recorded — return what's stored rather than moving the time or re-sending.
+      const alreadyDone = !!entry[stamp];
+      if (!alreadyDone) entry[stamp] = new Date().toISOString();
+      job.tabs.installation.checkIns = list;
+
+      await pool
+        .request()
+        .input('Id', sql.Int, id)
+        .input('DataJson', sql.NVarChar, JSON.stringify(job))
+        .query('UPDATE dbo.Jobs SET DataJson = @DataJson, UpdatedAt = SYSUTCDATETIME() WHERE Id = @Id AND TenantId = 1');
+
+      if (!alreadyDone) {
+        try {
+          const setRow = await pool.request().query('SELECT DataJson FROM dbo.Settings WHERE TenantId = 1');
+          const settings = setRow.recordset.length ? JSON.parse(setRow.recordset[0].DataJson) : {};
+          const tmpl = settings.emailTemplates?.[kind === 'out' ? 'fitterCheckOut' : 'fitterCheckIn'];
+          if (!tmpl || tmpl.enabled !== false) {
+            await sendFitterCheckEmail({ pool, jobId: id, fitter, kind });
+          }
+        } catch (err) {
+          // The time is recorded either way — a failed email must not lose the check-in.
+          context.error('sendFitterCheckEmail failed', err);
+        }
+      }
+
+      const refreshed = await pool.request().input('Id', sql.Int, id).query('SELECT * FROM dbo.Jobs WHERE Id = @Id AND TenantId = 1');
+      return { jsonBody: mapJobRow(refreshed.recordset[0]) };
+    } catch (err) {
+      context.error('jobCheckIn failed', err);
       return { status: err.status || 500, jsonBody: { error: err.message } };
     }
   },
