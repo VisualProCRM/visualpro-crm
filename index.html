@@ -1922,6 +1922,7 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
                       ?<>
                         <span style={{fontSize:12,color:C.slate}}>Left Site {fmt(c.outAt)}</span>
                         <span style={{fontSize:12,fontWeight:700,color:C.navy}}>({dur})</span>
+                        <span style={{fontSize:11,fontWeight:700,color:C.slate,background:C.slateLight,border:`1px solid ${C.border}`,padding:"1px 8px",borderRadius:10}}>OFF SITE</span>
                        </>
                       :<>
                         <span style={{fontSize:11,fontWeight:700,color:"#15803D",background:"#F0FDF4",border:"1px solid #86EFAC",padding:"1px 8px",borderRadius:10}}>ON SITE NOW</span>
@@ -5129,48 +5130,6 @@ const Dashboard = ({customers,jobs}) => {
           </div>
         ))}
       </div>
-      {/* ── On Site Now — every fitter currently checked in, across all jobs, so the office can
-          see who is where without ringing round. Disappears when nobody is on site. ── */}
-      {(()=>{
-        const onSite=jobs.flatMap(j=>((j.tabs?.installation?.checkIns)||[])
-          .filter(c=>c.inAt&&!c.outAt)
-          .map(c=>({job:j,fitter:c.fitter,inAt:c.inAt})))
-          .sort((a,b)=>a.inAt.localeCompare(b.inAt));
-        if(!onSite.length) return null;
-        const since=iso=>{
-          const mins=Math.max(0,Math.round((Date.now()-new Date(iso))/60000));
-          const h=Math.floor(mins/60), m=mins%60;
-          return h>0?`${h}hr${h!==1?"s":""}${m?` ${m}min`:""}`:`${m}min`;
-        };
-        const byJob={};
-        onSite.forEach(o=>{(byJob[o.job.id]=byJob[o.job.id]||{job:o.job,fitters:[],inAt:o.inAt}).fitters.push(o.fitter);});
-        const groups=Object.values(byJob);
-        return (
-          <div style={{background:C.white,borderRadius:10,padding:20,border:`1px solid ${C.border}`,marginBottom:20}}>
-            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
-              <h3 style={{margin:0,fontSize:15,color:C.navy,fontWeight:700}}>⏱️ On Site Now</h3>
-              <span style={{fontSize:11,fontWeight:700,color:"#15803D",background:"#F0FDF4",border:"1px solid #86EFAC",padding:"1px 8px",borderRadius:10}}>
-                {onSite.length} {onSite.length===1?"fitter":"fitters"} · {groups.length} {groups.length===1?"job":"jobs"}
-              </span>
-            </div>
-            {groups.map(g=>(
-              <div key={g.job.id} style={{display:"grid",gridTemplateColumns:"1fr auto",gap:8,alignItems:"center",padding:"10px 0",borderBottom:`1px solid ${C.border}`}}>
-                <div style={{minWidth:0}}>
-                  <div style={{fontSize:14,fontWeight:700,color:C.text}}>{customerOf(g.job.customerId)?.name||g.job.title}</div>
-                  <div style={{fontSize:12,color:C.slate,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                    📍 {g.job.siteAddress||customerOf(g.job.customerId)?.address||"No site address"}
-                  </div>
-                  <div style={{fontSize:12,color:C.muted,marginTop:2}}>👷 {g.fitters.join(", ")}</div>
-                </div>
-                <div style={{textAlign:"right",whiteSpace:"nowrap"}}>
-                  <div style={{fontSize:13,fontWeight:700,color:C.navy}}>{new Date(g.inAt).toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"})}</div>
-                  <div style={{fontSize:11,color:C.muted}}>on site {since(g.inAt)}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        );
-      })()}
       <div style={{background:C.white,borderRadius:10,padding:20,border:`1px solid ${C.border}`,marginBottom:20}}>
         <h3 style={{margin:"0 0 16px",fontSize:15,color:C.navy,fontWeight:700}}>Sales Pipeline</h3>
         <div style={{display:"flex",gap:4}}>
