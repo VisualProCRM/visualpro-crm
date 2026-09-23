@@ -355,7 +355,10 @@ async function sendJobReminder({ pool, jobId, reminderKey, testEmailOverride }) 
   const installDate = job.tabs?.installation?.date;
   const vars = {
     customerName: customer.name || '',
-    address: customer.address || '',
+    // The site, not the contact. Site addresses moved onto the job on 2026-09-17 and customer
+    // addresses were cleared, so reading the customer alone left 38 emails with a blank address
+    // and 4 quoting a DIFFERENT site belonging to the same trade customer.
+    address: job.siteAddress || customer.address || '',
     installDate: installDate
       ? new Date(installDate).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
       : '',
@@ -429,7 +432,10 @@ async function sendInstallBookedEmail({ pool, jobId, testEmailOverride }) {
   const installDate = job.tabs?.installation?.date;
   const vars = {
     customerName: customer.name || '',
-    address: customer.address || '',
+    // The site, not the contact. Site addresses moved onto the job on 2026-09-17 and customer
+    // addresses were cleared, so reading the customer alone left 38 emails with a blank address
+    // and 4 quoting a DIFFERENT site belonging to the same trade customer.
+    address: job.siteAddress || customer.address || '',
     installDate: installDate
       ? new Date(installDate).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
       : '',
@@ -499,7 +505,10 @@ async function sendSurveyBookedEmail({ pool, jobId, testEmailOverride }) {
   const surveyDate = job.tabs?.survey?.date;
   const vars = {
     customerName: customer.name || '',
-    address: customer.address || '',
+    // The site, not the contact. Site addresses moved onto the job on 2026-09-17 and customer
+    // addresses were cleared, so reading the customer alone left 38 emails with a blank address
+    // and 4 quoting a DIFFERENT site belonging to the same trade customer.
+    address: job.siteAddress || customer.address || '',
     surveyDate: surveyDate
       ? new Date(surveyDate).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
       : '',
@@ -573,7 +582,10 @@ async function sendServiceCallBookedEmail({ pool, jobId, bookingId, testEmailOve
 
   const vars = {
     customerName: customer.name || '',
-    address: customer.address || '',
+    // The site, not the contact. Site addresses moved onto the job on 2026-09-17 and customer
+    // addresses were cleared, so reading the customer alone left 38 emails with a blank address
+    // and 4 quoting a DIFFERENT site belonging to the same trade customer.
+    address: job.siteAddress || customer.address || '',
     serviceCallDate: booking.date
       ? new Date(booking.date).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
       : '',
@@ -643,7 +655,10 @@ async function sendSurveyReminderEmail({ pool, jobId, testEmailOverride }) {
   const surveyDate = job.tabs?.survey?.date;
   const vars = {
     customerName: customer.name || '',
-    address: customer.address || '',
+    // The site, not the contact. Site addresses moved onto the job on 2026-09-17 and customer
+    // addresses were cleared, so reading the customer alone left 38 emails with a blank address
+    // and 4 quoting a DIFFERENT site belonging to the same trade customer.
+    address: job.siteAddress || customer.address || '',
     surveyDate: surveyDate
       ? new Date(surveyDate).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
       : '',
@@ -715,7 +730,10 @@ async function sendServiceCallReminderEmail({ pool, jobId, bookingId, testEmailO
 
   const vars = {
     customerName: customer.name || '',
-    address: customer.address || '',
+    // The site, not the contact. Site addresses moved onto the job on 2026-09-17 and customer
+    // addresses were cleared, so reading the customer alone left 38 emails with a blank address
+    // and 4 quoting a DIFFERENT site belonging to the same trade customer.
+    address: job.siteAddress || customer.address || '',
     serviceCallDate: booking.date
       ? new Date(booking.date).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
       : '',
@@ -787,7 +805,10 @@ async function sendFeedbackReviewEmail({ pool, jobId, testEmailOverride }) {
 
   const vars = {
     customerName: customer.name || '',
-    address: customer.address || '',
+    // The site, not the contact. Site addresses moved onto the job on 2026-09-17 and customer
+    // addresses were cleared, so reading the customer alone left 38 emails with a blank address
+    // and 4 quoting a DIFFERENT site belonging to the same trade customer.
+    address: job.siteAddress || customer.address || '',
     companyName: settings.companyName || 'VisualPro',
     companyPhone: settings.companyPhone || '',
   };
@@ -873,7 +894,10 @@ async function sendSurveyCompleteEmail({ pool, jobId, testEmailOverride }) {
   const surveyDate = job.tabs?.survey?.date;
   const vars = {
     customerName: customer.name || '',
-    address: customer.address || '',
+    // The site, not the contact. Site addresses moved onto the job on 2026-09-17 and customer
+    // addresses were cleared, so reading the customer alone left 38 emails with a blank address
+    // and 4 quoting a DIFFERENT site belonging to the same trade customer.
+    address: job.siteAddress || customer.address || '',
     surveyDate: surveyDate
       ? new Date(surveyDate).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
       : '',
