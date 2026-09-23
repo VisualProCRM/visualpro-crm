@@ -190,6 +190,34 @@ Kind regards,
 {{companyPhone}}`,
 };
 
+const DEFAULT_FITTER_CHECK_IN = {
+  enabled: true,
+  to: '',
+  bcc: '',
+  subject: 'On site: {{fitterName}} – {{customerName}}',
+  body: `{{fitterName}} has arrived on site.
+
+Customer: {{customerName}}
+Job: {{jobTitle}}
+Address: {{address}}
+Checked in: {{time}}`,
+};
+
+const DEFAULT_FITTER_CHECK_OUT = {
+  enabled: true,
+  to: '',
+  bcc: '',
+  subject: 'Left site: {{fitterName}} – {{customerName}}',
+  body: `{{fitterName}} has finished on site.
+
+Customer: {{customerName}}
+Job: {{jobTitle}}
+Address: {{address}}
+Checked in: {{time}}
+Checked out: {{timeOut}}
+Time on site: {{duration}}`,
+};
+
 const DEFAULT_SURVEY_COMPLETE = {
   enabled: true,
   to: '',
@@ -861,6 +889,88 @@ function feedbackQualifiesForReview(feedback, feedbackQuestions) {
   });
 }
 
+// Sends the internal "fitter checked in / checked out" notification to the office. Called from
+// jobs.js the moment a fitter taps the button in their app, which records the time on
+// job.tabs.installation.checkIns[]. `kind` is 'in' or 'out'. Recipient(s) = the template's own
+// "to" field, falling back to the company email, exactly like the survey-complete email.
+// Marks inEmailSent / outEmailSent on the entry so each can only ever send once.
+async function sendFitterCheckEmail({ pool, jobId, fitter, kind, testEmailOverride }) {
+  const jobResult = await pool.request().input('Id', sql.Int, jobId).query('SELECT * FROM dbo.Jobs WHERE Id = @Id');
+  if (!jobResult.recordset.length) throw new Error('Job not found');
+  const jobRow = jobResult.recordset[0];
+  const job = JSON.parse(jobRow.DataJson);
+
+  const entry = (job.tabs?.installation?.checkIns || []).find((c) => c.fitter === fitter);
+  if (!entry) throw new Error('No check-in recorded for that fitter on this job');
+
+  const customerResult = await pool
+    .request()
+    .input('Id', sql.Int, jobRow.CustomerId)
+    .query('SELECT * FROM dbo.Customers WHERE Id = @Id');
+  const customer = customerResult.recordset.length ? JSON.parse(customerResult.recordset[0].DataJson) : {};
+
+  const settingsResult = await pool.request().query('SELECT * FROM dbo.Settings WHERE TenantId = 1');
+  const settings = settingsResult.recordset.length ? JSON.parse(settingsResult.recordset[0].DataJson) : {};
+  const key = kind === 'out' ? 'fitterCheckOut' : 'fitterCheckIn';
+  const fallback = kind === 'out' ? DEFAULT_FITTER_CHECK_OUT : DEFAULT_FITTER_CHECK_IN;
+  const tmpl = settings.emailTemplates?.[key] || fallback;
+
+  const recipientList = testEmailOverride
+    ? [testEmailOverride]
+    : (tmpl.to || '').split(',').map((x) => x.trim()).filter(Boolean);
+  if (!recipientList.length && settings.companyEmail) recipientList.push(settings.companyEmail);
+  if (!recipientList.length) throw new Error('No office recipient set for the fitter check-in email (set one in Settings > Email Templates, or a Company Email in General settings)');
+
+  // Times are shown in UK time regardless of where the server runs.
+  const asTime = (iso) =>
+    iso ? new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/London' }) : '';
+  let duration = '';
+  if (entry.inAt && entry.outAt) {
+    const mins = Math.max(0, Math.round((new Date(entry.outAt) - new Date(entry.inAt)) / 60000));
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    duration = h > 0 ? h + 'hr' + (h !== 1 ? 's' : '') + (m ? ' ' + m + 'min' : '') : m + 'min';
+  }
+
+  const vars = {
+    customerName: customer.name || '',
+    jobTitle: job.title || '',
+    address: job.siteAddress || customer.address || '',
+    fitterName: fitter,
+    fitterNames: (job.tabs?.installation?.fitters || []).join(', '),
+    time: asTime(entry.inAt),
+    timeOut: asTime(entry.outAt),
+    duration,
+    installDate: job.tabs?.installation?.date
+      ? new Date(job.tabs.installation.date).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+      : '',
+    companyName: settings.companyName || 'VisualPro',
+    companyPhone: settings.companyPhone || '',
+  };
+
+  const { hostname } = await getSenderDomain();
+  const senderUsername = process.env.EMAIL_SENDER_USERNAME || 'donotreply';
+  const poller = await emailClient.beginSend({
+    senderAddress: senderUsername + '@' + hostname,
+    content: { subject: fillTemplate(tmpl.subject, vars), plainText: fillTemplate(tmpl.body, vars) },
+    recipients: buildRecipients(recipientList, tmpl),
+  });
+  const result = await poller.pollUntilDone();
+  if (result.status !== 'Succeeded') {
+    throw new Error('ACS email send did not succeed: ' + result.status + (result.error ? ' - ' + result.error.message : ''));
+  }
+
+  if (!testEmailOverride) {
+    entry[kind === 'out' ? 'outEmailSent' : 'inEmailSent'] = { status: 'sent', sentAt: new Date().toLocaleString('en-GB') };
+    await pool
+      .request()
+      .input('Id', sql.Int, jobId)
+      .input('DataJson', sql.NVarChar, JSON.stringify(job))
+      .query('UPDATE dbo.Jobs SET DataJson = @DataJson, UpdatedAt = SYSUTCDATETIME() WHERE Id = @Id');
+  }
+  return { messageId: result.id, recipients: recipientList };
+}
+
 // Sends the internal "survey completed" notification to the office. Called from jobs.js the
 // moment job.tabs.survey.digitised.completedAt goes from unset to set (the fitter marking
 // the last item complete). Recipient(s) = the surveyComplete template's own "to" field
@@ -951,6 +1061,7 @@ function bookingFitters(b) {
 
 module.exports = {
   bookingFitters,
+  sendFitterCheckEmail,
   sendJobReminder,
   sendInstallBookedEmail,
   sendSurveyBookedEmail,

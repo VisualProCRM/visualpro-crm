@@ -2,7 +2,7 @@ const { app } = require('@azure/functions');
 const { getPool, sql } = require('../db');
 const { mapJobRow } = require('../mapRow');
 const { requireAuth } = require('../auth');
-const { sendInstallBookedEmail, sendSurveyBookedEmail, sendServiceCallBookedEmail, sendFeedbackReviewEmail, feedbackQualifiesForReview, sendSurveyCompleteEmail, bookingFitters } = require('../reminderCore');
+const { sendInstallBookedEmail, sendSurveyBookedEmail, sendServiceCallBookedEmail, sendFeedbackReviewEmail, feedbackQualifiesForReview, sendSurveyCompleteEmail, bookingFitters, sendFitterCheckEmail } = require('../reminderCore');
 
 app.http('jobsList', {
   methods: ['GET'],
@@ -160,6 +160,32 @@ app.http('jobsUpdate', {
             sentAny = true;
           } catch (err) {
             context.error('sendServiceCallBookedEmail failed', err);
+          }
+        }
+      }
+
+      // Fitter checked in / out → office notification. Fires the moment a fitter taps the
+      // button in their app, which stamps inAt / outAt on their entry in
+      // tabs.installation.checkIns. Each is sent once: sendFitterCheckEmail marks the entry,
+      // and a transition only counts when the timestamp was previously unset.
+      const checkInsBefore = new Map(((before?.tabs?.installation?.checkIns) || []).map((c) => [c.fitter, c]));
+      for (const entry of (body.tabs?.installation?.checkIns) || []) {
+        const prior = checkInsBefore.get(entry.fitter);
+        for (const kind of ['in', 'out']) {
+          const stamp = kind === 'out' ? 'outAt' : 'inAt';
+          const sentFlag = kind === 'out' ? 'outEmailSent' : 'inEmailSent';
+          const justHappened = !!entry[stamp] && !(prior && prior[stamp]);
+          if (!justHappened || entry[sentFlag]) continue;
+          try {
+            const ciRow = await pool.request().query('SELECT DataJson FROM dbo.Settings WHERE TenantId = 1');
+            const ciSettings = ciRow.recordset.length ? JSON.parse(ciRow.recordset[0].DataJson) : {};
+            const ciTmpl = ciSettings.emailTemplates?.[kind === 'out' ? 'fitterCheckOut' : 'fitterCheckIn'];
+            if (!ciTmpl || ciTmpl.enabled !== false) {
+              await sendFitterCheckEmail({ pool, jobId: id, fitter: entry.fitter, kind });
+              sentAny = true;
+            }
+          } catch (err) {
+            context.error('sendFitterCheckEmail failed', err);
           }
         }
       }

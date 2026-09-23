@@ -335,7 +335,40 @@ Items surveyed: {{itemCount}}
 
 Details below.`,
   },
+  // Internal notifications — sent to the office when a fitter taps Check In / Check Out on
+  // their phone, so the office knows who is on site without ringing round. Same "to"/enabled
+  // pattern as surveyComplete above.
+  fitterCheckIn: {
+    enabled: true,
+    to: "",
+    bcc: "",
+    subject: "On site: {{fitterName}} – {{customerName}}",
+    body: `{{fitterName}} has arrived on site.
+
+Customer: {{customerName}}
+Job: {{jobTitle}}
+Address: {{address}}
+Checked in: {{time}}`,
+  },
+  fitterCheckOut: {
+    enabled: true,
+    to: "",
+    bcc: "",
+    subject: "Left site: {{fitterName}} – {{customerName}}",
+    body: `{{fitterName}} has finished on site.
+
+Customer: {{customerName}}
+Job: {{jobTitle}}
+Address: {{address}}
+Checked in: {{time}}
+Checked out: {{timeOut}}
+Time on site: {{duration}}`,
+  },
 };
+
+// Templates that notify the office rather than the customer: each has an on/off switch and
+// its own recipient, instead of going to whoever the job belongs to.
+const INTERNAL_TEMPLATE_KEYS = ["surveyComplete","fitterCheckIn","fitterCheckOut"];
 
 const STAGE_META = {
   "Prospect List":{bg:"#F1F5F9",text:"#475569"},
@@ -1865,6 +1898,31 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
               </div>
             );
           })()}
+          {/* ── On site — read-only record of when each fitter checked in and out from their
+              phone. Also the quickest answer to "are they there yet?" without ringing round. ── */}
+          {(data.tabs.installation.checkIns||[]).length>0&&(
+            <div style={{border:`1px solid ${C.border}`,borderRadius:8,padding:14,background:C.white}}>
+              <div style={{fontSize:13,fontWeight:700,color:C.navy,marginBottom:10}}>⏱️ On Site</div>
+              {(data.tabs.installation.checkIns||[]).map((c,i)=>{
+                const fmt=iso=>iso?new Date(iso).toLocaleString("en-GB",{weekday:"short",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}):null;
+                let dur="";
+                if(c.inAt&&c.outAt){
+                  const mins=Math.max(0,Math.round((new Date(c.outAt)-new Date(c.inAt))/60000));
+                  const h=Math.floor(mins/60), m=mins%60;
+                  dur=h>0?`${h}hr${h!==1?"s":""}${m?` ${m}min`:""}`:`${m}min`;
+                }
+                return (
+                  <div key={i} style={{display:"flex",flexWrap:"wrap",gap:8,alignItems:"center",padding:"6px 0",borderBottom:i<(data.tabs.installation.checkIns||[]).length-1?`1px solid ${C.border}`:"none"}}>
+                    <span style={{fontSize:13,fontWeight:700,color:C.text,minWidth:120}}>👷 {c.fitter}</span>
+                    <span style={{fontSize:12,color:C.slate}}>Arrived {fmt(c.inAt)||"—"}</span>
+                    {c.outAt
+                      ?<span style={{fontSize:12,color:C.slate}}>· Left {fmt(c.outAt)} <strong style={{color:C.navy}}>({dur})</strong></span>
+                      :<span style={{fontSize:11,fontWeight:700,color:"#15803D",background:"#F0FDF4",border:"1px solid #86EFAC",padding:"1px 8px",borderRadius:10}}>ON SITE NOW</span>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
           <div style={{border:`2px solid ${C.amber}`,borderRadius:8,padding:14,background:"#FFFBEB"}}>
             <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
               <span style={{fontSize:16}}>📋</span>
@@ -4227,6 +4285,8 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
     serviceCallReminderDay:{label:"Service Call Reminder (1-Day)",icon:"⏰",group:"Service Call"},
     feedbackReview:{label:"Feedback Form",icon:"⭐",group:"Feedback"},
     surveyComplete:{label:"Survey Completed → Office",icon:"📋",group:"Internal Notifications"},
+    fitterCheckIn:{label:"Fitter Checked In → Office",icon:"⏱️",group:"Internal Notifications"},
+    fitterCheckOut:{label:"Fitter Checked Out → Office",icon:"🏁",group:"Internal Notifications"},
   };
 
   const placeholders=[
@@ -4237,6 +4297,10 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
     ["{{fitterNames}}","All assigned fitters"],
     ["{{address}}","Customer address"],
     ["{{itemCount}}","Number of survey items (survey-complete email)"],
+    ["{{jobTitle}}","Job title (check in/out emails)"],
+    ["{{time}}","Check-in time (check in/out emails)"],
+    ["{{timeOut}}","Check-out time (check-out email)"],
+    ["{{duration}}","Time on site (check-out email)"],
     ["{{companyName}}","Your company name"],
     ["{{companyPhone}}","Your company phone"],
   ];
@@ -4481,22 +4545,27 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
                         ? "Sent to the customer automatically when they give a qualifying answer on the feedback form (set which answers count under Settings → Feedback Form). BCC the unique alias TrustPilot gave you for their Automatic Feedback Service and it triggers a review invite."
                       : key==="surveyComplete"
                         ? "Sent to the office (not the customer) the moment a fitter marks the last item of a digital survey complete. Choose the recipient and which sections to include below."
+                      : key==="fitterCheckIn"
+                        ? "Sent to the office (not the customer) when a fitter taps Check In on their phone after arriving on site."
+                      : key==="fitterCheckOut"
+                        ? "Sent to the office (not the customer) when a fitter taps Check Out, including how long they were on site."
                       : `Sent when a ${label.toLowerCase()} is confirmed.`}</p>
                     <div style={{display:"flex",flexDirection:"column",gap:12}}>
-                      {key==="surveyComplete"&&(
+                      {INTERNAL_TEMPLATE_KEYS.includes(key)&&(
                         <>
                           <div style={{display:"flex",alignItems:"center",gap:10,fontSize:13,fontWeight:600,color:C.text}}>
                             <div onClick={()=>updateTemplate(key,"enabled",tmpl.enabled===false)}
                               style={{width:42,height:23,borderRadius:12,background:tmpl.enabled!==false?C.mint:C.border,position:"relative",cursor:"pointer",flexShrink:0}}>
                               <div style={{width:17,height:17,borderRadius:"50%",background:"#fff",position:"absolute",top:3,left:tmpl.enabled!==false?22:3,transition:"left 0.15s",boxShadow:"0 1px 3px rgba(0,0,0,0.3)"}}/>
                             </div>
-                            Send this email when a survey is completed
+                            {key==="surveyComplete"?"Send this email when a survey is completed":key==="fitterCheckIn"?"Send this email when a fitter checks in":"Send this email when a fitter checks out"}
                           </div>
                           <div>
                             <Inp label="Send to (office email)" value={tmpl.to||""} onChange={e=>updateTemplate(key,"to",e.target.value)} placeholder="e.g. surveys@visualglazing.co.uk"/>
                             <p style={{margin:"6px 0 0",fontSize:12,color:C.muted}}>Leave blank to use the Company Email from General settings. Separate multiple recipients with commas.</p>
                           </div>
-                          <div>
+                          {/* Only the survey-complete email appends sections. */}
+                          <div style={{display:key==="surveyComplete"?"block":"none"}}>
                             <div style={{fontSize:11,fontWeight:700,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Include in the email</div>
                             {[["trimsSummary","Trims to order — grouped by type & width, with a total"],["itemBreakdown","Per-item measurements & selected options"],["notes","Surveyor notes for each item"],["photos","Photo count per item"]].map(([k,lbl])=>(
                               <label key={k} style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:C.text,padding:"4px 0",cursor:"pointer"}}>
@@ -5764,6 +5833,43 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
                       </div>
                     )}
                   </div>
+                );
+              })()}
+              {/* Check in / out — tells the office the fitter has arrived, and later that
+                  they have finished. Each fitter has their own entry, so two fitters on the
+                  same job check in separately. Tapping stamps the time and saves; the email
+                  is sent by the server (see jobs.js), which also guarantees it goes only once. */}
+              {(()=>{
+                const entry=(job.tabs?.installation?.checkIns||[]).find(c=>c.fitter===fitterName);
+                const fmt=iso=>new Date(iso).toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"});
+                const stamp=(field)=>{
+                  const list=job.tabs?.installation?.checkIns||[];
+                  const next=list.some(c=>c.fitter===fitterName)
+                    ? list.map(c=>c.fitter===fitterName?{...c,[field]:new Date().toISOString()}:c)
+                    : [...list,{fitter:fitterName,[field]:new Date().toISOString()}];
+                  updateJob({...job,tabs:{...job.tabs,installation:{...(job.tabs?.installation||{}),checkIns:next}}});
+                };
+                if(entry&&entry.outAt) return (
+                  <div style={{background:"#F0FDF4",border:`2px solid ${C.mint}`,borderRadius:12,padding:16,textAlign:"center",fontSize:15,fontWeight:700,color:"#15803D"}}>
+                    ✅ On site {fmt(entry.inAt)} – {fmt(entry.outAt)}
+                  </div>
+                );
+                if(entry&&entry.inAt) return (
+                  <>
+                    <div style={{background:"#F0FDF4",border:`1px solid ${C.mint}`,borderRadius:12,padding:"10px 14px",textAlign:"center",fontSize:14,fontWeight:700,color:"#15803D"}}>
+                      ✅ Checked in at {fmt(entry.inAt)}
+                    </div>
+                    <button onClick={()=>{if(window.confirm("Check out of this job? The office will be told you have finished."))stamp("outAt");}}
+                      style={{background:C.navy,color:"#fff",border:"none",borderRadius:12,padding:"16px",fontSize:16,fontWeight:700,cursor:"pointer"}}>
+                      🏁 Check Out
+                    </button>
+                  </>
+                );
+                return (
+                  <button onClick={()=>{if(window.confirm("Check in to this job? The office will be told you have arrived."))stamp("inAt");}}
+                    style={{background:C.sky,color:"#fff",border:"none",borderRadius:12,padding:"16px",fontSize:16,fontWeight:700,cursor:"pointer"}}>
+                    ⏱️ Check In On Site
+                  </button>
                 );
               })()}
               {/* Feedback button */}
