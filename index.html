@@ -2683,8 +2683,8 @@ const KanbanCol = ({stage,meta,items,onAdd,renderCard,revenue,avgMargin,countOve
     onDrop:e=>{e.preventDefault();setOver(false);onDropCard(e.dataTransfer.getData("text/plain"));},
   }:{};
   return (
-  <div style={{flex:"0 0 200px",display:"flex",flexDirection:"column"}}>
-    <div style={{background:meta.bg,borderRadius:"8px 8px 0 0",padding:"10px 12px",borderBottom:`3px solid ${meta.text}`}}>
+  <div style={{flex:"0 0 200px",display:"flex",flexDirection:"column",minHeight:0}}>
+    <div style={{background:meta.bg,borderRadius:"8px 8px 0 0",padding:"10px 12px",borderBottom:`3px solid ${meta.text}`,position:"sticky",top:0,zIndex:2,flexShrink:0}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:revenue!=null?6:0}}>
         <span style={{fontWeight:700,fontSize:12,color:meta.text,lineHeight:1.3}}>{stage}</span>
         <span style={{background:meta.text,color:"#fff",borderRadius:12,padding:"1px 7px",fontSize:11,fontWeight:700,flexShrink:0,marginLeft:4}}>{countOverride!=null?countOverride:items.length}</span>
@@ -2960,7 +2960,7 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
         <Btn onClick={()=>setModal("add")}>+ New Enquiry</Btn>
         <PipelineFilters period={period} setPeriod={setPeriod} soldBy={soldByFilter} setSoldBy={setSoldByFilter} staff={settings?.staff||DEFAULT_STAFF}/>
       </div>
-      <div style={{display:"flex",gap:10,overflowX:"auto",flex:1,paddingBottom:8,alignItems:"flex-start"}}>
+      <div style={{display:"flex",gap:10,overflowX:"auto",overflowY:"hidden",flex:1,minHeight:0,paddingBottom:8,alignItems:"stretch"}}>
         {LEAD_STAGES.map(stage=>{
           // "Deal Won" is a reporting column, not a holding pen. A won deal continues into the
           // Installation Pipeline, so this column carries no cards — just the summary for
@@ -3173,7 +3173,7 @@ const InstallPipelinePage = ({jobs,setJobs,customers,settings}) => {
         <Btn onClick={()=>setModal("add")}>+ Add Job</Btn>
         <PipelineFilters period={period} setPeriod={setPeriod} soldBy={soldByFilter} setSoldBy={setSoldByFilter} staff={settings?.staff||DEFAULT_STAFF}/>
       </div>
-      <div style={{display:"flex",gap:10,overflowX:"auto",flex:1,paddingBottom:8,alignItems:"flex-start"}}>
+      <div style={{display:"flex",gap:10,overflowX:"auto",overflowY:"hidden",flex:1,minHeight:0,paddingBottom:8,alignItems:"stretch"}}>
         {INSTALL_STAGES.filter(s=>s!==COMPLETED_STAGE).map(stage=>(
           <KanbanCol key={stage} stage={stage} meta={INSTALL_META[stage]}
             items={filtered.filter(j=>j.status===stage)}
