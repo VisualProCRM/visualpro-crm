@@ -3138,8 +3138,13 @@ const CalendarPage = ({customers,jobs,settings,onNavigate}) => {
       const s=j.tabs?.survey;
       if(!s?.date) return [];
       const cust=customers.find(c=>c.id===j.customerId);
-      // One event per assigned fitter, so the survey shows under each of them.
-      return bookingFitters(s).map(fitter=>({date:s.date,fitter,label:cust?.name||j.title,type:"Survey",color:C.sky,time:s.time||"",endTime:s.endTime||"",notes:s.notes||"",job:j}));
+      // ONE entry per booking, listing everyone assigned — not one per fitter. Two fitters on
+      // the same job used to draw two identical blocks that then shared the width, which is
+      // what made a busy day look cluttered. `fitter` stays as the joined display string so
+      // every place that renders an event keeps working; `fitters` is what filtering uses.
+      const sf=bookingFitters(s);
+      if(!sf.length) return [];
+      return [{date:s.date,fitters:sf,fitter:sf.join(", "),label:cust?.name||j.title,type:"Survey",color:C.sky,time:s.time||"",endTime:s.endTime||"",notes:s.notes||"",job:j}];
     }),
   ];
   // Installation bookings from job installation tab — expanded across working days
@@ -3160,9 +3165,9 @@ const CalendarPage = ({customers,jobs,settings,onNavigate}) => {
       current=new Date(current);
       current.setDate(current.getDate()+1);
     }
-    return workingDays.flatMap(date=>
-      (inst.fitters||[]).map(fitter=>({
-        date,fitter,label:j.title,type:"Install",color:C.mint,
+    const instFitters=inst.fitters||[];
+    return workingDays.map(date=>({
+        date,fitters:instFitters,fitter:instFitters.join(", "),label:j.title,type:"Install",color:C.mint,
         notes:inst.fittersNotes,
         time:inst.startTime||"",
         endTime:inst.endTime||"",
@@ -3170,24 +3175,26 @@ const CalendarPage = ({customers,jobs,settings,onNavigate}) => {
         dayIndex:workingDays.indexOf(date)+1,
         totalDays:workingDays.length,
         job:j,
-      }))
-    );
+      }));
   });
   // Fallback: job installDate field
   const installFieldEvents=jobs.flatMap(j=>{
     if(!j.installDate||(j.tabs?.installation?.date)) return [];
-    return [{date:j.installDate,fitter:j.installers||"Unassigned",label:j.title,type:"Install",color:C.mint,job:j}];
+    const ff=j.installers||"Unassigned";
+    return [{date:j.installDate,fitters:[ff],fitter:ff,label:j.title,type:"Install",color:C.mint,job:j}];
   });
   // Service call bookings from job cards
   const serviceCallEvents=jobs.flatMap(j=>{
     return (j.tabs?.serviceCall?.bookings||[]).flatMap(b=>{
       if(!b.date) return [];
-      // One event per assigned fitter, so the booking shows under each of them — as installs do.
-      return bookingFitters(b).map(fitter=>({date:b.date,fitter,label:j.title,type:"Service Call",color:"#7C3AED",notes:b.notes||"",time:b.startTime||"",endTime:b.endTime||"",job:j}));
+      // One entry per booking, listing everyone assigned — as installs and surveys do.
+      const bf=bookingFitters(b);
+      if(!bf.length) return [];
+      return [{date:b.date,fitters:bf,fitter:bf.join(", "),label:j.title,type:"Service Call",color:"#7C3AED",notes:b.notes||"",time:b.startTime||"",endTime:b.endTime||"",job:j}];
     });
   });
   const allEvents=[...surveyEvents,...installTabEvents,...installFieldEvents,...serviceCallEvents]
-    .filter(e=>filterFitter==="All"||e.fitter===filterFitter)
+    .filter(e=>filterFitter==="All"||(e.fitters||[e.fitter]).includes(filterFitter))
     .sort((a,b)=>(a.time||"").localeCompare(b.time||""));
 
   const eventsForDate=(ds)=>allEvents.filter(e=>e.date===ds);
@@ -3329,7 +3336,8 @@ const CalendarPage = ({customers,jobs,settings,onNavigate}) => {
                     <div key={ei} onClick={()=>openEvent(ev)} style={{background:ev.color,color:"#fff",borderRadius:4,padding:"3px 6px",fontSize:11,marginBottom:3,lineHeight:1.4,cursor:(ev.job||ev.customerId)?"pointer":"default"}}>
                       <div style={{fontWeight:700}}>{ev.type}{ev.time?` · ${ev.time}`:""}{ev.isMultiDay?` (Day ${ev.dayIndex}/${ev.totalDays})`:""}</div>
                       <div style={{opacity:.9,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ev.label}</div>
-                      <div style={{opacity:.75,fontSize:10}}>{ev.fitter}</div>
+                      {/* Several fitters are joined into one line, so it has to truncate. */}
+                      <div style={{opacity:.75,fontSize:10,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{ev.fitter}</div>
                       {ev.notes&&<div style={{opacity:.85,fontSize:10,marginTop:2,borderTop:"1px solid rgba(255,255,255,0.3)",paddingTop:2}}>{ev.notes.split("\n").slice(0,2).join(" · ")}</div>}
                     </div>
                   ))}
