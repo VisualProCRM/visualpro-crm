@@ -52,6 +52,27 @@ const COMPLETED_STAGE = "Job Completed ✓";
 // mirrored copy in api/src/functions/windowcad.js, which must be kept in sync).
 const ALL_PIPELINE_STAGES = [...LEAD_STAGES, ...INSTALL_STAGES];
 
+// Moving a record to another stage — used by the pipeline boards' drag and drop AND by the
+// stage button inside a record, so both routes behave identically. Returns the updated record,
+// or null when nothing should happen (unchanged, or the user cancelled a confirmation).
+//
+// Winning asks first: an install-only stage dropdown silently won a real deal on 2026-09-21,
+// and drag and drop makes an accidental move even easier.
+const applyStageChange = (record, next) => {
+  const current = record.status;
+  if (!next || current === next) return null;
+  const wasOpenSale = LEAD_STAGES.includes(current) && !["Deal Won","Deal Lost"].includes(current);
+  const winning = next === "Deal Won" || INSTALL_STAGES.includes(next);
+  if (wasOpenSale && winning && !window.confirm("Mark this deal as won? It will move to the Installation Pipeline.")) return null;
+  if (next === COMPLETED_STAGE && !window.confirm("Mark this job as completed? It will be moved to your completed jobs archive.")) return null;
+  const out = { ...record, status: next };
+  // Completing stamps the date the same way the button inside the record does; dragging a job
+  // back out of Completed clears it again, so the archive can't hold a job that isn't finished.
+  if (next === COMPLETED_STAGE) out.completedAt = new Date().toLocaleDateString("en-GB");
+  else if (current === COMPLETED_STAGE) out.completedAt = "";
+  return out;
+};
+
 // ── Opportunity buckets ──────────────────────────────────────────────────────
 // How a customer's opportunities are summarised: enquiries that haven't been quoted yet,
 // live quotes, and work that's been won. "Won" deliberately covers Deal Won plus every
@@ -1062,11 +1083,18 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
           {isJob?(
             <>
               <Inp label="Job Title" value={data.title} onChange={e=>setData(d=>({...d,title:e.target.value}))}/>
-              {data.reference&&(
-                <div style={{background:C.skyLight,border:`1px solid ${C.sky}`,borderRadius:8,padding:"10px 14px",fontSize:14,color:C.navy}}>
-                  <strong>Reference:</strong> {data.reference}
+              {/* Reference and current stage, side by side. The stage button replaced a
+                  dropdown further down the form — a dropdown read as just another field,
+                  when the stage is the record's standing. Shown even with no reference set,
+                  because the stage always matters. */}
+              <div style={{background:C.skyLight,border:`1px solid ${C.sky}`,borderRadius:8,padding:"10px 14px",fontSize:14,color:C.navy,display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+                <span style={{minWidth:0,overflow:"hidden",textOverflow:"ellipsis"}}>
+                  {data.reference?<><strong>Reference:</strong> {data.reference}</>:<span style={{color:C.slate}}>No reference set</span>}
+                </span>
+                <div style={{marginLeft:"auto"}}>
+                  <StageButton status={data.status} onChange={next=>{const out=applyStageChange(data,next);if(out)setData(out);}}/>
                 </div>
-              )}
+              </div>
               <Inp label="Reference" value={data.reference||""} onChange={e=>setData(d=>({...d,reference:e.target.value}))} placeholder="e.g. 4 Morres Grove — used to tell concurrent jobs for the same customer apart"/>
               {/* Site address lives on the job, not the customer — see JobForm for why. */}
               <Inp label="Site Address (where the work happens)" value={data.siteAddress||""} onChange={e=>setData(d=>({...d,siteAddress:e.target.value}))} placeholder="Leave blank to use the customer's own address"/>
@@ -1152,22 +1180,6 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
               <Sel label="Sold By" value={data.soldBy||""} onChange={e=>setData(d=>({...d,soldBy:e.target.value}))}>
                 <option value="">— Select staff member —</option>
                 {(settings?.staff||DEFAULT_STAFF).map(s=><option key={s}>{s}</option>)}
-              </Sel>
-              {/* Both pipelines. This used to list only installation stages, so an opportunity
-                  still at a sales stage (e.g. Quoted) had no option matching its real stage —
-                  the dropdown showed the wrong one, and any touch picked an installation stage.
-                  On save that counted as winning the deal: it got a won date and left the
-                  Sales board (job #66, 2026-09-21). Moving from an open sales stage into
-                  installation now asks first, because it is the act of winning. */}
-              <Sel label="Pipeline Stage" value={data.status} onChange={e=>{
-                const next=e.target.value;
-                const wasOpenSale=LEAD_STAGES.includes(data.status)&&!["Deal Won","Deal Lost"].includes(data.status);
-                const winning=next==="Deal Won"||INSTALL_STAGES.includes(next);
-                if(wasOpenSale&&winning&&!window.confirm("Mark this deal as won? It will move to the Installation Pipeline.")) return;
-                setData(d=>({...d,status:next}));
-              }}>
-                <optgroup label="Sales Pipeline">{LEAD_STAGES.map(s=><option key={s}>{s}</option>)}</optgroup>
-                <optgroup label="Installation Pipeline">{INSTALL_STAGES.map(s=><option key={s}>{s}</option>)}</optgroup>
               </Sel>
               <TA label="Notes" value={data.notes||""} onChange={e=>setData(d=>({...d,notes:e.target.value}))}/>
               {/* Mark as completed */}
@@ -2611,7 +2623,16 @@ const PipelineFilters = ({period,setPeriod,soldBy,setSoldBy,staff}) => (
 // — the Deal Won column reports deals won in the period while deliberately holding none, since
 // a won deal lives on in the Installation Pipeline rather than sitting here. `emptyNote`
 // replaces the bare "Empty" so that reads as intentional rather than broken.
-const KanbanCol = ({stage,meta,items,onAdd,renderCard,revenue,avgMargin,countOverride,emptyNote}) => (
+const KanbanCol = ({stage,meta,items,onAdd,renderCard,revenue,avgMargin,countOverride,emptyNote,onDropCard}) => {
+  // Mouse drag and drop only — touch devices don't fire these events, so the boards stay
+  // click-and-edit on a tablet (agreed with the office 2026-09-25).
+  const [over,setOver]=useState(false);
+  const dropProps=onDropCard?{
+    onDragOver:e=>{e.preventDefault();e.dataTransfer.dropEffect="move";if(!over)setOver(true);},
+    onDragLeave:e=>{if(!e.currentTarget.contains(e.relatedTarget))setOver(false);},
+    onDrop:e=>{e.preventDefault();setOver(false);onDropCard(e.dataTransfer.getData("text/plain"));},
+  }:{};
+  return (
   <div style={{flex:"0 0 200px",display:"flex",flexDirection:"column"}}>
     <div style={{background:meta.bg,borderRadius:"8px 8px 0 0",padding:"10px 12px",borderBottom:`3px solid ${meta.text}`}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:revenue!=null?6:0}}>
@@ -2635,15 +2656,16 @@ const KanbanCol = ({stage,meta,items,onAdd,renderCard,revenue,avgMargin,countOve
         </div>
       )}
     </div>
-    <div style={{flex:1,overflowY:"auto",background:"#F8FAFC",padding:"8px 6px",borderLeft:`1px solid ${C.border}`,borderRight:`1px solid ${C.border}`,minHeight:80}}>
+    <div {...dropProps} style={{flex:1,overflowY:"auto",background:over?C.skyLight:"#F8FAFC",padding:"8px 6px",borderLeft:`1px solid ${over?C.sky:C.border}`,borderRight:`1px solid ${over?C.sky:C.border}`,minHeight:80,transition:"background .12s"}}>
       {items.map(item=>renderCard(item))}
       {items.length===0&&<div style={{textAlign:"center",padding:"16px 6px",color:C.muted,fontSize:11,lineHeight:1.5}}>{emptyNote||"Empty"}</div>}
     </div>
     <div style={{background:"#F8FAFC",borderRadius:"0 0 8px 8px",padding:6,border:`1px solid ${C.border}`,borderTop:"none"}}>
-      <button onClick={()=>onAdd(stage)} style={{width:"100%",padding:5,border:`1px dashed ${C.border}`,borderRadius:5,background:"transparent",color:C.muted,fontSize:12,cursor:"pointer"}}>+ Add</button>
+      <button onClick={()=>onAdd&&onAdd(stage)} style={{width:"100%",padding:5,border:`1px dashed ${C.border}`,borderRadius:5,background:"transparent",color:C.muted,fontSize:12,cursor:"pointer"}}>+ Add</button>
     </div>
   </div>
-);
+  );
+};
 
 // ── Confetti ──────────────────────────────────────────────────────────────────
 const Confetti = ({onDone}) => {
@@ -2808,6 +2830,15 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
       .catch(err=>window.alert("Failed to save customer: "+err.message));
   };
 
+  // Dropping a card into another column is the same operation as choosing a stage inside the
+  // record — both go through applyStageChange, then the normal save.
+  const handleDropOnStage=(id,stage)=>{
+    const job=jobs.find(j=>String(j.id)===String(id));
+    if(!job) return;
+    const next=applyStageChange(job,stage);
+    if(next) handleJobSave(next);
+  };
+
   const handleCardSave=(updated)=>
     apiUpdateCustomer(updated)
       .then(saved=>setCustomers(cs=>cs.map(c=>c.id===saved.id?saved:c)))
@@ -2839,7 +2870,8 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
     const cust=customers.find(c=>c.id===job.customerId);
     return (
       <div key={"job-"+job.id} onClick={()=>setViewingJob(job)}
-        style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:8,padding:"11px 13px",marginBottom:7,cursor:"pointer",boxShadow:"0 1px 3px rgba(0,0,0,0.06)"}}
+        draggable onDragStart={e=>{e.dataTransfer.setData("text/plain",String(job.id));e.dataTransfer.effectAllowed="move";}}
+        style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:8,padding:"11px 13px",marginBottom:7,cursor:"grab",boxShadow:"0 1px 3px rgba(0,0,0,0.06)"}}
         onMouseEnter={e=>e.currentTarget.style.boxShadow="0 4px 10px rgba(0,0,0,0.1)"}
         onMouseLeave={e=>e.currentTarget.style.boxShadow="0 1px 3px rgba(0,0,0,0.06)"}
       >
@@ -2892,6 +2924,7 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
             return (
               <KanbanCol key={stage} stage={stage} meta={STAGE_META[stage]}
                 items={[]} countOverride={won.length}
+                onDropCard={id=>handleDropOnStage(id,stage)}
                 revenue={revenue}
                 avgMargin={ms.length?(ms.reduce((s,m)=>s+parseFloat(m.pct),0)/ms.length).toFixed(1):null}
                 emptyNote="Won deals continue in the Installation Pipeline"
@@ -2910,6 +2943,7 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
           return (
             <KanbanCol key={stage} stage={stage} meta={STAGE_META[stage]}
               items={stageJobs}
+              onDropCard={id=>handleDropOnStage(id,stage)}
               revenue={stageRevenue}
               avgMargin={avgMargin}
               onAdd={s=>{setDefaultStage(s);setModal("add");}}
@@ -2976,6 +3010,17 @@ const InstallPipelinePage = ({jobs,setJobs,customers,settings}) => {
     }).catch(err=>window.alert("Failed to save job: "+err.message));
   };
 
+  // Same operation as choosing a stage inside the record — see applyStageChange.
+  const handleDropOnStage=(id,stage)=>{
+    const job=jobs.find(j=>String(j.id)===String(id));
+    if(!job) return;
+    const next=applyStageChange(job,stage);
+    if(!next) return;
+    apiUpdateJob(next)
+      .then(saved=>setJobs(js=>js.map(j=>j.id===saved.id?saved:j)))
+      .catch(err=>window.alert("Failed to move job: "+err.message));
+  };
+
   const deleteJob=id=>{
     if(!window.confirm("Delete this job?")) return;
     apiDeleteJob(id).then(()=>{
@@ -2989,7 +3034,8 @@ const InstallPipelinePage = ({jobs,setJobs,customers,settings}) => {
     const m=calcMargin(revenue,wonJobCost(job));
     return (
       <div key={job.id} onClick={()=>setDetailRecord(job)}
-        style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:8,padding:"11px 13px",marginBottom:7,cursor:"pointer",boxShadow:"0 1px 3px rgba(0,0,0,0.06)"}}
+        draggable onDragStart={e=>{e.dataTransfer.setData("text/plain",String(job.id));e.dataTransfer.effectAllowed="move";}}
+        style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:8,padding:"11px 13px",marginBottom:7,cursor:"grab",boxShadow:"0 1px 3px rgba(0,0,0,0.06)"}}
         onMouseEnter={e=>e.currentTarget.style.boxShadow="0 4px 10px rgba(0,0,0,0.1)"}
         onMouseLeave={e=>e.currentTarget.style.boxShadow="0 1px 3px rgba(0,0,0,0.06)"}
       >
@@ -3082,6 +3128,7 @@ const InstallPipelinePage = ({jobs,setJobs,customers,settings}) => {
           <KanbanCol key={stage} stage={stage} meta={INSTALL_META[stage]}
             items={filtered.filter(j=>j.status===stage)}
             onAdd={s=>{setDefaultStage(s);setModal("add");}}
+            onDropCard={id=>handleDropOnStage(id,stage)}
             renderCard={renderCard}
           />
         ))}
