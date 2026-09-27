@@ -44,6 +44,7 @@ A shared place for feature ideas, wherever they come from — the office, a fitt
 - **Suggested order**: 1 → 2 → 3 (one continuous piece of work, and 1 matters now regardless of launch) → 4 (a decision, not code) → 5 → onboarding the first pilot customer.
 
 ### Email follow-up integration — flag an email, get a follow-up in the CRM — 🔍 scoped 2026-09-24, not started
+- **2026-09-27: the office opened this, then paused it to look at Phase 5 instead. Its four open questions are still unanswered — nothing was decided and no code was written.**
 - Requested by: office — 2026-09-24. "We email a customer and want to make sure we follow up, so it would be great to flag for follow up and have that appear in the CRM dashboard." Deliberately **not started** — captured while fresh.
 - **Mockup of the Outlook button (interactive): https://claude.ai/artifact/231KaouqXSjBE7AVwWeNQd**
 - **Three separate pieces. Only the first is essential; the rest are optional layers on top.**
@@ -365,7 +366,8 @@ A shared place for feature ideas, wherever they come from — the office, a fitt
 - Requested by: office — 2026-07-30
 - Connect the existing "WindowCAD7 Reference" field to a real API instead of it just being a free-text label.
 
-### Phase 5 — multiple install bookings per opportunity — ⏸️ PARKED 2026-09-21
+### Phase 5 — multiple install bookings per opportunity — ▶️ REVIVED 2026-09-27, still needs the answers below
+- **Revived by the office 2026-09-27** — "specifically multiple installs on a single job record". **Still not started: the three questions below were put to the office and are not yet answered.** The scope below was re-verified against the code on 2026-09-27 and is still accurate — `tabs.installation.date` is read in 27 places in `index.html`, plus `reminderCore.js` (lines 383, 460, 944) and `reminderTimer.js` (line 34). A fourth question was added: what to do with the jobs already split as a workaround (Whitman `16 Darby Green Phase 1`/`Phase 2`) — leave them, merge them, or decide once it is live. Leaving them is the low-risk answer; merging rewrites won values on live records.
 - **Parked by the office**: separate jobs for each phase is an acceptable workaround now that phases 1–4 are live. Before the redesign that workaround created duplicate *customers*; now it creates sibling jobs under one customer, each with its own site address, which is clean. Remaining cost is minor: a single quote fitted in two visits reports as two won deals with the value split. Worth confirming with Dan, who originally asked for it (2026-08-07), before closing it for good.
 
 *Original scope, kept for if it is revived:*
