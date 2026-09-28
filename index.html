@@ -64,6 +64,16 @@ const applyStageChange = (record, next) => {
   const wasOpenSale = LEAD_STAGES.includes(current) && !["Deal Won","Deal Lost"].includes(current);
   const winning = next === "Deal Won" || INSTALL_STAGES.includes(next);
   if (wasOpenSale && winning && !window.confirm("Mark this deal as won? It will move to the Installation Pipeline.")) return null;
+  // A job fitted in phases can't be archived while a visit is still owed on site. Only blocks when
+  // there is genuinely more than one booking, so single-visit jobs behave exactly as before.
+  if (next === COMPLETED_STAGE) {
+    const visits = installBookings(record);
+    const outstanding = visits.filter(b => !b.completed);
+    if (visits.length > 1 && outstanding.length) {
+      window.alert(`This job still has ${outstanding.length} install date${outstanding.length === 1 ? "" : "s"} not ticked off on the Installation tab. Tick every install complete before completing the job.`);
+      return null;
+    }
+  }
   if (next === COMPLETED_STAGE && !window.confirm("Mark this job as completed? It will be moved to your completed jobs archive.")) return null;
   const out = { ...record, status: next };
   // Completing stamps the date the same way the button inside the record does; dragging a job
@@ -184,6 +194,35 @@ const recordProducts = (r) => canonProducts([...((r&&r.products)||[]),...((r&&r.
 // fitter's app, on the calendar and in mileage. Once `fitters` exists it is authoritative,
 // even when empty — the pickers clear the old `fitter` field whenever they write the list.
 const bookingFitters = (b) => !b ? [] : Array.isArray(b.fitters) ? b.fitters : (b.fitter ? [b.fitter] : []);
+
+// A job's installation visits. Same "read both, write one" approach as bookingFitters: a job
+// installed in phases holds `tabs.installation.bookings[]`, while every job booked before this
+// existed still holds a single date directly on `tabs.installation`. Read through this and both
+// shapes behave identically, so nothing already booked drops off a calendar or stops reminding.
+// Never read `tabs.installation.date` for anything that emails a customer — use this.
+const installBookings = (job) => {
+  const inst = job?.tabs?.installation;
+  if (!inst) return [];
+  if (Array.isArray(inst.bookings) && inst.bookings.length) return inst.bookings;
+  if (!inst.date) return [];
+  return [{
+    id: "legacy", name: inst.name || "", date: inst.date,
+    startTime: inst.startTime || "", endTime: inst.endTime || "", duration: inst.duration || "2",
+    fitters: bookingFitters(inst), completed: !!inst.completed,
+    bookedEmailSent: inst.bookedEmailSent, emailReminders: inst.emailReminders,
+  }];
+};
+// The visit the rest of the app should show when it only has room for one: the next one still
+// outstanding, else the last. Its date is mirrored onto `tabs.installation.date` on every save so
+// the card badges, dashboard and job list keep working untouched.
+const nextInstallBooking = (job) => {
+  const bs = installBookings(job);
+  if (!bs.length) return null;
+  const open = bs.filter(b => !b.completed && b.date).sort((a, b) => a.date.localeCompare(b.date));
+  if (open.length) return open[0];
+  const dated = bs.filter(b => b.date).sort((a, b) => a.date.localeCompare(b.date));
+  return dated.length ? dated[dated.length - 1] : bs[0];
+};
 const CARD_TABS     = ["Details","Tasks","Quote","Invoices","Notes","Survey","Order Confirmation","Bills","Installation","Guarantee","Service Call"];
 
 const DEFAULT_EMAIL_TEMPLATES = {
@@ -480,8 +519,8 @@ const apiGetWindowcadEvents = () => apiRequest("/windowcad/events");
 
 const apiLogin = (role, password) => apiRequest("/login", { method: "POST", body: JSON.stringify({ role, password }) });
 const apiRefreshToken = () => apiRequest("/login/refresh", { method: "POST" });
-const apiSendReminder = (jobId, reminderKey) =>
-  apiRequest("/send-reminder", { method: "POST", body: JSON.stringify({ jobId, reminderKey }) });
+const apiSendReminder = (jobId, reminderKey, bookingId) =>
+  apiRequest("/send-reminder", { method: "POST", body: JSON.stringify({ jobId, reminderKey, bookingId }) });
 
 const seedCustomers = [
   {id:1,name:"Sarah Mitchell",email:"sarah.mitchell@email.com",phone:"07712 345678",address:"14 Oak Lane, Camberley, GU15 2AB",source:"Website",stage:"Deal Won",notes:"Prefers morning calls",createdAt:"2025-06-01",windowcad:"WC-2025-001",quoteValue:4200,quoteCost:2650,tabs:{quote:{files:[],notes:""},invoices:{files:[],notes:""},notepad:{text:"Chase re: bay window size"},survey:{files:[],images:[],notes:"",date:"2025-06-05",fitter:"Tom Bailey"},orderConfirmation:{files:[],notes:"Signed and returned"},bills:{files:[],costs:"",notes:""},installation:{date:"",fitters:[],fittersNotes:""},guarantee:{files:[],notes:""}}},
@@ -1680,8 +1719,36 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
       {/* ── INSTALLATION TAB ── */}
       {activeTab==="Installation"&&(
         <div style={{display:"flex",flexDirection:"column",gap:16}}>
-          {/* Booking section */}
+          {/* ── Installation bookings (one card per visit) ── */}
           {(()=>{
+            const inst=data.tabs.installation||{};
+            const stored=Array.isArray(inst.bookings)?inst.bookings:[];
+            // A job booked before this existed keeps its single date on tabs.installation itself.
+            // Show it as the first card rather than an empty list, so nothing looks lost; the first
+            // edit writes it into bookings[] properly. Mirrors how bookingFitters reads old records.
+            const rows=stored.length?stored:(inst.date?[{id:"legacy",name:inst.name||"",date:inst.date,
+              startTime:inst.startTime||"",endTime:inst.endTime||"",duration:inst.duration||"2",
+              fitters:bookingFitters(inst),completed:!!inst.completed,
+              bookedEmailSent:inst.bookedEmailSent,emailReminders:inst.emailReminders}]:[]);
+
+            // Every write mirrors the next outstanding visit back onto the old single-date fields.
+            // 27 places in this file plus the dashboard and the job cards still read those, so they
+            // must never go stale — that mirror is what lets this ship without touching all of them.
+            const writeRows=(next)=>{
+              const open=next.filter(b=>!b.completed&&b.date).sort((a,b)=>a.date.localeCompare(b.date));
+              const dated=next.filter(b=>b.date).sort((a,b)=>a.date.localeCompare(b.date));
+              const lead=open[0]||dated[dated.length-1]||next[0]||null;
+              setData(d=>({...d,tabs:{...d.tabs,installation:{...d.tabs.installation,bookings:next,
+                date:lead?(lead.date||""):"",startTime:lead?(lead.startTime||""):"",
+                endTime:lead?(lead.endTime||""):"",duration:lead?(lead.duration||"2"):"2",
+                fitters:lead?(lead.fitters||[]):[]}}}));
+            };
+            const addRow=()=>writeRows([...rows,{id:uid(),name:"",date:"",startTime:"",endTime:"",duration:"2",fitters:[],completed:false}]);
+            const setRow=(id,patch)=>writeRows(rows.map(b=>b.id===id?{...b,...patch}:b));
+            const removeRow=(id)=>{
+              if(window.confirm("Remove this install date? Any emails already sent for it stay sent.")) writeRows(rows.filter(b=>b.id!==id));
+            };
+
             // Weekend-skipping helper — adds working days to a start date
             const addWorkingDays=(startDateStr,halfDays)=>{
               if(!startDateStr||!halfDays) return [];
@@ -1705,10 +1772,6 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
               return dates;
             };
 
-            const duration=data.tabs.installation.duration||"2"; // in half days
-            const scheduledDays=data.tabs.installation.date?addWorkingDays(data.tabs.installation.date,Number(duration)):[];
-            const endDate=scheduledDays.length>0?scheduledDays[scheduledDays.length-1].date:"";
-
             const DURATION_OPTIONS=[
               {value:"1",label:"Half Day (AM)"},
               {value:"2",label:"1 Day"},
@@ -1721,107 +1784,141 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
               {value:"14",label:"7 Days (2 weeks)"},
             ];
 
-            return (
-              <div style={{background:C.slateLight,borderRadius:8,padding:14}}>
-                <div style={{fontSize:12,fontWeight:700,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:12}}>📅 Book Installation</div>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:12,marginBottom:12}}>
-                  <Inp label="Start Date" type="date" value={data.tabs.installation.date||""} onChange={e=>setTab("installation",{date:e.target.value})}/>
-                  <Inp label="Start Time" type="time" value={data.tabs.installation.startTime||""} onChange={e=>setTab("installation",{startTime:e.target.value})}/>
-                  <Inp label="End Time" type="time" value={data.tabs.installation.endTime||""} onChange={e=>setTab("installation",{endTime:e.target.value})}/>
-                  <Sel label="Duration" value={duration} onChange={e=>setTab("installation",{duration:e.target.value})}>
-                    {DURATION_OPTIONS.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
-                  </Sel>
-                </div>
+            const doneCount=rows.filter(b=>b.completed).length;
 
-                {/* Scheduled days breakdown */}
-                {scheduledDays.length>0&&(
-                  <div style={{marginBottom:12}}>
-                    <label style={{fontSize:11,fontWeight:700,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",display:"block",marginBottom:6}}>Scheduled Days (Weekends Auto-Skipped)</label>
-                    <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                      {scheduledDays.map((day,i)=>(
-                        <div key={i} style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:6,padding:"4px 10px",fontSize:12,color:C.navy,fontWeight:600}}>
-                          {day.label}{day.halfDay?<span style={{color:C.slate,fontWeight:400}}> (AM)</span>:""}
-                        </div>
-                      ))}
-                    </div>
-                    {endDate&&endDate!==data.tabs.installation.date&&(
-                      <div style={{fontSize:12,color:C.slate,marginTop:6}}>
-                        📅 Finishes: <strong>{new Date(endDate).toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</strong>
+            return (
+              <div style={{display:"flex",flexDirection:"column",gap:12}}>
+                <div style={{border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden"}}>
+                  <div style={{background:C.navy,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:10}}>
+                      <span style={{fontSize:16}}>🔨</span>
+                      <div>
+                        <div style={{color:"#fff",fontWeight:700,fontSize:14}}>Installations</div>
+                        <div style={{color:"rgba(255,255,255,0.6)",fontSize:11}}>{rows.length} install date{rows.length===1?"":"s"} · Appear on Fitter Calendar</div>
                       </div>
-                    )}
+                    </div>
+                    <button onClick={addRow} style={{background:C.sky,border:`1px solid ${C.sky}`,color:"#fff",borderRadius:8,padding:"6px 14px",fontSize:13,fontWeight:600,cursor:"pointer"}}>
+                      + Add Install Date
+                    </button>
+                  </div>
+
+                  {rows.length===0&&(
+                    <div style={{padding:"20px 16px",textAlign:"center",color:C.muted,fontSize:13,background:C.slateLight}}>
+                      No install dates booked yet. Click <strong>+ Add Install Date</strong> to book one — add another for a job fitted in phases.
+                    </div>
+                  )}
+
+                  {rows.map((b,i)=>{
+                    const scheduledDays=b.date?addWorkingDays(b.date,Number(b.duration||"2")):[];
+                    const endDate=scheduledDays.length>0?scheduledDays[scheduledDays.length-1].date:"";
+                    const booked=!!b.date&&bookingFitters(b).length>0;
+                    return (
+                      <div key={b.id} style={{padding:14,borderBottom:`1px solid ${C.border}`,background:b.completed?"#F6FEF9":C.white}}>
+                        <div style={{display:"flex",alignItems:"flex-end",gap:12,marginBottom:12}}>
+                          <div style={{flex:1}}>
+                            <label style={{fontSize:11,fontWeight:600,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",display:"block",marginBottom:4}}>
+                              Name this install — added to the details block in the emails
+                            </label>
+                            <input value={b.name||""} onChange={e=>setRow(b.id,{name:e.target.value})}
+                              placeholder={`e.g. ${data.reference||data.title||"This job"} – Phase ${i+1}`}
+                              style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:6,padding:"8px 10px",fontSize:14,fontWeight:700,color:C.navy,outline:"none",background:C.white,boxSizing:"border-box"}}/>
+                          </div>
+                          <label style={{display:"flex",alignItems:"center",gap:7,fontSize:13,fontWeight:600,color:C.text,cursor:"pointer",whiteSpace:"nowrap",paddingBottom:8}}>
+                            <input type="checkbox" checked={!!b.completed} onChange={e=>setRow(b.id,{completed:e.target.checked,completedAt:e.target.checked?new Date().toLocaleDateString("en-GB"):""})}
+                              style={{width:17,height:17,accentColor:C.mint,cursor:"pointer",margin:0}}/>
+                            Install complete
+                          </label>
+                          <button onClick={()=>removeRow(b.id)} style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:18,lineHeight:1,paddingBottom:8}}>×</button>
+                        </div>
+
+                        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:12,marginBottom:12}}>
+                          <Inp label="Start Date" type="date" value={b.date||""} onChange={e=>setRow(b.id,{date:e.target.value})}/>
+                          <Inp label="Start Time" type="time" value={b.startTime||""} onChange={e=>setRow(b.id,{startTime:e.target.value})}/>
+                          <Inp label="End Time" type="time" value={b.endTime||""} onChange={e=>setRow(b.id,{endTime:e.target.value})}/>
+                          <Sel label="Duration" value={b.duration||"2"} onChange={e=>setRow(b.id,{duration:e.target.value})}>
+                            {DURATION_OPTIONS.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
+                          </Sel>
+                        </div>
+
+                        {scheduledDays.length>0&&(
+                          <div style={{marginBottom:12}}>
+                            <label style={{fontSize:11,fontWeight:700,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",display:"block",marginBottom:6}}>Scheduled Days (Weekends Auto-Skipped)</label>
+                            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                              {scheduledDays.map((day,di)=>(
+                                <div key={di} style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:6,padding:"4px 10px",fontSize:12,color:C.navy,fontWeight:600}}>
+                                  {day.label}{day.halfDay?<span style={{color:C.slate,fontWeight:400}}> (AM)</span>:""}
+                                </div>
+                              ))}
+                            </div>
+                            {endDate&&endDate!==b.date&&(
+                              <div style={{fontSize:12,color:C.slate,marginTop:6}}>
+                                📅 Finishes: <strong>{new Date(endDate).toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</strong>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        <div style={{marginBottom:booked?12:0}}>
+                          <label style={{fontSize:12,fontWeight:600,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",display:"block",marginBottom:8}}>Assign Fitters</label>
+                          <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+                            {(settings?.fitters||DEFAULT_FITTERS).map(f=>{
+                              const selected=bookingFitters(b).includes(f);
+                              return (
+                                <button key={f} onClick={()=>{
+                                  const current=bookingFitters(b);
+                                  setRow(b.id,{fitters:selected?current.filter(x=>x!==f):[...current,f],fitter:""});
+                                }} style={{padding:"6px 14px",borderRadius:20,fontSize:13,cursor:"pointer",fontWeight:600,
+                                  background:selected?C.navy:C.white,color:selected?"#fff":C.slate,
+                                  border:`1px solid ${selected?C.navy:C.border}`,transition:"all 0.15s"}}>
+                                  👷 {f}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {booked&&(
+                          <div style={{background:b.completed?C.slateLight:"#F0FDF4",border:`1px solid ${b.completed?C.border:"#86EFAC"}`,borderRadius:8,padding:"10px 12px"}}>
+                            <div style={{fontSize:13,fontWeight:700,color:b.completed?C.slate:"#15803D",marginBottom:4}}>
+                              {b.completed?`✔ Completed${b.completedAt?` ${b.completedAt}`:""}`:`✅ Booked — ${new Date(b.date).toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}`}
+                              {b.startTime?` · ${b.startTime}`:""}{b.endTime?` – ${b.endTime}`:""}
+                            </div>
+                            <div style={{fontSize:12,color:b.completed?C.slate:"#166534"}}>👷 {bookingFitters(b).join(", ")}</div>
+                            <div style={{marginTop:5,fontSize:12,fontWeight:600,color:b.completed?C.slate:"#15803D"}}>
+                              {b.bookedEmailSent?.status==="sent"
+                                ?`📧 Install booked email sent ${b.bookedEmailSent.sentAt}`
+                                :inst.notifyEnabled===false
+                                  ?"📧 Install booked email disabled for this job"
+                                  :"📧 Install booked email will send automatically on save"}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  {rows.length>0&&(
+                    <div style={{background:C.slateLight,padding:"10px 16px",fontSize:12,fontWeight:700,color:C.navy}}>
+                      Booked: {rows.length} · Complete: {doneCount}
+                    </div>
+                  )}
+                </div>
+
+                {rows.length>1&&doneCount<rows.length&&(
+                  <div style={{background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:8,padding:"10px 14px"}}>
+                    <div style={{fontSize:13,fontWeight:700,color:"#9A3412"}}>⏳ {doneCount} of {rows.length} installs complete</div>
+                    <div style={{fontSize:12,color:"#9A3412",marginTop:2}}>This job can't be moved to {COMPLETED_STAGE} until every install date is ticked off.</div>
                   </div>
                 )}
-
-                {/* Fitter multi-select */}
-                <div>
-                  <label style={{fontSize:12,fontWeight:600,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",display:"block",marginBottom:8}}>Assign Fitters</label>
-                  <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
-                    {(settings?.fitters||DEFAULT_FITTERS).map(f=>{
-                      const selected=(data.tabs.installation.fitters||[]).includes(f);
-                      return (
-                        <button key={f} onClick={()=>{
-                          const current=data.tabs.installation.fitters||[];
-                          setTab("installation",{fitters:selected?current.filter(x=>x!==f):[...current,f]});
-                        }} style={{padding:"6px 14px",borderRadius:20,fontSize:13,cursor:"pointer",fontWeight:600,
-                          background:selected?C.navy:C.white,color:selected?"#fff":C.slate,
-                          border:`1px solid ${selected?C.navy:C.border}`,transition:"all 0.15s"}}>
-                          👷 {f}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            );
-          })()}
-
-          {/* Confirmation banner */}
-          {data.tabs.installation.date&&(data.tabs.installation.fitters||[]).length>0&&(()=>{
-            const dur=data.tabs.installation.duration||"2";
-            const DURATION_OPTIONS=[{value:"1",label:"Half Day"},{value:"2",label:"1 Day"},{value:"3",label:"1.5 Days"},{value:"4",label:"2 Days"},{value:"6",label:"3 Days"},{value:"8",label:"4 Days"},{value:"10",label:"5 Days"},{value:"12",label:"6 Days"},{value:"14",label:"7 Days"}];
-            const durLabel=DURATION_OPTIONS.find(o=>o.value===dur)?.label||"";
-
-            // Recalculate end date for banner
-            let endDate="";
-            let current=new Date(data.tabs.installation.date);
-            let remaining=Number(dur);
-            let last=null;
-            while(remaining>0){
-              const dow=current.getDay();
-              if(dow!==0&&dow!==6){last=current.toISOString().slice(0,10);remaining-=remaining>=2?2:remaining;}
-              current=new Date(current);current.setDate(current.getDate()+1);
-            }
-            endDate=last||data.tabs.installation.date;
-            const sameDay=endDate===data.tabs.installation.date;
-
-            return (
-              <div style={{background:"#F0FDF4",border:"1px solid #86EFAC",borderRadius:8,padding:14}}>
-                <div style={{fontSize:14,fontWeight:700,color:"#15803D",marginBottom:6}}>✅ Installation Booked — {durLabel}</div>
-                <div style={{fontSize:13,color:"#166534",marginBottom:3}}>
-                  🗓️ <strong>Start:</strong> {new Date(data.tabs.installation.date).toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}
-                  {data.tabs.installation.startTime&&` at ${data.tabs.installation.startTime}`}
-                  {data.tabs.installation.endTime&&` – ${data.tabs.installation.endTime}`}
-                </div>
-                {!sameDay&&(
-                  <div style={{fontSize:13,color:"#166534",marginBottom:3}}>
-                    🏁 <strong>End:</strong> {new Date(endDate).toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}
-                  </div>
-                )}
-                <div style={{fontSize:13,color:"#166534",marginBottom:3}}>👷 {(data.tabs.installation.fitters||[]).join(", ")}</div>
-                <div style={{fontSize:12,color:"#15803D",opacity:0.8}}>Weekends automatically skipped · Visible on Fitter Calendar</div>
-                <div style={{marginTop:6,fontSize:12,fontWeight:600}}>
-                  {data.tabs.installation.bookedEmailSent?.status==="sent"
-                    ?`📧 Install booked email sent ${data.tabs.installation.bookedEmailSent.sentAt}`
-                    :data.tabs.installation.notifyEnabled===false
-                      ?"📧 Install booked email disabled for this job"
-                      :"📧 Install booked email will send automatically on save"}
-                </div>
               </div>
             );
           })()}
 
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:C.slateLight,borderRadius:8,padding:"10px 14px"}}>
-            <div style={{fontSize:13,fontWeight:600,color:C.text}}>Send install booked email automatically</div>
+            <div>
+              <div style={{fontSize:13,fontWeight:600,color:C.text}}>Send install booked email automatically</div>
+              <div style={{fontSize:11,color:C.slate,marginTop:2}}>Applies to every install date — each sends its own confirmation and its own reminders</div>
+            </div>
             <div onClick={()=>setTab("installation",{notifyEnabled:data.tabs.installation.notifyEnabled===false})}
               style={{width:42,height:23,borderRadius:12,background:data.tabs.installation.notifyEnabled!==false?C.mint:C.border,position:"relative",cursor:"pointer",flexShrink:0}}>
               <div style={{width:17,height:17,borderRadius:"50%",background:"#fff",position:"absolute",top:3,left:data.tabs.installation.notifyEnabled!==false?22:3,transition:"left 0.15s",boxShadow:"0 1px 3px rgba(0,0,0,0.3)"}}/>
@@ -2045,9 +2142,13 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
 
           {/* ── Email Reminders ── */}
           {(()=>{
-            const instDate=data.tabs.installation.date;
+            // Always the visit the reminders are actually for — the next one still outstanding.
+            // Reading the job as a whole would show phase 1's sent-status next to phase 2's date,
+            // and a manual resend would email the customer about a visit already completed.
+            const leadBooking=nextInstallBooking(data);
+            const instDate=leadBooking?.date||"";
             const customerRec=customers.find(c=>c.id===data.customerId);
-            const emailReminders=data.tabs.installation.emailReminders||{week:{status:"pending",sentAt:""},day:{status:"pending",sentAt:""}};
+            const emailReminders=leadBooking?.emailReminders||{week:{status:"pending",sentAt:""},day:{status:"pending",sentAt:""}};
 
             const calcSendDate=(daysBeforeStr,base)=>{
               if(!base) return null;
@@ -2061,9 +2162,18 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
             const handleSendEmail=(reminderKey)=>{
               if(!instDate||!customerRec) return;
               if(!window.confirm(`This will send a real email to ${customerRec.email}. Are you sure?`)) return;
-              apiSendReminder(data.id,reminderKey)
+              apiSendReminder(data.id,reminderKey,leadBooking?.id)
                 .then(()=>{
-                  setTab("installation",{emailReminders:{...emailReminders,[reminderKey]:{status:"sent",sentAt:new Date().toLocaleDateString("en-GB")}}});
+                  // Mark the visit it was sent for. The server has already recorded this against
+                  // the same booking; this just keeps the open record in step without a reload.
+                  const stamp={status:"sent",sentAt:new Date().toLocaleDateString("en-GB")};
+                  const stored=data.tabs.installation.bookings;
+                  if(Array.isArray(stored)&&stored.length&&leadBooking){
+                    setTab("installation",{bookings:stored.map(b=>b.id===leadBooking.id
+                      ?{...b,emailReminders:{...(b.emailReminders||{}),[reminderKey]:stamp}}:b)});
+                  }else{
+                    setTab("installation",{emailReminders:{...emailReminders,[reminderKey]:stamp}});
+                  }
                 })
                 .catch(err=>window.alert("Failed to send email: "+err.message));
             };
@@ -3245,34 +3355,41 @@ const CalendarPage = ({customers,jobs,settings,onNavigate}) => {
     }),
   ];
   // Installation bookings from job installation tab — expanded across working days
+  // One entry per install visit, not one per job: a job fitted in phases has several bookings,
+  // often weeks apart and with different fitters, so a single block spanning them would blank out
+  // weeks the fitters are actually free. Each booking still spreads over its own working days.
   const installTabEvents=jobs.flatMap(j=>{
     const inst=j.tabs?.installation;
-    if(!inst?.date||(inst.fitters||[]).length===0) return [];
-    const duration=Number(inst.duration||2);
-    // Generate all working days for this install
-    const workingDays=[];
-    let current=new Date(inst.date);
-    let remaining=duration;
-    while(remaining>0){
-      const dow=current.getDay();
-      if(dow!==0&&dow!==6){
-        workingDays.push(current.toISOString().slice(0,10));
-        remaining-=remaining>=2?2:remaining;
+    return installBookings(j).flatMap(b=>{
+      const bFitters=bookingFitters(b);
+      if(!b.date||bFitters.length===0) return [];
+      const duration=Number(b.duration||2);
+      // Generate all working days for this install
+      const workingDays=[];
+      let current=new Date(b.date);
+      let remaining=duration;
+      while(remaining>0){
+        const dow=current.getDay();
+        if(dow!==0&&dow!==6){
+          workingDays.push(current.toISOString().slice(0,10));
+          remaining-=remaining>=2?2:remaining;
+        }
+        current=new Date(current);
+        current.setDate(current.getDate()+1);
       }
-      current=new Date(current);
-      current.setDate(current.getDate()+1);
-    }
-    const instFitters=inst.fitters||[];
-    return workingDays.map(date=>({
-        date,fitters:instFitters,fitter:instFitters.join(", "),label:j.title,type:"Install",color:C.mint,
-        notes:inst.fittersNotes,
-        time:inst.startTime||"",
-        endTime:inst.endTime||"",
-        isMultiDay:workingDays.length>1,
-        dayIndex:workingDays.indexOf(date)+1,
-        totalDays:workingDays.length,
-        job:j,
-      }));
+      return workingDays.map(date=>({
+          date,fitters:bFitters,fitter:bFitters.join(", "),
+          label:b.name?`${j.title} — ${b.name}`:j.title,
+          type:"Install",color:C.mint,
+          notes:inst?.fittersNotes,
+          time:b.startTime||"",
+          endTime:b.endTime||"",
+          isMultiDay:workingDays.length>1,
+          dayIndex:workingDays.indexOf(date)+1,
+          totalDays:workingDays.length,
+          job:j,
+        }));
+    });
   });
   // Fallback: job installDate field
   const installFieldEvents=jobs.flatMap(j=>{
@@ -5533,22 +5650,25 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
     jobs.forEach(j=>{
       const inst=j.tabs?.installation;
       const survey=j.tabs?.survey;
-      if(inst?.date&&(inst.fitters||[]).includes(fitterName)){
+      // Each install visit separately — a fitter on phase 1 only but not phase 2 must see phase 1
+      // and nothing else, which reading the job's single mirrored date would get wrong.
+      installBookings(j).forEach(b=>{
+        if(!b.date||!bookingFitters(b).includes(fitterName)) return;
         // Expand across working days
-        const duration=Number(inst.duration||2);
-        let current=new Date(inst.date);
+        const duration=Number(b.duration||2);
+        let current=new Date(b.date);
         let remaining=duration;
         let dayIndex=1;
         while(remaining>0){
           const dow=current.getDay();
           if(dow!==0&&dow!==6){
-            evts.push({type:"Install",date:current.toISOString().slice(0,10),time:inst.startTime||"",endTime:inst.endTime||"",job:j,dayIndex,totalDays:Math.ceil(duration/2)});
+            evts.push({type:"Install",date:current.toISOString().slice(0,10),time:b.startTime||"",endTime:b.endTime||"",job:j,dayIndex,totalDays:Math.ceil(duration/2),bookingName:b.name||""});
             remaining-=remaining>=2?2:remaining;
             dayIndex++;
           }
           current=new Date(current);current.setDate(current.getDate()+1);
         }
-      }
+      });
       if(survey?.date&&bookingFitters(survey).includes(fitterName)){
         evts.push({type:"Survey",date:survey.date,time:survey.time||"",job:j});
       }
