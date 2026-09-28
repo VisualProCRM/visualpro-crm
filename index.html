@@ -215,6 +215,32 @@ const installBookings = (job) => {
 // The visit the rest of the app should show when it only has room for one: the next one still
 // outstanding, else the last. Its date is mirrored onto `tabs.installation.date` on every save so
 // the card badges, dashboard and job list keep working untouched.
+// The working days one visit covers, weekends skipped — the same rule the booking UI shows.
+const visitWorkingDays = (b) => {
+  if (!b || !b.date) return [];
+  const out = [];
+  let cur = new Date(b.date);
+  let remaining = Number(b.duration || 2);
+  while (remaining > 0) {
+    const dow = cur.getDay();
+    if (dow !== 0 && dow !== 6) { out.push(cur.toISOString().slice(0, 10)); remaining -= remaining >= 2 ? 2 : remaining; }
+    cur = new Date(cur); cur.setDate(cur.getDate() + 1);
+  }
+  return out;
+};
+// Which visit a fitter's check in/out belongs to: the one they're on site for today, else their
+// next one, else their most recent. A fitter booked on both phases of a job would otherwise check
+// in against whichever booking happened to sit first in the list.
+const fitterVisit = (job, fitterName) => {
+  const mine = installBookings(job).filter(b => b.date && bookingFitters(b).includes(fitterName));
+  if (!mine.length) return null;
+  const today = new Date().toISOString().slice(0, 10);
+  const onSite = mine.find(b => visitWorkingDays(b).includes(today));
+  if (onSite) return onSite;
+  const ahead = mine.filter(b => b.date > today).sort((a, b) => a.date.localeCompare(b.date));
+  if (ahead.length) return ahead[0];
+  return mine.slice().sort((a, b) => a.date.localeCompare(b.date))[mine.length - 1];
+};
 const nextInstallBooking = (job) => {
   const bs = installBookings(job);
   if (!bs.length) return null;
@@ -506,7 +532,7 @@ const apiListJobs = () => apiRequest("/jobs");
 const apiCreateJob = (data) => apiRequest("/jobs", { method: "POST", body: JSON.stringify(stampWonAt(data)) });
 // Check in / out goes through its own endpoint, not a job save: a job save sends the whole
 // record and would let a stale copy from another device wipe the times (see jobs.js).
-const apiCheckIn = (jobId, fitter, kind) => apiRequest(`/jobs/${jobId}/checkin`, { method: "POST", body: JSON.stringify({ fitter, kind }) });
+const apiCheckIn = (jobId, fitter, kind, bookingId) => apiRequest(`/jobs/${jobId}/checkin`, { method: "POST", body: JSON.stringify({ fitter, kind, bookingId }) });
 const apiUpdateJob = (data) => apiRequest(`/jobs/${data.id}`, { method: "PUT", body: JSON.stringify(stampWonAt(data)) });
 const apiDeleteJob = (id) => apiRequest(`/jobs/${id}`, { method: "DELETE" });
 
@@ -2073,9 +2099,14 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
                   const h=Math.floor(mins/60), m=mins%60;
                   dur=h>0?`${h}hr${h!==1?"s":""}${m?` ${m}min`:""}`:`${m}min`;
                 }
+                // Which visit this check-in was for, so a job fitted in phases doesn't show two
+                // identical-looking rows for the same fitter with no way to tell them apart.
+                const visit=(installBookings(data)||[]).find(b=>b.id===(c.bookingId||null));
+                const visitLabel=visit?(visit.name||(visit.date?new Date(visit.date).toLocaleDateString("en-GB",{day:"numeric",month:"short"}):"")):"";
                 return (
                   <div key={i} style={{display:"flex",flexWrap:"wrap",gap:8,alignItems:"center",padding:"6px 0",borderBottom:i<(data.tabs.installation.checkIns||[]).length-1?`1px solid ${C.border}`:"none"}}>
                     <span style={{fontSize:13,fontWeight:700,color:C.text,minWidth:120}}>👷 {c.fitter}</span>
+                    {visitLabel&&<span style={{fontSize:11,fontWeight:700,color:C.sky,background:C.skyLight,border:`1px solid ${C.sky}55`,padding:"1px 8px",borderRadius:10}}>{visitLabel}</span>}
                     <span style={{fontSize:12,color:C.slate}}>Arrived {fmt(c.inAt)||"—"}</span>
                     {c.outAt
                       ?<>
@@ -2088,7 +2119,7 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
                         {/* For when a fitter forgets to check out on their phone. Records the
                             time now and sends the same check-out email. */}
                         <button onClick={()=>{
-                          apiCheckIn(data.id,c.fitter,"out")
+                          apiCheckIn(data.id,c.fitter,"out",c.bookingId||null)
                             .then(saved=>setData(d=>({...d,tabs:{...d.tabs,installation:{...d.tabs.installation,checkIns:saved.tabs?.installation?.checkIns||[]}}})))
                             .catch(err=>window.alert("Could not record that: "+err.message));
                         }} style={{marginLeft:"auto",background:C.white,border:`1px solid ${C.border}`,borderRadius:6,padding:"4px 10px",fontSize:12,fontWeight:600,color:C.navy,cursor:"pointer",whiteSpace:"nowrap"}}>Left Site</button>
@@ -6081,10 +6112,14 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
                   same job check in separately. Tapping stamps the time and saves; the email
                   is sent by the server (see jobs.js), which also guarantees it goes only once. */}
               {(()=>{
-                const entry=(job.tabs?.installation?.checkIns||[]).find(c=>c.fitter===fitterName);
+                // Against this fitter's own visit, so someone on both phases of a job checks in
+                // and out of each separately rather than phase 2 hitting phase 1's closed record.
+                const visit=fitterVisit(job,fitterName);
+                const visitId=visit?.id||null;
+                const entry=(job.tabs?.installation?.checkIns||[]).find(c=>c.fitter===fitterName&&(c.bookingId||null)===visitId);
                 const fmt=iso=>new Date(iso).toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"});
                 const stamp=(kind)=>{
-                  apiCheckIn(job.id,fitterName,kind)
+                  apiCheckIn(job.id,fitterName,kind,visitId)
                     .then(saved=>setJobs(js=>js.map(j=>j.id===saved.id?saved:j)))
                     .catch(err=>window.alert("Could not record that: "+err.message));
                 };
