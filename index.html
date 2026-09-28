@@ -1562,8 +1562,8 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
                 return (
                   <button key={f} onClick={()=>setTab("survey",{fitters:selected?current.filter(n=>n!==f):[...current,f],fitter:""})}
                     style={{padding:"6px 14px",borderRadius:20,fontSize:13,cursor:"pointer",fontWeight:600,
-                      background:selected?C.navy:C.white,color:selected?"#fff":C.slate,
-                      border:`1px solid ${selected?C.navy:C.border}`,transition:"all 0.15s"}}>
+                      background:selected?C.sky:C.white,color:selected?"#fff":C.sky,
+                      border:`1px solid ${selected?C.sky:C.sky+"55"}`,transition:"all 0.15s"}}>
                     👷 {f}
                   </button>
                 );
@@ -1868,8 +1868,8 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
                                   const current=bookingFitters(b);
                                   setRow(b.id,{fitters:selected?current.filter(x=>x!==f):[...current,f],fitter:""});
                                 }} style={{padding:"6px 14px",borderRadius:20,fontSize:13,cursor:"pointer",fontWeight:600,
-                                  background:selected?C.navy:C.white,color:selected?"#fff":C.slate,
-                                  border:`1px solid ${selected?C.navy:C.border}`,transition:"all 0.15s"}}>
+                                  background:selected?C.sky:C.white,color:selected?"#fff":C.sky,
+                                  border:`1px solid ${selected?C.sky:C.sky+"55"}`,transition:"all 0.15s"}}>
                                   👷 {f}
                                 </button>
                               );
@@ -2579,8 +2579,8 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
                             <button key={f} onClick={()=>updateSC("bookings",(sc.bookings||[]).map(x=>x.id===b.id
                                 ?{...x,fitters:selected?current.filter(n=>n!==f):[...current,f],fitter:""}:x))}
                               style={{padding:"6px 14px",borderRadius:20,fontSize:13,cursor:"pointer",fontWeight:600,
-                                background:selected?C.navy:C.white,color:selected?"#fff":C.slate,
-                                border:`1px solid ${selected?C.navy:C.border}`,transition:"all 0.15s"}}>
+                                background:selected?C.sky:C.white,color:selected?"#fff":C.sky,
+                                border:`1px solid ${selected?C.sky:C.sky+"55"}`,transition:"all 0.15s"}}>
                               👷 {f}
                             </button>
                           );
@@ -4187,7 +4187,7 @@ const WebsiteEnquiryForm = ({companyName,onSubmit}) => {
             {PRODUCTS_OF_INTEREST.map(p=>{
               const sel=canonProducts(form.products).includes(p);
               return (
-                <button key={p} onClick={()=>toggleProd(p)} style={{padding:"6px 14px",borderRadius:20,fontSize:13,cursor:"pointer",fontWeight:500,background:sel?C.navy:C.slateLight,color:sel?"#fff":C.slate,border:`1px solid ${sel?C.navy:C.border}`,transition:"all 0.1s"}}>
+                <button key={p} onClick={()=>toggleProd(p)} style={{padding:"6px 14px",borderRadius:20,fontSize:13,cursor:"pointer",fontWeight:500,background:sel?C.sky:C.white,color:sel?"#fff":C.sky,border:`1px solid ${sel?C.sky:C.sky+"55"}`,transition:"all 0.1s"}}>
                   {p}
                 </button>
               );
