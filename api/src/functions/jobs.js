@@ -290,7 +290,7 @@ app.http('jobCheckIn', {
     try {
       requireAuth(request);
       const id = Number(request.params.id);
-      const { fitter, kind } = await request.json();
+      const { fitter, kind, bookingId } = await request.json();
       if (!fitter || !['in', 'out'].includes(kind)) {
         return { status: 400, jsonBody: { error: 'fitter and kind ("in" or "out") are required' } };
       }
@@ -303,9 +303,14 @@ app.http('jobCheckIn', {
       job.tabs = job.tabs || {};
       job.tabs.installation = job.tabs.installation || {};
       const list = job.tabs.installation.checkIns || [];
-      let entry = list.find((c) => c.fitter === fitter);
+      // One record per fitter per VISIT, not per job: a job fitted in phases has the same fitter
+      // on site more than once, and keying on the name alone meant phase 2's check-in landed on
+      // phase 1's already-closed record and was rejected as "already recorded". Entries written
+      // before this have no bookingId and belong to the job's only visit, so they still match.
+      const visitId = bookingId || null;
+      let entry = list.find((c) => c.fitter === fitter && (c.bookingId || null) === visitId);
       if (!entry) {
-        entry = { fitter };
+        entry = visitId ? { fitter, bookingId: visitId } : { fitter };
         list.push(entry);
       }
       const stamp = kind === 'out' ? 'outAt' : 'inAt';
@@ -326,7 +331,7 @@ app.http('jobCheckIn', {
           const settings = setRow.recordset.length ? JSON.parse(setRow.recordset[0].DataJson) : {};
           const tmpl = settings.emailTemplates?.[kind === 'out' ? 'fitterCheckOut' : 'fitterCheckIn'];
           if (!tmpl || tmpl.enabled !== false) {
-            await sendFitterCheckEmail({ pool, jobId: id, fitter, kind });
+            await sendFitterCheckEmail({ pool, jobId: id, fitter, kind, bookingId });
           }
         } catch (err) {
           // The time is recorded either way — a failed email must not lose the check-in.

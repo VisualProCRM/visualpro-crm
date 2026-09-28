@@ -950,14 +950,20 @@ function feedbackQualifiesForReview(feedback, feedbackQuestions) {
 // job.tabs.installation.checkIns[]. `kind` is 'in' or 'out'. Recipient(s) = the template's own
 // "to" field, falling back to the company email, exactly like the survey-complete email.
 // Marks inEmailSent / outEmailSent on the entry so each can only ever send once.
-async function sendFitterCheckEmail({ pool, jobId, fitter, kind, testEmailOverride }) {
+async function sendFitterCheckEmail({ pool, jobId, fitter, kind, bookingId, testEmailOverride }) {
   const jobResult = await pool.request().input('Id', sql.Int, jobId).query('SELECT * FROM dbo.Jobs WHERE Id = @Id');
   if (!jobResult.recordset.length) throw new Error('Job not found');
   const jobRow = jobResult.recordset[0];
   const job = JSON.parse(jobRow.DataJson);
 
-  const entry = (job.tabs?.installation?.checkIns || []).find((c) => c.fitter === fitter);
+  // Matched on fitter AND visit, the same way the endpoint records it, so a phase 2 check-in
+  // doesn't report phase 1's times. Entries written before visits existed carry no bookingId.
+  const visitId = bookingId || null;
+  const entry = (job.tabs?.installation?.checkIns || []).find((c) => c.fitter === fitter && (c.bookingId || null) === visitId);
   if (!entry) throw new Error('No check-in recorded for that fitter on this job');
+
+  const visits = installBookings(job);
+  const booking = (bookingId && visits.find((b) => b.id === bookingId)) || visits[0] || {};
 
   const customerResult = await pool
     .request()
@@ -993,12 +999,12 @@ async function sendFitterCheckEmail({ pool, jobId, fitter, kind, testEmailOverri
     jobTitle: job.title || '',
     address: job.siteAddress || customer.address || '',
     fitterName: fitter,
-    fitterNames: (job.tabs?.installation?.fitters || []).join(', '),
+    fitterNames: bookingFitters(booking).join(', '),
     time: asTime(entry.inAt),
     timeOut: asTime(entry.outAt),
     duration,
-    installDate: job.tabs?.installation?.date
-      ? new Date(job.tabs.installation.date).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+    installDate: booking.date
+      ? new Date(booking.date).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
       : '',
     companyName: settings.companyName || 'VisualPro',
     companyPhone: settings.companyPhone || '',
