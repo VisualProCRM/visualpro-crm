@@ -1,6 +1,6 @@
 const { app } = require('@azure/functions');
 const { getPool } = require('../db');
-const { sendJobReminder, sendSurveyReminderEmail, sendServiceCallReminderEmail, bookingFitters } = require('../reminderCore');
+const { sendJobReminder, sendSurveyReminderEmail, sendServiceCallReminderEmail, bookingFitters, installBookings } = require('../reminderCore');
 
 // Runs hourly through the working day and sends any reminder that's due and hasn't been sent.
 //
@@ -31,29 +31,32 @@ app.timer('reminderTimer', {
       try {
         const job = JSON.parse(row.DataJson);
 
-        const installDateStr = job.tabs?.installation?.date;
-        if (installDateStr) {
-          const installDate = new Date(installDateStr);
+        // One set of reminders per install visit, each tracked against its own booking. Reading
+        // the job's single mirrored date instead would remind about the next visit only, and the
+        // job-level "already sent" flag would then silence every later phase for good.
+        for (const booking of installBookings(job)) {
+          if (!booking.date || booking.completed) continue;
+          const installDate = new Date(booking.date);
           installDate.setHours(0, 0, 0, 0);
           const daysUntil = Math.round((installDate - today) / 86400000);
 
-          const reminders = job.tabs?.installation?.emailReminders || {};
+          const reminders = booking.emailReminders || {};
 
           if (daysUntil >= 1 && daysUntil <= 7 && reminders.week?.status !== 'sent') {
             try {
-              const result = await sendJobReminder({ pool, jobId, reminderKey: 'week' });
-              context.log(`Sent week reminder for job ${jobId}: ${result.messageId}`);
+              const result = await sendJobReminder({ pool, jobId, reminderKey: 'week', bookingId: booking.id });
+              context.log(`Sent week reminder for job ${jobId} booking ${booking.id}: ${result.messageId}`);
             } catch (err) {
-              context.error(`Failed week reminder for job ${jobId}`, err);
+              context.error(`Failed week reminder for job ${jobId} booking ${booking.id}`, err);
             }
           }
 
           if (daysUntil === 1 && reminders.day?.status !== 'sent') {
             try {
-              const result = await sendJobReminder({ pool, jobId, reminderKey: 'day' });
-              context.log(`Sent day reminder for job ${jobId}: ${result.messageId}`);
+              const result = await sendJobReminder({ pool, jobId, reminderKey: 'day', bookingId: booking.id });
+              context.log(`Sent day reminder for job ${jobId} booking ${booking.id}: ${result.messageId}`);
             } catch (err) {
-              context.error(`Failed day reminder for job ${jobId}`, err);
+              context.error(`Failed day reminder for job ${jobId} booking ${booking.id}`, err);
             }
           }
         }

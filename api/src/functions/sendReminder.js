@@ -13,7 +13,7 @@ app.http('sendReminder', {
     try {
       requireAuth(request);
       const body = await request.json();
-      const { jobId, reminderKey, testEmailOverride, debug } = body;
+      const { jobId, reminderKey, bookingId, testEmailOverride, debug } = body;
 
       if (debug === 'customDomain') {
         const props = await getDomainProperties('visualglazing.co.uk');
@@ -30,7 +30,7 @@ app.http('sendReminder', {
       }
 
       const pool = await getPool();
-      const result = await sendJobReminder({ pool, jobId, reminderKey, testEmailOverride });
+      const result = await sendJobReminder({ pool, jobId, reminderKey, bookingId, testEmailOverride });
       return { status: 200, jsonBody: result };
     } catch (err) {
       context.error('sendReminder failed', err);

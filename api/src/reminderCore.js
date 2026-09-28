@@ -355,10 +355,60 @@ Kind regards,
 {{companyPhone}}`,
 };
 
+// A job's installation visits. Same "read both, write one" approach as bookingFitters, and the
+// exact mirror of installBookings() in index.html — a job fitted in phases holds
+// tabs.installation.bookings[], anything booked before that holds one date on tabs.installation
+// itself. Every customer-facing install email reads through this, never tabs.installation.date,
+// because that field only ever holds the NEXT visit and would quote the wrong date for the rest.
+function installBookings(job) {
+  const inst = job?.tabs?.installation;
+  if (!inst) return [];
+  if (Array.isArray(inst.bookings) && inst.bookings.length) return inst.bookings;
+  if (!inst.date) return [];
+  return [{
+    id: 'legacy', name: inst.name || '', date: inst.date,
+    startTime: inst.startTime || '', endTime: inst.endTime || '', duration: inst.duration || '2',
+    fitters: bookingFitters(inst), completed: !!inst.completed,
+    bookedEmailSent: inst.bookedEmailSent, emailReminders: inst.emailReminders,
+  }];
+}
+
+// The office asked that the install's name appear only inside the details block, leaving the
+// subject line and the saved templates exactly as they are — they like the emails as they read
+// now. So rather than a token they would have to place themselves, insert one line directly above
+// whichever line carries {{installDate}}. A template with no date line has nothing to attach to,
+// so the name is simply left out rather than dropped somewhere it doesn't belong.
+function withInstallName(body, name) {
+  if (!name) return body;
+  const lines = String(body || '').split('\n');
+  const i = lines.findIndex((l) => l.includes('{{installDate}}'));
+  if (i === -1) return body;
+  lines.splice(i, 0, `🔨 Install: ${name}`);
+  return lines.join('\n');
+}
+
+// Writes an email's sent-status back against the one visit it was sent for. Jobs still on the old
+// single-date shape keep writing to tabs.installation, so nothing already booked changes meaning.
+function markInstallBooking(job, bookingId, apply) {
+  job.tabs = job.tabs || {};
+  const inst = (job.tabs.installation = job.tabs.installation || {});
+  if (Array.isArray(inst.bookings) && inst.bookings.length) {
+    inst.bookings = inst.bookings.map((b) => {
+      if (b.id !== bookingId) return b;
+      const copy = { ...b };
+      apply(copy);
+      return copy;
+    });
+  } else {
+    apply(inst);
+  }
+}
+
 // Sends a reminder for one job. Pass testEmailOverride to send a real test without
 // emailing the actual customer or marking their reminder "sent" (used by the manual
-// endpoint's test path — the timer never passes this).
-async function sendJobReminder({ pool, jobId, reminderKey, testEmailOverride }) {
+// endpoint's test path — the timer never passes this). bookingId picks which install visit
+// the reminder is for; omitted, it falls back to the job's first/only one.
+async function sendJobReminder({ pool, jobId, reminderKey, bookingId, testEmailOverride }) {
   const jobResult = await pool.request().input('Id', sql.Int, jobId).query('SELECT * FROM dbo.Jobs WHERE Id = @Id');
   if (!jobResult.recordset.length) throw new Error('Job not found');
   const jobRow = jobResult.recordset[0];
@@ -380,7 +430,9 @@ async function sendJobReminder({ pool, jobId, reminderKey, testEmailOverride }) 
   const defaultTmpl = reminderKey === 'week' ? DEFAULT_INSTALL_REMINDER_WEEK : DEFAULT_INSTALL_REMINDER_DAY;
   const tmpl = settings.emailTemplates?.[templateKey] || defaultTmpl;
 
-  const installDate = job.tabs?.installation?.date;
+  const visits = installBookings(job);
+  const booking = (bookingId && visits.find((b) => b.id === bookingId)) || visits[0] || {};
+  const installDate = booking.date;
   const vars = {
     customerName: customer.name || '',
     // The site, not the contact. Site addresses moved onto the job on 2026-09-17 and customer
@@ -390,13 +442,13 @@ async function sendJobReminder({ pool, jobId, reminderKey, testEmailOverride }) 
     installDate: installDate
       ? new Date(installDate).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
       : '',
-    fitterNames: (job.tabs?.installation?.fitters || []).join(', '),
+    fitterNames: bookingFitters(booking).join(', '),
     companyName: settings.companyName || 'VisualPro',
     companyPhone: settings.companyPhone || '',
   };
 
   const subject = fillTemplate(tmpl.subject, vars);
-  const plainText = fillTemplate(tmpl.body, vars);
+  const plainText = fillTemplate(withInstallName(tmpl.body, booking.name), vars);
 
   const { hostname } = await getSenderDomain();
   const senderUsername = process.env.EMAIL_SENDER_USERNAME || 'donotreply';
@@ -416,13 +468,15 @@ async function sendJobReminder({ pool, jobId, reminderKey, testEmailOverride }) 
   }
 
   if (!testEmailOverride) {
-    job.tabs = job.tabs || {};
-    job.tabs.installation = job.tabs.installation || {};
-    job.tabs.installation.emailReminders = job.tabs.installation.emailReminders || {};
-    job.tabs.installation.emailReminders[reminderKey] = {
-      status: 'sent',
-      sentAt: new Date().toLocaleDateString('en-GB'),
-    };
+    // Against this visit only. Marking the job as a whole was what made a second phase silently
+    // skip its own reminders — the timer saw "already sent" and moved on.
+    markInstallBooking(job, booking.id, (b) => {
+      b.emailReminders = b.emailReminders || {};
+      b.emailReminders[reminderKey] = {
+        status: 'sent',
+        sentAt: new Date().toLocaleDateString('en-GB'),
+      };
+    });
     await pool
       .request()
       .input('Id', sql.Int, jobId)
@@ -437,7 +491,7 @@ async function sendJobReminder({ pool, jobId, reminderKey, testEmailOverride }) 
 // moment an install's date+fitters are first set — mirrors sendSurveyBookedEmail. Marks
 // tabs.installation.bookedEmailSent, kept separate from emailReminders.week/day (which
 // track the week/day-before reminders, a different email entirely).
-async function sendInstallBookedEmail({ pool, jobId, testEmailOverride }) {
+async function sendInstallBookedEmail({ pool, jobId, bookingId, testEmailOverride }) {
   const jobResult = await pool.request().input('Id', sql.Int, jobId).query('SELECT * FROM dbo.Jobs WHERE Id = @Id');
   if (!jobResult.recordset.length) throw new Error('Job not found');
   const jobRow = jobResult.recordset[0];
@@ -457,7 +511,9 @@ async function sendInstallBookedEmail({ pool, jobId, testEmailOverride }) {
   const settings = settingsResult.recordset.length ? JSON.parse(settingsResult.recordset[0].DataJson) : {};
   const tmpl = settings.emailTemplates?.installBooked || DEFAULT_INSTALL_BOOKED;
 
-  const installDate = job.tabs?.installation?.date;
+  const visits = installBookings(job);
+  const booking = (bookingId && visits.find((b) => b.id === bookingId)) || visits[0] || {};
+  const installDate = booking.date;
   const vars = {
     customerName: customer.name || '',
     // The site, not the contact. Site addresses moved onto the job on 2026-09-17 and customer
@@ -467,13 +523,13 @@ async function sendInstallBookedEmail({ pool, jobId, testEmailOverride }) {
     installDate: installDate
       ? new Date(installDate).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
       : '',
-    fitterNames: (job.tabs?.installation?.fitters || []).join(', '),
+    fitterNames: bookingFitters(booking).join(', '),
     companyName: settings.companyName || 'VisualPro',
     companyPhone: settings.companyPhone || '',
   };
 
   const subject = fillTemplate(tmpl.subject, vars);
-  const plainText = fillTemplate(tmpl.body, vars);
+  const plainText = fillTemplate(withInstallName(tmpl.body, booking.name), vars);
 
   const { hostname } = await getSenderDomain();
   const senderUsername = process.env.EMAIL_SENDER_USERNAME || 'donotreply';
@@ -493,9 +549,9 @@ async function sendInstallBookedEmail({ pool, jobId, testEmailOverride }) {
   }
 
   if (!testEmailOverride) {
-    job.tabs = job.tabs || {};
-    job.tabs.installation = job.tabs.installation || {};
-    job.tabs.installation.bookedEmailSent = { status: 'sent', sentAt: new Date().toLocaleDateString('en-GB') };
+    markInstallBooking(job, booking.id, (b) => {
+      b.bookedEmailSent = { status: 'sent', sentAt: new Date().toLocaleDateString('en-GB') };
+    });
     await pool
       .request()
       .input('Id', sql.Int, jobId)
@@ -1061,6 +1117,7 @@ function bookingFitters(b) {
 
 module.exports = {
   bookingFitters,
+  installBookings,
   sendFitterCheckEmail,
   sendJobReminder,
   sendInstallBookedEmail,

@@ -2,7 +2,7 @@ const { app } = require('@azure/functions');
 const { getPool, sql } = require('../db');
 const { mapJobRow } = require('../mapRow');
 const { requireAuth } = require('../auth');
-const { sendInstallBookedEmail, sendSurveyBookedEmail, sendServiceCallBookedEmail, sendFeedbackReviewEmail, feedbackQualifiesForReview, sendSurveyCompleteEmail, bookingFitters, sendFitterCheckEmail } = require('../reminderCore');
+const { sendInstallBookedEmail, sendSurveyBookedEmail, sendServiceCallBookedEmail, sendFeedbackReviewEmail, feedbackQualifiesForReview, sendSurveyCompleteEmail, bookingFitters, installBookings, sendFitterCheckEmail } = require('../reminderCore');
 
 app.http('jobsList', {
   methods: ['GET'],
@@ -100,6 +100,24 @@ app.http('jobsUpdate', {
         body.tabs.installation.checkIns = before.tabs.installation.checkIns;
       }
 
+      // Neither is an email's sent-status, for the same reason and with a worse consequence. The
+      // reminder timer runs hourly and marks each install visit once its reminder has gone out; an
+      // office client holding a copy from before that mark would clear it, and the next run would
+      // email the customer the same "your installation is tomorrow" again. Stamped only by the
+      // send itself, so what is stored always wins.
+      if (Array.isArray(before?.tabs?.installation?.bookings) && Array.isArray(body?.tabs?.installation?.bookings)) {
+        const sentById = new Map(before.tabs.installation.bookings.map((b) => [b.id, b]));
+        body.tabs.installation.bookings = body.tabs.installation.bookings.map((b) => {
+          const prior = sentById.get(b.id);
+          if (!prior) return b;
+          return {
+            ...b,
+            bookedEmailSent: prior.bookedEmailSent || b.bookedEmailSent,
+            emailReminders: prior.emailReminders || b.emailReminders,
+          };
+        });
+      }
+
 
 
       const result = await pool
@@ -131,20 +149,28 @@ app.http('jobsUpdate', {
         }
       }
 
-      // Install Booked — same shape as the survey check above. Was never actually wired up
-      // despite the template existing in Settings (found 2026-08-11 after a real booking
-      // didn't send); this closes that gap.
-      const installWasBooked = !!(before?.tabs?.installation?.date && (before?.tabs?.installation?.fitters || []).length > 0);
-      const installIsNowBooked = !!(body.tabs?.installation?.date && (body.tabs?.installation?.fitters || []).length > 0);
+      // Install Booked — one confirmation per install visit, since a job fitted in phases has
+      // several. Detected exactly like Service Call bookings below, and for the same reason: the
+      // real flow is click "+ Add Install Date" (creates an empty card), fill in date and fitters,
+      // then save — sometimes across two saves. Testing "is this id new" would miss that entirely,
+      // so a visit counts as newly booked when it has a date+fitters now and didn't in the prior
+      // saved state. Adding a second phase must never resend the first phase's confirmation.
+      const beforeInstallById = new Map(installBookings(before || {}).map((b) => [b.id, b]));
       const installNotifyEnabled = body.tabs?.installation?.notifyEnabled !== false; // default on
-      const installAlreadySent = !!body.tabs?.installation?.bookedEmailSent;
-
-      if (!installWasBooked && installIsNowBooked && installNotifyEnabled && !installAlreadySent) {
-        try {
-          await sendInstallBookedEmail({ pool, jobId: id });
-          sentAny = true;
-        } catch (err) {
-          context.error('sendInstallBookedEmail failed', err);
+      const newInstallBookings = installBookings(body).filter((b) => {
+        if (!b.date || !bookingFitters(b).length || b.bookedEmailSent) return false;
+        const prior = beforeInstallById.get(b.id);
+        const wasFullyBooked = !!(prior && prior.date && bookingFitters(prior).length);
+        return !wasFullyBooked;
+      });
+      if (installNotifyEnabled && newInstallBookings.length) {
+        for (const booking of newInstallBookings) {
+          try {
+            await sendInstallBookedEmail({ pool, jobId: id, bookingId: booking.id });
+            sentAny = true;
+          } catch (err) {
+            context.error('sendInstallBookedEmail failed', err);
+          }
         }
       }
 
