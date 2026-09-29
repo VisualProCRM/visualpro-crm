@@ -249,6 +249,32 @@ const nextInstallBooking = (job) => {
   const dated = bs.filter(b => b.date).sort((a, b) => a.date.localeCompare(b.date));
   return dated.length ? dated[dated.length - 1] : bs[0];
 };
+
+// ── Follow-up tasks ──────────────────────────────────────────────────────────
+// A follow-up is a Job's ordinary task (tabs.tasks[]) with kind:"followup" plus a few extra
+// fields (note, chaseOption, scheduleEmail, emailStatus). Nothing new to read elsewhere in the
+// app — the Dashboard and the Tasks tab already read tabs.tasks — just a marker to render and
+// group them differently, and for the API to know which ones it may email.
+const FOLLOWUP_CHASE_OPTIONS = [
+  { value: "7d", label: "7 Days" },
+  { value: "2w", label: "2 Weeks" },
+  { value: "1m", label: "1 Month" },
+];
+// Never a Saturday or Sunday — rolls a date forward to the next working day, same rule the
+// install-booking duration calendar already uses.
+const nextWorkingDay = (dateStr) => {
+  const d = new Date(dateStr);
+  while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);
+  return d.toISOString().slice(0, 10);
+};
+// The due date a chase period resolves to, from today, rounded forward off any weekend.
+const followUpDueDate = (chaseOption) => {
+  const d = new Date();
+  if (chaseOption === "7d") d.setDate(d.getDate() + 7);
+  else if (chaseOption === "2w") d.setDate(d.getDate() + 14);
+  else if (chaseOption === "1m") d.setMonth(d.getMonth() + 1);
+  return nextWorkingDay(d.toISOString().slice(0, 10));
+};
 const CARD_TABS     = ["Details","Tasks","Quote","Invoices","Notes","Survey","Order Confirmation","Bills","Installation","Guarantee","Service Call"];
 
 const DEFAULT_EMAIL_TEMPLATES = {
@@ -300,6 +326,19 @@ Thank you for contacting us. We're pleased to confirm your service call has been
 📍 Address: {{address}}
 
 If you need to rearrange or have any questions, please don't hesitate to get in touch.
+
+Kind regards,
+{{companyName}}
+{{companyPhone}}`,
+  },
+  followUpAuto: {
+    bcc: "",
+    subject: "Following Up – {{customerName}}",
+    body: `Dear {{customerName}},
+
+We wanted to follow up and check whether you'd had a chance to consider our last message.
+
+If you have any questions or would like to discuss anything further, please don't hesitate to get in touch.
 
 Kind regards,
 {{companyName}}
@@ -1110,6 +1149,12 @@ const StageButton = ({status,onChange}) => {
 const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,settings,onOpenJob,initialTab}) => {
   const [activeTab,setActiveTab]=useState(initialTab||"Details");
   const [data,setData]=useState({...record,_settings:settings});
+  // The "Raise a Follow-up" panel's own draft state. Kept at the top level, not inside the
+  // Tasks tab's per-render closure below, so calling useState here doesn't break the Rules
+  // of Hooks the moment a different tab is active and that closure never runs.
+  const [addingFollowUp,setAddingFollowUp]=useState(false);
+  const [fuNote,setFuNote]=useState("");
+  const [fuChase,setFuChase]=useState("2w");
   const [showFeedbackForm,setShowFeedbackForm]=useState(false);
   const [digitising,setDigitising]=useState(false);
   const [digitiseError,setDigitiseError]=useState("");
@@ -2364,24 +2409,118 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
         const updateTask=(tid,field,val)=>setData(d=>({...d,tabs:{...d.tabs,tasks:(d.tabs.tasks||[]).map(t=>t.id===tid?{...t,[field]:val}:t)}}));
         const removeTask=(tid)=>setData(d=>({...d,tabs:{...d.tabs,tasks:(d.tabs.tasks||[]).filter(t=>t.id!==tid)}}));
 
+        // Raising a follow-up. scheduleEmail decides which of the two buttons was clicked —
+        // everything else about the record is identical either way. The office closing it
+        // (the same checkbox as a plain task) before its email would have fired is enough on
+        // its own to stop that email: the timer only ever looks at tasks that are still open.
+        const addFollowUp=(scheduleEmail)=>{
+          setData(d=>({...d,tabs:{...d.tabs,tasks:[...(d.tabs.tasks||[]),{
+            id:uid(),kind:"followup",
+            title:`Follow up — ${customer?.name||"Customer"}`,
+            note:fuNote,chaseOption:fuChase,scheduleEmail,
+            dueDate:followUpDueDate(fuChase),
+            assignedTo:"",done:false,createdAt:today,emailStatus:null,
+          }]}}));
+          setAddingFollowUp(false);setFuNote("");setFuChase("2w");
+        };
+
         const open=tasks.filter(t=>!t.done);
         const done=tasks.filter(t=>t.done);
+
+        // A follow-up whose email has already sent stays open (so it doesn't vanish before
+        // anyone's looked at it) but reads as resolved rather than overdue — its own calmer
+        // blue, not the same red "Overdue" a genuinely missed item gets.
+        const followUpStatus=(task)=>{
+          if(task.emailStatus?.status==="sent") return "sent";
+          if(task.dueDate&&task.dueDate<today) return "overdue";
+          if(task.dueDate===today) return "today";
+          return "pending";
+        };
+        const FU_COLORS={sent:C.sky,overdue:C.red,today:C.amber,pending:C.border};
 
         return (
           <div style={{display:"flex",flexDirection:"column",gap:14}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
               <div style={{fontSize:13,color:C.slate}}>{open.length} open · {done.length} completed</div>
-              <Btn onClick={addTask} style={{fontSize:13,padding:"6px 14px"}}>+ Add Task</Btn>
+              <div style={{display:"flex",gap:8}}>
+                <Btn onClick={()=>setAddingFollowUp(o=>!o)} style={{fontSize:13,padding:"6px 14px",background:C.sky,borderColor:C.sky}}>🚩 Add Follow-up</Btn>
+                <Btn onClick={addTask} style={{fontSize:13,padding:"6px 14px"}}>+ Add Task</Btn>
+              </div>
             </div>
 
-            {tasks.length===0&&(
+            {/* Raise a follow-up */}
+            {addingFollowUp&&(
+              <div style={{border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden"}}>
+                <div style={{background:C.navy,padding:"12px 16px",display:"flex",alignItems:"center",gap:10}}>
+                  <span style={{fontSize:16}}>🚩</span>
+                  <div style={{color:"#fff",fontWeight:700,fontSize:14}}>Raise a Follow-up</div>
+                  <div style={{color:"#B9CBE4",fontSize:12}}>{customer?.name||"—"}</div>
+                </div>
+                <div style={{padding:16,display:"flex",flexDirection:"column",gap:14}}>
+                  <div>
+                    <label style={{fontSize:11,fontWeight:700,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",display:"block",marginBottom:6}}>Note — optional</label>
+                    <textarea value={fuNote} onChange={e=>setFuNote(e.target.value)} placeholder="e.g. Waiting on his decision re: the conservatory quote"
+                      style={{width:"100%",minHeight:56,border:`1px solid ${C.border}`,borderRadius:8,padding:"9px 11px",fontSize:14,fontFamily:"inherit",color:C.text,background:C.white,boxSizing:"border-box",resize:"none"}}/>
+                  </div>
+                  <div>
+                    <label style={{fontSize:11,fontWeight:700,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",display:"block",marginBottom:8}}>Chase in</label>
+                    <div style={{display:"flex",gap:8}}>
+                      {FOLLOWUP_CHASE_OPTIONS.map(o=>{
+                        const selected=fuChase===o.value;
+                        return (
+                          <button key={o.value} onClick={()=>setFuChase(o.value)} style={{padding:"8px 16px",borderRadius:20,fontSize:13,cursor:"pointer",fontWeight:600,
+                            background:selected?C.sky:C.white,color:selected?"#fff":C.sky,border:`1px solid ${selected?C.sky:C.sky+"55"}`}}>
+                            {o.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div style={{fontSize:12,color:C.slate,marginTop:6}}>Sets the due date either way — the buttons below decide only whether an email fires when it lapses.</div>
+                  </div>
+                  <div style={{display:"flex",gap:10,paddingTop:4,borderTop:`1px solid ${C.border}`}}>
+                    <Btn onClick={()=>addFollowUp(false)} style={{flex:1,justifyContent:"center",background:C.sky,borderColor:C.sky}}>✓ Flag for Follow-up</Btn>
+                    <Btn onClick={()=>addFollowUp(true)} style={{flex:1,justifyContent:"center",background:C.navy,borderColor:C.navy}}>⏱ Flag + Schedule Email</Btn>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {tasks.length===0&&!addingFollowUp&&(
               <div style={{textAlign:"center",padding:"32px 20px",color:C.muted,background:C.slateLight,borderRadius:8,fontSize:14}}>
-                No tasks yet. Click <strong>+ Add Task</strong> to create one.
+                No tasks yet. Click <strong>+ Add Task</strong> or <strong>🚩 Add Follow-up</strong> to create one.
               </div>
             )}
 
             {/* Open tasks */}
             {open.map(task=>{
+              if(task.kind==="followup"){
+                const status=followUpStatus(task);
+                const color=FU_COLORS[status];
+                return (
+                  <div key={task.id} style={{background:status==="sent"?"#F3F8FC":C.white,border:`1px solid ${color}`,borderRadius:10,padding:14,boxShadow:"0 1px 3px rgba(0,0,0,0.05)"}}>
+                    <div style={{display:"flex",gap:10,alignItems:"flex-start"}}>
+                      <button onClick={()=>updateTask(task.id,"done",true)} title="Close Record" style={{width:22,height:22,borderRadius:6,border:`2px solid ${C.border}`,background:"transparent",cursor:"pointer",flexShrink:0,marginTop:2}}/>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:14,fontWeight:700,color:C.text}}>{task.title}</div>
+                        {task.note&&<div style={{fontSize:12.5,color:C.slate,marginTop:3}}>{task.note}</div>}
+                        <div style={{display:"flex",gap:8,marginTop:8,flexWrap:"wrap"}}>
+                          {status==="sent"?(
+                            <span style={{background:C.skyLight,color:C.sky,padding:"2px 8px",borderRadius:8,fontSize:11,fontWeight:700}}>✅ Automatic email sent {task.emailStatus?.sentAt}</span>
+                          ):(
+                            <span style={{background:status==="overdue"?"#FEF2F2":"#FFFBEB",color:status==="overdue"?C.red:"#92400E",padding:"2px 8px",borderRadius:8,fontSize:11,fontWeight:700}}>
+                              {status==="overdue"?`⚠ Overdue (${task.dueDate})`:status==="today"?"📌 Due today":`Due ${task.dueDate}`}
+                            </span>
+                          )}
+                          {task.scheduleEmail&&status!=="sent"&&<span style={{background:C.skyLight,color:C.sky,padding:"2px 8px",borderRadius:8,fontSize:11,fontWeight:700}}>📧 Email will send automatically</span>}
+                          {!task.scheduleEmail&&<span style={{background:C.slateLight,color:C.slate,padding:"2px 8px",borderRadius:8,fontSize:11,fontWeight:700}}>No automated email</span>}
+                        </div>
+                      </div>
+                      {status==="sent"&&<Btn onClick={()=>updateTask(task.id,"done",true)} style={{fontSize:12,padding:"6px 12px"}}>Close Record</Btn>}
+                      <button onClick={()=>removeTask(task.id)} style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:18,lineHeight:1,flexShrink:0,padding:"0 2px"}}>×</button>
+                    </div>
+                  </div>
+                );
+              }
               const isOverdue=task.dueDate&&task.dueDate<today;
               const isDueToday=task.dueDate===today;
               return (
@@ -2423,7 +2562,7 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
                 {done.map(task=>(
                   <div key={task.id} style={{background:"#F8FAFC",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 14px",marginBottom:6,display:"flex",alignItems:"center",gap:10,opacity:0.7}}>
                     <button onClick={()=>updateTask(task.id,"done",false)} style={{width:22,height:22,borderRadius:6,border:`2px solid ${C.mint}`,background:C.mint,cursor:"pointer",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,color:"#fff",fontWeight:700}}>✓</button>
-                    <span style={{fontSize:14,color:C.slate,textDecoration:"line-through",flex:1}}>{task.title||"Untitled task"}</span>
+                    <span style={{fontSize:14,color:C.slate,textDecoration:"line-through",flex:1}}>{task.kind==="followup"&&"🚩 "}{task.title||"Untitled task"}</span>
                     {task.assignedTo&&<span style={{fontSize:12,color:C.muted}}>{task.assignedTo}</span>}
                     <button onClick={()=>removeTask(task.id)} style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:16,lineHeight:1}}>×</button>
                   </div>
@@ -4552,6 +4691,7 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
     installReminderDay:{label:"Install Reminder (1-Day)",icon:"⏰",group:"Installation"},
     serviceCallBooked:{label:"Service Call Booked",icon:"🔧",group:"Service Call"},
     serviceCallReminderDay:{label:"Service Call Reminder (1-Day)",icon:"⏰",group:"Service Call"},
+    followUpAuto:{label:"Automated Follow-up",icon:"🚩",group:"Follow-up"},
     feedbackReview:{label:"Feedback Form",icon:"⭐",group:"Feedback"},
     surveyComplete:{label:"Survey Completed → Office",icon:"📋",group:"Internal Notifications"},
     fitterCheckIn:{label:"Fitter Checked In → Office",icon:"⏱️",group:"Internal Notifications"},
@@ -4791,6 +4931,22 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
               </div>
             </div>
 
+            {/* Master switch for the Automated Follow-up email specifically — checked every
+                hour by the same timer that sends the reminders above. Off pauses every follow-up
+                email that's due at once; nothing scheduled is lost, and the task it belongs to is
+                unaffected either way. */}
+            <div style={{background:C.white,borderRadius:10,border:`1px solid ${C.border}`,padding:24}}>
+              <h3 style={{margin:"0 0 6px",fontSize:16,color:C.navy,fontWeight:800}}>🚩 Automated Follow-up Emails</h3>
+              <p style={{margin:"0 0 14px",fontSize:13,color:C.slate}}>Governs every follow-up flagged with "Flag + Schedule Email", wherever it was raised. Turning this off pauses every due email at once — the follow-up tasks themselves stay exactly where they are.</p>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <div onClick={()=>update("followUpAutoSendEnabled",settings.followUpAutoSendEnabled===false)}
+                  style={{width:42,height:23,borderRadius:12,background:settings.followUpAutoSendEnabled!==false?C.mint:C.border,position:"relative",cursor:"pointer",flexShrink:0}}>
+                  <div style={{width:17,height:17,borderRadius:"50%",background:"#fff",position:"absolute",top:3,left:settings.followUpAutoSendEnabled!==false?22:3,transition:"left 0.15s",boxShadow:"0 1px 3px rgba(0,0,0,0.3)"}}/>
+                </div>
+                <div style={{fontSize:13,fontWeight:600,color:C.text}}>{settings.followUpAutoSendEnabled!==false?"Automatically sending scheduled follow-up emails":"Paused — no follow-up emails will send until this is switched back on"}</div>
+              </div>
+            </div>
+
             {/* Template cards, grouped by booking type with a heading whenever the group
                 changes — templateKeys is already in the desired display/group order. */}
             {(()=>{
@@ -4818,6 +4974,8 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
                         ? "Sent to the office (not the customer) when a fitter taps Check In on their phone after arriving on site."
                       : key==="fitterCheckOut"
                         ? "Sent to the office (not the customer) when a fitter taps Check Out, including how long they were on site."
+                      : key==="followUpAuto"
+                        ? "Sent automatically when a flagged follow-up's chase period lapses, if the switch above is on. Raised from a job's Tasks tab with \"Flag + Schedule Email\"."
                       : `Sent when a ${label.toLowerCase()} is confirmed.`}</p>
                     <div style={{display:"flex",flexDirection:"column",gap:12}}>
                       {INTERNAL_TEMPLATE_KEYS.includes(key)&&(
@@ -5259,24 +5417,34 @@ const Dashboard = ({customers,jobs}) => {
   const dwMargins=dwFinal.map(j=>calcMargin(wonJobRevenue(j),wonJobCost(j))).filter(Boolean);
   const dwAvgMarginPct=dwMargins.length>0?(dwMargins.reduce((s,m)=>s+parseFloat(m.pct),0)/dwMargins.length).toFixed(1):null;
 
-  // Gather all tasks due today or overdue from both customers and jobs
+  // Gather all tasks due today or overdue from both customers and jobs. Follow-ups are tasks
+  // too (kind:"followup" on the same tabs.tasks array) but read separately below so they can
+  // group and colour themselves independently on the dashboard rather than blending into the
+  // plain-task list.
   const allTasks=useMemo(()=>{
     const tasks=[];
     [...customers,...jobs].forEach(record=>{
       const isJob=!!record.title;
+      const cust=isJob?customers.find(c=>c.id===record.customerId):null;
       (record.tabs?.tasks||[]).filter(t=>!t.done&&t.dueDate&&t.dueDate<=today).forEach(t=>{
+        const isFollowUp=t.kind==="followup";
+        // A follow-up whose email has already sent still shows (so it doesn't vanish before
+        // anyone's looked at it) but isn't "overdue" — it's resolved, awaiting a look.
+        const isSent=isFollowUp&&t.emailStatus?.status==="sent";
         tasks.push({
           ...t,
-          recordName:isJob?record.title:record.name,
+          recordName:isFollowUp?(cust?.name||record.name||record.title):(isJob?record.title:record.name),
           recordType:isJob?"Job":"Customer",
-          isOverdue:t.dueDate<today,
-          isDueToday:t.dueDate===today,
-          alertType:"task",
+          isOverdue:!isSent&&t.dueDate<today,
+          isDueToday:!isSent&&t.dueDate===today,
+          isSent,isFollowUp,
         });
       });
     });
     return tasks.sort((a,b)=>a.dueDate.localeCompare(b.dueDate));
   },[customers,jobs,today]);
+  const followUpAlerts=allTasks.filter(t=>t.isFollowUp);
+  const plainTaskAlerts=allTasks.filter(t=>!t.isFollowUp);
 
   // Gather delivery alerts — due today or overdue and not yet delivered
   const deliveryAlerts=useMemo(()=>{
@@ -5302,77 +5470,110 @@ const Dashboard = ({customers,jobs}) => {
     return alerts.sort((a,b)=>a.deliveryDate.localeCompare(b.deliveryDate));
   },[jobs,today]);
 
-  const overdueTaskCount=allTasks.filter(t=>t.isOverdue).length;
-  const todayTaskCount=allTasks.filter(t=>t.isDueToday).length;
+  const followUpOverdue=followUpAlerts.filter(t=>t.isOverdue).length;
+  const followUpToday=followUpAlerts.filter(t=>t.isDueToday).length;
+  const followUpReview=followUpAlerts.filter(t=>t.isSent).length;
+  const overdueTaskCount=plainTaskAlerts.filter(t=>t.isOverdue).length;
+  const todayTaskCount=plainTaskAlerts.filter(t=>t.isDueToday).length;
   const overdueDeliveryCount=deliveryAlerts.filter(d=>d.isOverdue).length;
   const todayDeliveryCount=deliveryAlerts.filter(d=>d.isDueToday).length;
-  const totalOverdue=overdueTaskCount+overdueDeliveryCount;
-  const hasAlerts=allTasks.length>0||deliveryAlerts.length>0;
+
+  // Each group reads its own urgency independently, rather than one shared colour speaking
+  // for everything — Deliveries can sit calm and green while Follow-ups reads amber. `calmOk`
+  // is the colour a group falls back to when nothing in it is actually due or overdue (green
+  // for Deliveries; for Follow-ups, a calmer blue when all that's left is "sent, awaiting a
+  // look", which isn't urgent the way a genuinely missed item is).
+  const groupColor=(overdueCount,todayCount,calmOk)=>
+    overdueCount>0?{border:C.red,bg:"#FEF2F2",text:C.red}
+    :todayCount>0?{border:C.amber,bg:"#FFFBEB",text:"#92400E"}
+    :calmOk==="delivery"?{border:"#86EFAC",bg:"#F0FDF4",text:"#15803D"}
+    :{border:C.sky,bg:C.skyLight,text:C.sky};
+
+  const AlertGroup=({icon,label,items,color,renderRow})=>(
+    <div style={{border:`1px solid ${color.border}`,borderRadius:10,overflow:"hidden",background:C.white,marginBottom:12}}>
+      <div style={{background:color.bg,padding:"10px 14px",display:"flex",alignItems:"center",gap:8}}>
+        <span style={{fontSize:15}}>{icon}</span>
+        <span style={{fontSize:13,fontWeight:800,color:color.text,textTransform:"uppercase",letterSpacing:"0.04em"}}>{label}</span>
+        <span style={{background:color.text,color:"#fff",borderRadius:10,padding:"1px 9px",fontSize:11,fontWeight:700}}>{items.length}</span>
+      </div>
+      <div style={{padding:"10px 14px",display:"flex",flexDirection:"column",gap:8}}>
+        {items.map((item,i)=>(
+          <React.Fragment key={item.id}>
+            {i>0&&<div style={{height:1,background:"#F1F5F9"}}/>}
+            {renderRow(item)}
+          </React.Fragment>
+        ))}
+      </div>
+    </div>
+  );
 
   return (
     <div>
       <h2 style={{margin:"0 0 20px",color:C.navy,fontWeight:800,fontSize:22}}>Dashboard</h2>
 
-      {/* Combined alerts banner */}
-      {hasAlerts&&(
-        <div style={{background:totalOverdue>0?"#FEF2F2":"#FFFBEB",border:`1px solid ${totalOverdue>0?C.red:C.amber}`,borderRadius:10,padding:16,marginBottom:20}}>
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
-            <span style={{fontSize:20}}>{totalOverdue>0?"🚨":"📌"}</span>
-            <div>
-              <div style={{fontWeight:800,fontSize:15,color:totalOverdue>0?C.red:"#92400E"}}>
-                {[
-                  overdueTaskCount>0?`${overdueTaskCount} Overdue Task${overdueTaskCount>1?"s":""}`:null,
-                  todayTaskCount>0?`${todayTaskCount} Task${todayTaskCount>1?"s":""} Due Today`:null,
-                  overdueDeliveryCount>0?`${overdueDeliveryCount} Overdue Deliver${overdueDeliveryCount>1?"ies":"y"}`:null,
-                  todayDeliveryCount>0?`${todayDeliveryCount} Deliver${todayDeliveryCount>1?"ies":"y"} Today`:null,
-                ].filter(Boolean).join(" · ")}
+      {/* Three independent groups — each colours itself by its own overdue/due-today state,
+          so one urgent follow-up doesn't make an on-track delivery look alarming too. */}
+      {followUpAlerts.length>0&&(
+        <AlertGroup icon="🚩" label="Follow-ups" items={followUpAlerts}
+          color={groupColor(followUpOverdue,followUpToday,followUpReview>0?"followup":null)}
+          renderRow={t=>(
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <span style={{fontSize:13}}>{t.isSent?"✅":t.isOverdue?"⚠️":"🚩"}</span>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:14,fontWeight:700,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.recordName}</div>
+                <div style={{fontSize:12,color:C.slate,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                  {t.isSent?`Email sent ${t.emailStatus?.sentAt||""} — awaiting close`:(t.note||"Follow-up")}
+                </div>
               </div>
-              <div style={{fontSize:12,color:C.slate,marginTop:1}}>Items requiring your attention today</div>
+              <div style={{fontSize:12,fontWeight:700,color:t.isSent?C.sky:t.isOverdue?C.red:"#92400E",flexShrink:0}}>
+                {t.isSent?"Review":t.isOverdue?`Overdue (${t.dueDate})`:"Today"}
+              </div>
             </div>
-          </div>
+          )}/>
+      )}
 
-          <div style={{display:"flex",flexDirection:"column",gap:6}}>
-            {/* Task alerts */}
-            {allTasks.map(t=>(
-              <div key={`task-${t.id}`} style={{display:"flex",alignItems:"center",gap:10,background:C.white,borderRadius:8,padding:"10px 14px",border:`1px solid ${t.isOverdue?C.red:C.amber}`}}>
-                <span style={{fontSize:14}}>{t.isOverdue?"⚠️":"📌"}</span>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:14,fontWeight:700,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title||"Untitled task"}</div>
-                  <div style={{fontSize:12,color:C.slate,marginTop:1}}>
-                    <span style={{background:"#FFF7ED",color:"#C2410C",padding:"1px 6px",borderRadius:8,fontSize:11,fontWeight:600,marginRight:6}}>Task</span>
-                    <span style={{background:t.recordType==="Job"?C.skyLight:C.slateLight,color:t.recordType==="Job"?C.sky:C.slate,padding:"1px 6px",borderRadius:8,fontSize:11,fontWeight:600,marginRight:6}}>{t.recordType}</span>
-                    {t.recordName}
-                    {t.assignedTo&&<span style={{marginLeft:8,color:C.muted}}>· {t.assignedTo}</span>}
-                  </div>
-                </div>
-                <div style={{fontSize:12,fontWeight:700,color:t.isOverdue?C.red:"#92400E",flexShrink:0}}>
-                  {t.isOverdue?`Overdue (${t.dueDate})`:"Today"}
+      {plainTaskAlerts.length>0&&(
+        <AlertGroup icon="📌" label="Tasks" items={plainTaskAlerts}
+          color={groupColor(overdueTaskCount,todayTaskCount,null)}
+          renderRow={t=>(
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <span style={{fontSize:13}}>{t.isOverdue?"⚠️":"📌"}</span>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:14,fontWeight:700,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title||"Untitled task"}</div>
+                <div style={{fontSize:12,color:C.slate,marginTop:1}}>
+                  <span style={{background:t.recordType==="Job"?C.skyLight:C.slateLight,color:t.recordType==="Job"?C.sky:C.slate,padding:"1px 6px",borderRadius:8,fontSize:11,fontWeight:600,marginRight:6}}>{t.recordType}</span>
+                  {t.recordName}
+                  {t.assignedTo&&<span style={{marginLeft:8,color:C.muted}}>· {t.assignedTo}</span>}
                 </div>
               </div>
-            ))}
+              <div style={{fontSize:12,fontWeight:700,color:t.isOverdue?C.red:"#92400E",flexShrink:0}}>
+                {t.isOverdue?`Overdue (${t.dueDate})`:"Today"}
+              </div>
+            </div>
+          )}/>
+      )}
 
-            {/* Delivery alerts */}
-            {deliveryAlerts.map(d=>(
-              <div key={`del-${d.id}`} style={{display:"flex",alignItems:"center",gap:10,background:C.white,borderRadius:8,padding:"10px 14px",border:`1px solid ${d.isOverdue?C.red:"#86EFAC"}`}}>
-                <span style={{fontSize:14}}>{d.isOverdue?"⚠️":"🚚"}</span>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:14,fontWeight:700,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                    {d.description}
-                    {d.status==="Delayed"&&<span style={{marginLeft:8,background:"#FEF2F2",color:C.red,fontSize:11,fontWeight:700,padding:"1px 7px",borderRadius:8}}>Delayed</span>}
-                  </div>
-                  <div style={{fontSize:12,color:C.slate,marginTop:1}}>
-                    <span style={{background:"#F0FDF4",color:"#15803D",padding:"1px 6px",borderRadius:8,fontSize:11,fontWeight:600,marginRight:6}}>Delivery</span>
-                    {d.supplier&&<span style={{marginRight:6}}>{d.supplier} ·</span>}
-                    {d.jobTitle}
-                  </div>
+      {deliveryAlerts.length>0&&(
+        <AlertGroup icon="🚚" label="Deliveries" items={deliveryAlerts}
+          color={groupColor(overdueDeliveryCount,todayDeliveryCount,"delivery")}
+          renderRow={d=>(
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <span style={{fontSize:13}}>{d.isOverdue?"⚠️":"🚚"}</span>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:14,fontWeight:700,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                  {d.description}
+                  {d.status==="Delayed"&&<span style={{marginLeft:8,background:"#FEF2F2",color:C.red,fontSize:11,fontWeight:700,padding:"1px 7px",borderRadius:8}}>Delayed</span>}
                 </div>
-                <div style={{fontSize:12,fontWeight:700,color:d.isOverdue?C.red:"#15803D",flexShrink:0}}>
-                  {d.isOverdue?`Overdue (${d.deliveryDate})`:"Due Today"}
+                <div style={{fontSize:12,color:C.slate,marginTop:1}}>
+                  {d.supplier&&<span style={{marginRight:6}}>{d.supplier} ·</span>}
+                  {d.jobTitle}
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
+              <div style={{fontSize:12,fontWeight:700,color:d.isOverdue?C.red:"#15803D",flexShrink:0}}>
+                {d.isOverdue?`Overdue (${d.deliveryDate})`:"Due Today"}
+              </div>
+            </div>
+          )}/>
       )}
 
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:14,marginBottom:28}}>
