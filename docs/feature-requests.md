@@ -8,6 +8,10 @@ A shared place for feature ideas, wherever they come from — the office, a fitt
 
 ## Requested
 
+### Email templates: add a {{firstName}} placeholder
+- Raised by: office — 2026-09-29. The Available Placeholders panel currently only offers `{{customerName}}` (full name); templates that want to open with just the customer's first name have no way to do that.
+- Not started — logged for scoping (where the first name is split from, whether it needs a fallback when only a full name is stored, which templates it should show up on).
+
 ### Incident: "tomorrow" reminders sent on the day, and emails showing a blank or wrong address — ✅ fixed 2026-09-23 (`b754d7b`)
 - Raised by: office — 2026-09-23. Three reminders fired at 08:01 saying the appointment was "tomorrow" while showing that day's date; the appointments were that day. One also had an empty Address line.
 - **Cause 1 — day-before reminders fired at 0 OR 1 days out.** That range was a deliberate catch-up for a missed run, but the word "tomorrow" is fixed text in the template. Evidence: the timer *did* run on the 22nd (it sent job #36's install week reminder), and all three appointments were booked later that day, after the single 08:00 run. First opportunity was therefore the morning of the appointment.
