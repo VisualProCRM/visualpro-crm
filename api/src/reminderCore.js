@@ -156,6 +156,19 @@ Kind regards,
 {{companyPhone}}`,
 };
 
+const DEFAULT_FOLLOWUP_AUTO = {
+  subject: 'Following Up – {{customerName}}',
+  body: `Dear {{customerName}},
+
+We wanted to follow up and check whether you'd had a chance to consider our last message.
+
+If you have any questions or would like to discuss anything further, please don't hesitate to get in touch.
+
+Kind regards,
+{{companyName}}
+{{companyPhone}}`,
+};
+
 const DEFAULT_SURVEY_REMINDER_DAY = {
   subject: 'Reminder: Your Survey is Tomorrow – {{customerName}}',
   body: `Dear {{customerName}},
@@ -402,6 +415,82 @@ function markInstallBooking(job, bookingId, apply) {
   } else {
     apply(inst);
   }
+}
+
+// A follow-up being handled — its automated email actually sending, or the office marking it
+// done — is a genuine "we followed up" event, so nudge the job forward on the Sales Pipeline.
+// Deliberately narrow: only ever moves a job OUT of an early open stage and INTO "Followed Up",
+// mirroring the frontend's LEAD_STAGES order exactly. Never touches a job already at Deal Won,
+// Deal Lost, or any Installation Pipeline stage, and does nothing once it's already at Followed
+// Up or beyond — one-way and idempotent, so both triggers firing is harmless.
+const FOLLOWUP_ADVANCE_FROM = ['Prospect List', 'New Enquiry', 'Contacted', 'Quoted'];
+function bumpFollowedUpStage(job) {
+  if (FOLLOWUP_ADVANCE_FROM.includes(job.status)) job.status = 'Followed Up';
+}
+
+// Sends the automated follow-up email for one flagged task — the office's "Flag + Schedule
+// Email" button, once its chase period lapses. Mirrors the shape of the other send* functions
+// here, but the record it updates is a Job's own tabs.tasks[] entry, not tabs.installation.
+async function sendFollowUpEmail({ pool, jobId, taskId, testEmailOverride }) {
+  const jobResult = await pool.request().input('Id', sql.Int, jobId).query('SELECT * FROM dbo.Jobs WHERE Id = @Id');
+  if (!jobResult.recordset.length) throw new Error('Job not found');
+  const jobRow = jobResult.recordset[0];
+  const job = JSON.parse(jobRow.DataJson);
+
+  const task = (job.tabs?.tasks || []).find((t) => t.id === taskId);
+  if (!task) throw new Error('Follow-up task not found');
+
+  const customerResult = await pool
+    .request()
+    .input('Id', sql.Int, jobRow.CustomerId)
+    .query('SELECT * FROM dbo.Customers WHERE Id = @Id');
+  if (!customerResult.recordset.length) throw new Error('Customer not found');
+  const customer = JSON.parse(customerResult.recordset[0].DataJson);
+
+  const recipientList = testEmailOverride ? [testEmailOverride] : [customer.email, customer.email2].filter(Boolean);
+  if (!recipientList.length) throw new Error('No recipient email available');
+
+  const settingsResult = await pool.request().query('SELECT * FROM dbo.Settings WHERE TenantId = 1');
+  const settings = settingsResult.recordset.length ? JSON.parse(settingsResult.recordset[0].DataJson) : {};
+  const tmpl = settings.emailTemplates?.followUpAuto || DEFAULT_FOLLOWUP_AUTO;
+
+  const vars = {
+    customerName: customer.name || '',
+    companyName: settings.companyName || 'VisualPro',
+    companyPhone: settings.companyPhone || '',
+  };
+
+  const subject = fillTemplate(tmpl.subject, vars);
+  const plainText = fillTemplate(tmpl.body, vars);
+
+  const { hostname } = await getSenderDomain();
+  const senderUsername = process.env.EMAIL_SENDER_USERNAME || 'donotreply';
+  const senderAddress = `${senderUsername}@${hostname}`;
+
+  const poller = await emailClient.beginSend({
+    senderAddress,
+    content: { subject, plainText },
+    recipients: buildRecipients(recipientList, tmpl),
+  });
+  const result = await poller.pollUntilDone();
+  if (result.status !== 'Succeeded') {
+    throw new Error(`ACS email send did not succeed: ${result.status}${result.error ? ' - ' + result.error.message : ''}`);
+  }
+
+  if (!testEmailOverride) {
+    job.tabs.tasks = job.tabs.tasks.map((t) =>
+      t.id === taskId ? { ...t, emailStatus: { status: 'sent', sentAt: new Date().toLocaleDateString('en-GB') } } : t
+    );
+    bumpFollowedUpStage(job);
+    await pool
+      .request()
+      .input('Id', sql.Int, jobId)
+      .input('Status', sql.NVarChar, job.status)
+      .input('DataJson', sql.NVarChar, JSON.stringify(job))
+      .query('UPDATE dbo.Jobs SET Status = @Status, DataJson = @DataJson, UpdatedAt = SYSUTCDATETIME() WHERE Id = @Id');
+  }
+
+  return { sent: true, to: recipientList.join(', '), senderAddress, messageId: result.id };
 }
 
 // Sends a reminder for one job. Pass testEmailOverride to send a real test without
@@ -1124,6 +1213,8 @@ function bookingFitters(b) {
 module.exports = {
   bookingFitters,
   installBookings,
+  bumpFollowedUpStage,
+  sendFollowUpEmail,
   sendFitterCheckEmail,
   sendJobReminder,
   sendInstallBookedEmail,

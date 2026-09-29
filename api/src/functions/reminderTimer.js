@@ -1,6 +1,6 @@
 const { app } = require('@azure/functions');
 const { getPool } = require('../db');
-const { sendJobReminder, sendSurveyReminderEmail, sendServiceCallReminderEmail, bookingFitters, installBookings } = require('../reminderCore');
+const { sendJobReminder, sendSurveyReminderEmail, sendServiceCallReminderEmail, sendFollowUpEmail, bookingFitters, installBookings } = require('../reminderCore');
 
 // Runs hourly through the working day and sends any reminder that's due and hasn't been sent.
 //
@@ -22,6 +22,10 @@ app.timer('reminderTimer', {
   handler: async (myTimer, context) => {
     const pool = await getPool();
     const jobsResult = await pool.request().query('SELECT Id, DataJson FROM dbo.Jobs');
+
+    const settingsResult = await pool.request().query('SELECT DataJson FROM dbo.Settings WHERE TenantId = 1');
+    const settings = settingsResult.recordset.length ? JSON.parse(settingsResult.recordset[0].DataJson) : {};
+    const followUpAutoSendEnabled = settings.followUpAutoSendEnabled !== false;
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -98,6 +102,24 @@ app.timer('reminderTimer', {
               context.log(`Sent service call reminder for job ${jobId} booking ${booking.id}: ${result.messageId}`);
             } catch (err) {
               context.error(`Failed service call reminder for job ${jobId} booking ${booking.id}`, err);
+            }
+          }
+        }
+
+        // Follow-ups flagged with "Flag + Schedule Email" — one send, the day its chase period
+        // lapses, not a week/day-before pair like the others above. A follow-up the office has
+        // since closed is excluded by !t.done alone, which is also what makes closing one early
+        // enough to cancel its pending email — nothing extra to do for that case.
+        if (followUpAutoSendEnabled) {
+          const followUps = (job.tabs?.tasks || []).filter(
+            (t) => t.kind === 'followup' && t.scheduleEmail && !t.done && t.emailStatus?.status !== 'sent' && t.dueDate && t.dueDate <= today.toISOString().slice(0, 10)
+          );
+          for (const task of followUps) {
+            try {
+              const result = await sendFollowUpEmail({ pool, jobId, taskId: task.id });
+              context.log(`Sent follow-up email for job ${jobId} task ${task.id}: ${result.messageId}`);
+            } catch (err) {
+              context.error(`Failed follow-up email for job ${jobId} task ${task.id}`, err);
             }
           }
         }

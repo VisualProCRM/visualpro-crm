@@ -2,7 +2,7 @@ const { app } = require('@azure/functions');
 const { getPool, sql } = require('../db');
 const { mapJobRow } = require('../mapRow');
 const { requireAuth } = require('../auth');
-const { sendInstallBookedEmail, sendSurveyBookedEmail, sendServiceCallBookedEmail, sendFeedbackReviewEmail, feedbackQualifiesForReview, sendSurveyCompleteEmail, bookingFitters, installBookings, sendFitterCheckEmail } = require('../reminderCore');
+const { sendInstallBookedEmail, sendSurveyBookedEmail, sendServiceCallBookedEmail, sendFeedbackReviewEmail, feedbackQualifiesForReview, sendSurveyCompleteEmail, bookingFitters, installBookings, sendFitterCheckEmail, bumpFollowedUpStage } = require('../reminderCore');
 
 app.http('jobsList', {
   methods: ['GET'],
@@ -118,7 +118,30 @@ app.http('jobsUpdate', {
         });
       }
 
+      // Same protection, same reason, for a follow-up's automated email: the hourly timer marks
+      // it sent, and a stale save must never clear that mark — the next run would email the
+      // customer the same follow-up again.
+      if (Array.isArray(before?.tabs?.tasks) && Array.isArray(body?.tabs?.tasks)) {
+        const priorById = new Map(before.tabs.tasks.map((t) => [t.id, t]));
+        body.tabs.tasks = body.tabs.tasks.map((t) => {
+          const prior = priorById.get(t.id);
+          if (!prior || prior.kind !== 'followup') return t;
+          return prior.emailStatus?.status === 'sent' ? { ...t, emailStatus: prior.emailStatus } : t;
+        });
+      }
 
+      // A follow-up marked done is a genuine "we followed up" event, exactly like its automated
+      // email actually sending — nudge the job forward the same way. Only on the actual
+      // false->true transition, so re-saving an already-closed follow-up doesn't do anything.
+      if (Array.isArray(body?.tabs?.tasks)) {
+        const beforeById = new Map((before?.tabs?.tasks || []).map((t) => [t.id, t]));
+        for (const t of body.tabs.tasks) {
+          if (t.kind !== 'followup' || !t.done) continue;
+          const prior = beforeById.get(t.id);
+          if (prior?.done) continue;
+          bumpFollowedUpStage(body);
+        }
+      }
 
       const result = await pool
         .request()
