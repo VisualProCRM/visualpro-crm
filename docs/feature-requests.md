@@ -8,13 +8,18 @@ A shared place for feature ideas, wherever they come from — the office, a fitt
 
 ## Requested
 
-### Opportunity record: Customer Info panel should be editable
+### Fitter Calendar: a short job on the same day as a day-long job gets squeezed into a sliver
+- Raised by: office — 2026-10-01. When a short booking (e.g. a 15:00–16:00 Service Call) falls on the same day/column as an all-day Install block, it's currently rendered as a thin sliver beside the day-long block instead of standing out clearly. Office wants the short job to sit on top of/over the day-long record so it's immediately visible, not squeezed down to barely-readable width.
+- Not started — logged for scoping (exact layering/visual treatment).
+
+### Opportunity record: Customer Info panel should be editable — ✅ built 2026-10-01 (`f777def`)
 - Raised by: office — 2026-10-01. On an opportunity record (e.g. "New Richmond Developments — Cwm Eithin"), the Customer Info panel (email, phone, source, sector, quote, margin, site) is currently read-only — the office wants to be able to correct/update these fields directly from that panel rather than needing to go elsewhere.
+- Built: Name, Email, Phone, Source and Sector are now editable there and save to the linked Customer record. WindowCAD7 Status and Quote/Margin were deliberately left read-only — Status is WindowCAD7-synced (a manual edit would be silently discarded on the next sync) and Quote/Margin are totals computed from the Quote tab's line items, not stored values.
 - Not started — logged for scoping (which fields should be editable there vs. only on the Customer record itself, and how it interacts with WindowCAD7-synced fields like quote/site, which may get overwritten by the next sync).
 
-### Email templates: add a {{firstName}} placeholder
+### Email templates: add a {{firstName}} placeholder — ✅ built 2026-10-01 (`f777def`)
 - Raised by: office — 2026-09-29. The Available Placeholders panel currently only offers `{{customerName}}` (full name); templates that want to open with just the customer's first name have no way to do that.
-- Not started — logged for scoping (where the first name is split from, whether it needs a fallback when only a full name is stored, which templates it should show up on).
+- Built: rather than splitting the full name (unreliable for couples/companies — "Jatin & Gopa Desai", "New Richmond Developments"), added dedicated Customer First Name / Last Name fields that `{{firstName}}` reads from directly. Also added `{{startTime}}`, pulling each booking's own start time (survey/install/service call) — raised in the same conversation.
 
 ### Incident: "tomorrow" reminders sent on the day, and emails showing a blank or wrong address — ✅ fixed 2026-09-23 (`b754d7b`)
 - Raised by: office — 2026-09-23. Three reminders fired at 08:01 saying the appointment was "tomorrow" while showing that day's date; the appointments were that day. One also had an empty Address line.
