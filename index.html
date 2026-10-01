@@ -1146,7 +1146,7 @@ const StageButton = ({status,onChange}) => {
 };
 
 // ── Card Detail Modal with Tabs ───────────────────────────────────────────────
-const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,settings,onOpenJob,initialTab}) => {
+const CardDetailModal = ({record,customers,jobs,onSave,onSaveCustomer,onDelete,onClose,isJob,settings,onOpenJob,initialTab}) => {
   const [activeTab,setActiveTab]=useState(initialTab||"Details");
   const [data,setData]=useState({...record,_settings:settings});
   // The "Raise a Follow-up" panel's own draft state. Kept at the top level, not inside the
@@ -1160,6 +1160,12 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
   const [digitiseError,setDigitiseError]=useState("");
   const [digitisePreview,setDigitisePreview]=useState(null);
   const customer=isJob?customers.find(c=>c.id===data.customerId):null;
+  // A separate draft for the linked customer's own fields, editable from the Job's Customer
+  // Info panel (the job itself doesn't carry copies of email/phone/source/sector/name). Re-synced
+  // whenever the linked customer changes — e.g. the office reassigns this job to a different
+  // customer mid-edit — so edits never carry over onto the wrong person.
+  const [customerDraft,setCustomerDraft]=useState(customer?{...customer}:null);
+  useEffect(()=>{ setCustomerDraft(customer?{...customer}:null); },[customer?.id]);
 
   // Once a Customer has one or more linked Jobs, their own Quote/Notes/Survey/etc. tabs are
   // retired (see handleDealWon) — content now lives on the Job(s) instead, so only "Details"
@@ -1183,7 +1189,14 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
 
   // data carries _settings for this modal's own internal use (dropdowns etc.) — strip it
   // before persisting, or every customer/job record would carry a full copy of Settings.
-  const save=()=>{ const {_settings,...toSave}=data; onSave(toSave); onClose(); };
+  const save=()=>{
+    const {_settings,...toSave}=data;
+    onSave(toSave);
+    // The linked customer's own fields, edited from the Job's Customer Info panel, save
+    // alongside the job on close — same implicit save-on-close the rest of this modal uses.
+    if(isJob&&customer&&customerDraft&&onSaveCustomer) onSaveCustomer(customerDraft);
+    onClose();
+  };
 
   // Defensive against a tab key that doesn't exist yet on an older record (e.g. supplierQuote,
   // added after plenty of real records already existed) — falls back to an empty files list
@@ -1261,15 +1274,40 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
               <Sel label="Customer" value={data.customerId} onChange={e=>setData(d=>({...d,customerId:Number(e.target.value)}))}>
                 {customers.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
               </Sel>
-              {/* Full customer info panel */}
+              {/* Full customer info panel — the customer-owned fields here (name, email, phone,
+                  source, sector) are editable: edits apply to the linked Customer record, saved
+                  via onSaveCustomer when this modal closes, since a job doesn't carry its own
+                  copy of them. WindowCAD7 Status and Quote/Margin stay read-only below — Status
+                  is synced from WindowCAD7 (a manual edit here would just be silently discarded
+                  on the next sync), and Quote/Margin are totals computed from the Quote tab's
+                  line items, not stored values, so the Quote tab is where those actually change. */}
               <div style={{background:C.slateLight,borderRadius:8,padding:12}}>
                 <div style={{fontSize:12,fontWeight:600,color:C.slate,marginBottom:8}}>CUSTOMER INFO</div>
-                {customer&&[["📧",customer.email],...(customer.email2?[["📧 Secondary",customer.email2]]:[]),["📞",customer.phone],["🔗 Source",customer.source],["🏷️ Sector",customer.sector],...(data.windowcadStatus?[["🪟 WindowCAD7 Status",data.windowcadStatus]]:[]),["💰 Quote",totalQuoteValue(data)?`£${totalQuoteValue(data).toLocaleString()}`:"—"],["📊 Margin",totalQuoteValue(data)&&totalQuoteCost(data)?(()=>{const m=calcMargin(totalQuoteValue(data),totalQuoteCost(data));return m?`${m.pct}% (£${m.profit.toLocaleString()})`:"—"})():"—"]].map(([icon,val])=>(
+                {customer&&(
+                  <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:10}}>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                      <Inp label="First Name" value={customerDraft?.firstName||""} onChange={e=>setCustomerDraft(c=>({...c,firstName:e.target.value}))}/>
+                      <Inp label="Last Name" value={customerDraft?.lastName||""} onChange={e=>setCustomerDraft(c=>({...c,lastName:e.target.value}))}/>
+                    </div>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                      <Inp label="Email" type="email" value={customerDraft?.email||""} onChange={e=>setCustomerDraft(c=>({...c,email:e.target.value}))}/>
+                      <Inp label="Phone" value={customerDraft?.phone||""} onChange={e=>setCustomerDraft(c=>({...c,phone:e.target.value}))}/>
+                    </div>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                      <Sel label="Source" value={customerDraft?.source||""} onChange={e=>setCustomerDraft(c=>({...c,source:e.target.value}))}>
+                        {SOURCES.map(s=><option key={s}>{s}</option>)}
+                      </Sel>
+                      <Sel label="Sector" value={customerDraft?.sector||""} onChange={e=>setCustomerDraft(c=>({...c,sector:e.target.value}))}>
+                        <option value="">— Not set —</option>
+                        {SECTORS.map(s=><option key={s}>{s}</option>)}
+                      </Sel>
+                    </div>
+                  </div>
+                )}
+                {[...(data.windowcadStatus?[["🪟 WindowCAD7 Status",data.windowcadStatus]]:[]),["💰 Quote",totalQuoteValue(data)?`£${totalQuoteValue(data).toLocaleString()}`:"—"],["📊 Margin",totalQuoteValue(data)&&totalQuoteCost(data)?(()=>{const m=calcMargin(totalQuoteValue(data),totalQuoteCost(data));return m?`${m.pct}% (£${m.profit.toLocaleString()})`:"—"})():"—"]].map(([icon,val])=>(
                   <div key={icon} style={{fontSize:13,color:C.text,padding:"5px 0",borderBottom:`1px solid ${C.border}`,display:"flex",gap:8,alignItems:"center"}}>
                     <span style={{color:C.slate,minWidth:90,flexShrink:0}}>{icon}</span>
-                    {icon==="🏷️ Sector"&&val&&SECTOR_META[val]?(
-                      <span style={{fontWeight:700,fontSize:12,background:SECTOR_META[val].bg,color:SECTOR_META[val].text,padding:"3px 10px",borderRadius:10}}>{SECTOR_META[val].icon} {val}</span>
-                    ):icon==="🪟 WindowCAD7 Status"?(
+                    {icon==="🪟 WindowCAD7 Status"?(
                       <span style={{fontWeight:700,fontSize:12,background:"#EEF2FF",color:"#4338CA",padding:"3px 10px",borderRadius:10}}>{val}</span>
                     ):(
                       <span style={{fontWeight:500}}>{val||"—"}</span>
@@ -1370,13 +1408,21 @@ const CardDetailModal = ({record,customers,jobs,onSave,onDelete,onClose,isJob,se
           ):(
             <>
               <Inp label="Full Name / Company" value={data.name} onChange={e=>setData(d=>({...d,name:e.target.value}))}/>
+              {/* First/Last Name — separate from the Full Name / Company field above (which stays
+                  the one used everywhere else: record titles, dropdowns, pipeline cards). These
+                  exist only to feed the {{firstName}} email placeholder, so a company customer
+                  with no real "first name" can just leave them blank. */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                <Inp label="Customer First Name" value={data.firstName||""} onChange={e=>setData(d=>({...d,firstName:e.target.value}))}/>
+                <Inp label="Customer Last Name" value={data.lastName||""} onChange={e=>setData(d=>({...d,lastName:e.target.value}))}/>
+              </div>
               {/* Customer info panel — mirrors the read-only summary shown on a Job's Details tab, for visual consistency between the Sales and Installation Pipeline cards */}
               <div style={{background:C.slateLight,borderRadius:8,padding:12}}>
                 <div style={{fontSize:12,fontWeight:600,color:C.slate,marginBottom:8}}>CUSTOMER INFO</div>
                 {/* Quote and Margin now summarise the customer's opportunities rather than the
                     customer's own (retired) quote fields — a customer is a contact, so its
                     money is simply the sum of the work. Lost opportunities are excluded. */}
-                {[["📧",data.email],...(data.email2?[["📧 Secondary",data.email2]]:[]),["📞",data.phone],["🔗 Source",data.source],["🏷️ Sector",data.sector],["💰 Quoted",custSummary.value?`£${custSummary.value.toLocaleString()}`:"—"],["📊 Margin",(()=>{const m=calcMargin(custSummary.value,custSummary.cost);return m?`${m.pct}% (£${m.profit.toLocaleString()})`:"—"})()]].map(([icon,val])=>(
+                {[...(data.firstName||data.lastName?[["👤 Name",[data.firstName,data.lastName].filter(Boolean).join(" ")]]:[]),["📧",data.email],...(data.email2?[["📧 Secondary",data.email2]]:[]),["📞",data.phone],["🔗 Source",data.source],["🏷️ Sector",data.sector],["💰 Quoted",custSummary.value?`£${custSummary.value.toLocaleString()}`:"—"],["📊 Margin",(()=>{const m=calcMargin(custSummary.value,custSummary.cost);return m?`${m.pct}% (£${m.profit.toLocaleString()})`:"—"})()]].map(([icon,val])=>(
                   <div key={icon} style={{fontSize:13,color:C.text,padding:"5px 0",borderBottom:`1px solid ${C.border}`,display:"flex",gap:8,alignItems:"center"}}>
                     <span style={{color:C.slate,minWidth:90,flexShrink:0}}>{icon}</span>
                     {icon==="🏷️ Sector"&&val&&SECTOR_META[val]?(
@@ -2804,11 +2850,15 @@ const CustomerForm = ({initial={},onSave,onCancel}) => {
   // A new enquiry captures the contact plus the stage its opening opportunity starts at.
   // Quote financials and the WindowCAD7 reference belong to that opportunity, not here, and
   // are filled in on the job itself once there is something to quote.
-  const [form,setForm]=useState({name:"",email:"",email2:"",phone:"",address:"",source:"Website",sector:"",stage:"New Enquiry",notes:"",...initial});
+  const [form,setForm]=useState({name:"",firstName:"",lastName:"",email:"",email2:"",phone:"",address:"",source:"Website",sector:"",stage:"New Enquiry",notes:"",...initial});
   const set=k=>e=>setForm(f=>({...f,[k]:e.target.value}));
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
       <Inp label="Full Name / Company" value={form.name} onChange={set("name")} placeholder="e.g. John Smith"/>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+        <Inp label="Customer First Name" value={form.firstName} onChange={set("firstName")}/>
+        <Inp label="Customer Last Name" value={form.lastName} onChange={set("lastName")}/>
+      </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
         <Inp label="Email" type="email" value={form.email} onChange={set("email")}/>
         <Inp label="Phone" value={form.phone} onChange={set("phone")}/>
@@ -3290,6 +3340,7 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
         onDelete={deleteCustomer} onClose={()=>{setDetailRecord(null);setPendingTab(null);}} onOpenJob={setViewingJob}/>}
       {viewingJob&&<CardDetailModal record={jobs.find(j=>j.id===viewingJob.id)||viewingJob} customers={customers} jobs={jobs} isJob={true} settings={settings}
         onSave={handleJobSave}
+        onSaveCustomer={updated=>apiUpdateCustomer(updated).then(saved=>setCustomers(cs=>cs.map(c=>c.id===saved.id?saved:c))).catch(err=>window.alert("Failed to save customer details: "+err.message))}
         onDelete={id=>{if(!window.confirm("Delete this job?"))return;apiDeleteJob(id).then(()=>{setJobs(js=>js.filter(j=>j.id!==id));setViewingJob(null);}).catch(err=>window.alert("Failed to delete job: "+err.message));}}
         onClose={()=>setViewingJob(null)}/>}
       {showConfetti&&<Confetti onDone={()=>setShowConfetti(false)}/>}
@@ -3298,7 +3349,7 @@ const SalesPipelinePage = ({customers,setCustomers,jobs,setJobs,settings}) => {
 };
 
 // ── Installation Pipeline Page ────────────────────────────────────────────────
-const InstallPipelinePage = ({jobs,setJobs,customers,settings}) => {
+const InstallPipelinePage = ({jobs,setJobs,customers,setCustomers,settings}) => {
   const [search,setSearch]=useState("");
   const [modal,setModal]=useState(null);
   const [defaultStage,setDefaultStage]=useState("Book Survey");
@@ -3438,6 +3489,7 @@ const InstallPipelinePage = ({jobs,setJobs,customers,settings}) => {
         </div>
         {detailRecord&&<CardDetailModal record={jobs.find(j=>j.id===detailRecord.id)||detailRecord} customers={customers} isJob={true} settings={settings}
           onSave={updated=>apiUpdateJob(updated).then(saved=>setJobs(js=>js.map(j=>j.id===saved.id?saved:j))).catch(err=>window.alert("Failed to save job: "+err.message))}
+          onSaveCustomer={updated=>apiUpdateCustomer(updated).then(saved=>setCustomers(cs=>cs.map(c=>c.id===saved.id?saved:c))).catch(err=>window.alert("Failed to save customer details: "+err.message))}
           onDelete={deleteJob} onClose={()=>setDetailRecord(null)}/>}
       </div>
     );
@@ -3466,6 +3518,7 @@ const InstallPipelinePage = ({jobs,setJobs,customers,settings}) => {
       {modal==="add"&&<Modal title="New Job" onClose={()=>setModal(null)}><JobForm customers={customers} initial={{status:defaultStage}} onSave={saveJob} onCancel={()=>setModal(null)}/></Modal>}
       {detailRecord&&<CardDetailModal record={jobs.find(j=>j.id===detailRecord.id)||detailRecord} customers={customers} isJob={true} settings={settings}
         onSave={updated=>apiUpdateJob(updated).then(saved=>setJobs(js=>js.map(j=>j.id===saved.id?saved:j))).catch(err=>window.alert("Failed to save job: "+err.message))}
+        onSaveCustomer={updated=>apiUpdateCustomer(updated).then(saved=>setCustomers(cs=>cs.map(c=>c.id===saved.id?saved:c))).catch(err=>window.alert("Failed to save customer details: "+err.message))}
         onDelete={deleteJob} onClose={()=>setDetailRecord(null)}/>}
     </div>
   );
@@ -4700,8 +4753,10 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
 
   const placeholders=[
     ["{{customerName}}","Customer's full name"],
+    ["{{firstName}}","Customer's first name"],
     ["{{surveyDate}}","Survey date"],
     ["{{installDate}}","Installation date"],
+    ["{{startTime}}","Booking start time (survey/install/service call)"],
     ["{{fitterName}}","Single fitter name (surveyor, for the survey-complete email)"],
     ["{{fitterNames}}","All assigned fitters"],
     ["{{address}}","Customer address"],
@@ -7539,6 +7594,7 @@ const CustomerDirectoryPage = ({customers,setCustomers,jobs,setJobs,settings,onN
         customers={customers} isJob={true} settings={settings}
         initialTab={pendingTab}
         onSave={updated=>apiUpdateJob(updated).then(saved=>setJobs(js=>js.map(j=>j.id===saved.id?saved:j))).catch(err=>window.alert("Failed to save job: "+err.message))}
+        onSaveCustomer={updated=>apiUpdateCustomer(updated).then(saved=>setCustomers(cs=>cs.map(c=>c.id===saved.id?saved:c))).catch(err=>window.alert("Failed to save customer details: "+err.message))}
         onDelete={id=>{if(!window.confirm("Delete this job?"))return;apiDeleteJob(id).then(()=>{setJobs(js=>js.filter(j=>j.id!==id));setSelectedJob(null);}).catch(err=>window.alert("Failed to delete job: "+err.message));}}
         onClose={()=>{setSelectedJob(null);setPendingTab(null);}}
       />}
@@ -7550,7 +7606,7 @@ const CustomerDirectoryPage = ({customers,setCustomers,jobs,setJobs,settings,onN
 const CustomerDirectoryForm = ({initial={},onSave,onCancel}) => {
   const [type,setType]=useState(initial.type||"customer");
   const [form,setForm]=useState({
-    name:"",email:"",email2:"",phone:"",address:"",source:"Website",notes:"",
+    name:"",firstName:"",lastName:"",email:"",email2:"",phone:"",address:"",source:"Website",notes:"",
     // Company extras
     companyName:"",companyPhone:"",companyEmail:"",companyEmail2:"",companyAddress:"",
     companyWebsite:"",companyVat:"",companyReg:"",
@@ -7597,6 +7653,10 @@ const CustomerDirectoryForm = ({initial={},onSave,onCancel}) => {
       {type==="customer"&&(
         <>
           <Inp label="Full Name *" value={form.name} onChange={set("name")} placeholder="e.g. John Smith"/>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+            <Inp label="Customer First Name" value={form.firstName||""} onChange={set("firstName")}/>
+            <Inp label="Customer Last Name" value={form.lastName||""} onChange={set("lastName")}/>
+          </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
             <Inp label="Phone" value={form.phone||""} onChange={set("phone")} placeholder="07700 000000"/>
             <Inp label="Email" type="email" value={form.email||""} onChange={set("email")} placeholder="john@email.com"/>
@@ -8087,7 +8147,7 @@ function App() {
         <div style={{flex:1,overflow:isKanban?"hidden":"auto",padding:24,display:"flex",flexDirection:"column"}}>
           {page==="dashboard"&&<Dashboard customers={customers} jobs={jobs}/>}
           {page==="pipeline"&&<SalesPipelinePage customers={customers} setCustomers={setCustomers} jobs={jobs} setJobs={setJobs} settings={settings}/>}
-          {page==="jobs"&&<InstallPipelinePage jobs={jobs} setJobs={setJobs} customers={customers} settings={settings}/>}
+          {page==="jobs"&&<InstallPipelinePage jobs={jobs} setJobs={setJobs} customers={customers} setCustomers={setCustomers} settings={settings}/>}
           {page==="calendar"&&<CalendarPage customers={customers} jobs={jobs} settings={settings} onNavigate={setPage}/>}
           {page==="orders"&&<TrackOrdersPage jobs={jobs} customers={customers} settings={settings}/>}
           {page==="mileage"&&<MileagePage jobs={jobs} customers={customers} settings={settings}/>}
