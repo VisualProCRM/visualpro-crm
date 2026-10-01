@@ -8,6 +8,10 @@ A shared place for feature ideas, wherever they come from — the office, a fitt
 
 ## Requested
 
+### Opportunity record: Customer Info panel should be editable
+- Raised by: office — 2026-10-01. On an opportunity record (e.g. "New Richmond Developments — Cwm Eithin"), the Customer Info panel (email, phone, source, sector, quote, margin, site) is currently read-only — the office wants to be able to correct/update these fields directly from that panel rather than needing to go elsewhere.
+- Not started — logged for scoping (which fields should be editable there vs. only on the Customer record itself, and how it interacts with WindowCAD7-synced fields like quote/site, which may get overwritten by the next sync).
+
 ### Email templates: add a {{firstName}} placeholder
 - Raised by: office — 2026-09-29. The Available Placeholders panel currently only offers `{{customerName}}` (full name); templates that want to open with just the customer's first name have no way to do that.
 - Not started — logged for scoping (where the first name is split from, whether it needs a fallback when only a full name is stored, which templates it should show up on).
