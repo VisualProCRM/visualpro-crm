@@ -7839,8 +7839,17 @@ function App() {
   // Re-fetch Settings once logged in — the initial load above ran pre-login and got
   // fitter passwords redacted to booleans (see api/src/functions/settings.js); office
   // sessions need the real values to view/edit them on the Settings page.
+  //
+  // Guarded to run ONCE per login, not on every change to authToken — the silent 20-minute
+  // token refresh below also changes authToken, and re-running this re-fetch on every one of
+  // those overwrote whatever the office had typed into Settings but not yet saved: mergeSettings
+  // replaces each email template wholesale with the server's (still-old) copy, so an edit mid-flight
+  // when a renewal landed was silently discarded with no error. Reset alongside every logout so a
+  // genuinely new login still gets one fresh fetch.
+  const didFetchSettingsAfterLogin=useRef(false);
   useEffect(()=>{
-    if(!authToken) return;
+    if(!authToken||didFetchSettingsAfterLogin.current) return;
+    didFetchSettingsAfterLogin.current=true;
     apiGetSettings()
       .then(saved=>{ if(saved) setSettings(s=>mergeSettings(s,saved)); })
       .catch(err=>console.error("Failed to refresh settings",err));
@@ -7886,7 +7895,7 @@ function App() {
           <div style={{fontSize:40,marginBottom:12}}>🔒</div>
           <h2 style={{margin:"0 0 8px",color:C.navy,fontSize:20,fontWeight:800}}>Your session has expired</h2>
           <p style={{margin:"0 0 24px",color:C.slate,fontSize:14,lineHeight:1.6}}>For security, you get logged out after a period of inactivity. Please log back in to continue — anything that failed to save since will need re-entering.</p>
-          <button onClick={()=>{setSessionExpired(false);setAuthToken(null);setUserRole(null);resetLogin();}}
+          <button onClick={()=>{setSessionExpired(false);setAuthToken(null);setUserRole(null);resetLogin();didFetchSettingsAfterLogin.current=false;}}
             style={{width:"100%",background:C.sky,color:"#fff",border:"none",borderRadius:10,padding:"14px",fontSize:16,fontWeight:700,cursor:"pointer"}}>
             Log In Again →
           </button>
@@ -8025,7 +8034,7 @@ function App() {
 
   // ── Fitter view ──
   if(userRole!=="office"){
-    return <FitterApp fitterName={userRole} jobs={jobs} customers={customers} setJobs={setJobs} settings={settings} onLogout={()=>{setUserRole(null);setAuthToken(null);resetLogin();}}/>;
+    return <FitterApp fitterName={userRole} jobs={jobs} customers={customers} setJobs={setJobs} settings={settings} onLogout={()=>{setUserRole(null);setAuthToken(null);resetLogin();didFetchSettingsAfterLogin.current=false;}}/>;
   }
 
   // ── Office CRM ──
