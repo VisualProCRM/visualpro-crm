@@ -8,6 +8,28 @@ A shared place for feature ideas, wherever they come from — the office, a fitt
 
 ## Requested
 
+### Bug: Settings edits silently lost on the 20-minute session token refresh — ✅ fixed 2026-10-02 (`0d5417d`)
+- Raised by: office — 2026-10-02. Edited the Feedback Form email template (adding review links), closed and reopened Settings later, and the edit wasn't there.
+- **Cause**: the silent 20-minute token renewal changed `authToken`, which re-triggered a "re-fetch Settings after login" effect every single renewal, not just the first login. That effect's merge logic replaces each email template wholesale with whatever's currently on the server — so any edit sitting in the textarea, not yet saved when a renewal landed, was silently discarded with no error shown. Not specific to this one template — could have hit any Settings field, any time a 20-minute boundary landed mid-edit.
+- **Fix**: that re-fetch now runs once per login (guarded with a ref, reset on logout), not on every token change. The 20-minute silent renewal itself is untouched — sessions still don't go stale.
+
+### Email templates: hyperlinks with custom text — ✅ built 2026-10-02 (`de05505`)
+- Raised by: office — 2026-10-02, while re-adding the review links above and finding the raw URLs "ugly."
+- Built: a new `[Link text](https://...)` syntax in any template body renders as a real clickable hyperlink with chosen text, shown in the Available Placeholders panel. Every email now sends both an HTML and a plain-text version together — HTML-capable clients (nearly everyone) show the styled link, anything that can't falls back to plain text with `Link text (url)`. **Every template saved before this existed is unaffected**: none use the new syntax, so the only change for them is their already-present bare URLs becoming guaranteed-clickable `<a>` tags instead of depending on each client's own auto-detection — same visible text as before.
+- Verified against the real feedbackReview template content before deploy (not a hand-typed approximation) — doing so caught a real double-escaping bug in the bare-URL auto-linker (a literal `&` in the live Facebook review link's tracking parameter was being corrupted to `&amp;amp;`, which would have broken that specific link's query string). Fixed before it ever reached a live send.
+- **Deliberately sequenced as step 1 of a three-part idea** the office raised in the same conversation — see the two entries below, confirmed as "hyperlinks first, these next."
+
+### Email templates: inline images
+- Raised by: office — 2026-10-02, in the same conversation as the hyperlinks above. Wants to be able to put an image (e.g. a logo) inside an email template body, not just in the Company Info sidebar logo slot.
+- Not started. Rides on the same HTML-email pipe the hyperlink feature just built — the main remaining piece is a `![alt](url)` syntax (mirroring the link one) plus somewhere to host the image, which can reuse the existing Company Logo upload mechanism. Raw image data can't be reliably embedded directly in an email (most clients block inline `data:` images) — it needs a real hosted URL.
+
+### Email templates: Outlook/Gmail-style signature upload
+- Raised by: office — 2026-10-02, same conversation. Idea: a place (maybe Company Info) to upload an exported Outlook/Gmail signature, referenced in templates via a placeholder like `{{signature}}`.
+- Not started — logged with the real technical wrinkles already flagged, so scoping doesn't have to re-discover them:
+  - **Exported signature HTML references its own images via local relative file paths** (or sometimes embedded Gmail base64), not live URLs. Uploading just the `.htm` file on its own will show broken images. Realistic version: paste the signature HTML into a text area, upload the logo image separately via the existing Company Logo mechanism, then either manually point the pasted HTML at the uploaded image's URL or auto-detect the one `<img>` tag and prompt for the matching file.
+  - **One company-wide signature vs one per staff member is an open, scope-defining question.** Automated emails in this system are sent by the system, not "as" a specific logged-in person — a per-person signature only makes sense where an email already clearly has an owner (e.g. the fitter on a check-in email). A single shared signature is much simpler and probably covers most cases; per-person is a distinctly bigger feature, not a variant of the same size.
+  - Unlike every other placeholder, `{{signature}}` would need to inject raw HTML rather than escaped text — a genuinely different code path, and since it's arbitrary HTML someone pasted in, it should be stripped of anything like `<script>` tags before being allowed into a real outgoing email.
+
 ### Fitter Calendar: a short job on the same day as a day-long job gets squeezed into a sliver
 - Raised by: office — 2026-10-01. When a short booking (e.g. a 15:00–16:00 Service Call) falls on the same day/column as an all-day Install block, it's currently rendered as a thin sliver beside the day-long block instead of standing out clearly. Office wants the short job to sit on top of/over the day-long record so it's immediately visible, not squeezed down to barely-readable width.
 - Not started — logged for scoping (exact layering/visual treatment).
