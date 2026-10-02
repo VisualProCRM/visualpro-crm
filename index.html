@@ -4984,6 +4984,12 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
                   </div>
                 ))}
               </div>
+              {/* Formatting, not a data placeholder — kept visually separate so it doesn't read
+                  as another {{token}} to fill in. */}
+              <div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${C.amber}55`,fontSize:12,color:"#78350F"}}>
+                <code style={{background:"rgba(0,0,0,0.07)",borderRadius:3,padding:"1px 5px",fontFamily:"monospace"}}>[Link text](https://...)</code>
+                <span style={{color:C.slate,marginLeft:6}}>Turns that text into a clickable hyperlink</span>
+              </div>
             </div>
 
             {/* Master switch for the Automated Follow-up email specifically — checked every

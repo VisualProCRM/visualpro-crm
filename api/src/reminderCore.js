@@ -43,6 +43,38 @@ function fillTemplate(tmpl, vars) {
   );
 }
 
+const escapeHtml = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+// Builds the HTML version of an email body alongside the plain-text one, so a template can
+// optionally use [Link text](https://...) for a styled hyperlink. Every template saved before
+// this existed has none of that syntax, so this is a no-op for them beyond auto-linking
+// whatever bare URLs they already had — same visible text, just a guaranteed-clickable <a>
+// instead of depending on each email client's own auto-detection.
+function renderEmailHtml(text) {
+  const links = [];
+  // Pull [label](url) out before escaping (so the label's own text is captured raw) and swap
+  // in a placeholder that can't collide with anything real, so the later bare-URL pass and
+  // the HTML escaping can't mangle a link that's already been built.
+  let working = text.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (_, label, url) => {
+    links.push(`<a href="${escapeHtml(url)}">${escapeHtml(label)}</a>`);
+    return `\u0000${links.length - 1}\u0000`;
+  });
+  // `url` here is matched out of `working`, which escapeHtml() already ran over — it's
+  // already escaped once, so using it as-is in both the href and the visible text keeps that
+  // single escaping; re-escaping it would double-encode a literal "&" in the URL (e.g. a
+  // tracking parameter) into "&amp;amp;", corrupting the actual link target.
+  working = escapeHtml(working).replace(/(https?:\/\/[^\s<]+)/g, (url) => `<a href="${url}">${url}</a>`);
+  working = working.replace(/\u0000(\d+)\u0000/g, (_, i) => links[Number(i)]);
+  return working.replace(/\n/g, '<br>');
+}
+
+// The plainText fallback (sent alongside html, for any client that doesn't render it) — turns
+// [label](url) into "label (url)" so a plain-text reader sees something sensible instead of
+// raw markdown syntax. No-op on every template saved before this existed.
+function stripLinkMarkdown(text) {
+  return text.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (_, label, url) => `${label} (${url})`);
+}
+
 // Sends to every address in recipientList (a customer's primary + optional secondary
 // email — both get every automated email, per the office's preference) and BCCs the
 // sending template's own bcc field(s) (if set) — configured per-template in Settings, not a
@@ -470,7 +502,7 @@ async function sendFollowUpEmail({ pool, jobId, taskId, testEmailOverride }) {
 
   const poller = await emailClient.beginSend({
     senderAddress,
-    content: { subject, plainText },
+    content: { subject, plainText: stripLinkMarkdown(plainText), html: renderEmailHtml(plainText) },
     recipients: buildRecipients(recipientList, tmpl),
   });
   const result = await poller.pollUntilDone();
@@ -548,7 +580,7 @@ async function sendJobReminder({ pool, jobId, reminderKey, bookingId, testEmailO
 
   const poller = await emailClient.beginSend({
     senderAddress,
-    content: { subject, plainText },
+    content: { subject, plainText: stripLinkMarkdown(plainText), html: renderEmailHtml(plainText) },
     recipients: buildRecipients(recipientList, tmpl),
   });
   const result = await poller.pollUntilDone();
@@ -631,7 +663,7 @@ async function sendInstallBookedEmail({ pool, jobId, bookingId, testEmailOverrid
 
   const poller = await emailClient.beginSend({
     senderAddress,
-    content: { subject, plainText },
+    content: { subject, plainText: stripLinkMarkdown(plainText), html: renderEmailHtml(plainText) },
     recipients: buildRecipients(recipientList, tmpl),
   });
   const result = await poller.pollUntilDone();
@@ -706,7 +738,7 @@ async function sendSurveyBookedEmail({ pool, jobId, testEmailOverride }) {
 
   const poller = await emailClient.beginSend({
     senderAddress,
-    content: { subject, plainText },
+    content: { subject, plainText: stripLinkMarkdown(plainText), html: renderEmailHtml(plainText) },
     recipients: buildRecipients(recipientList, tmpl),
   });
   const result = await poller.pollUntilDone();
@@ -785,7 +817,7 @@ async function sendServiceCallBookedEmail({ pool, jobId, bookingId, testEmailOve
 
   const poller = await emailClient.beginSend({
     senderAddress,
-    content: { subject, plainText },
+    content: { subject, plainText: stripLinkMarkdown(plainText), html: renderEmailHtml(plainText) },
     recipients: buildRecipients(recipientList, tmpl),
   });
   const result = await poller.pollUntilDone();
@@ -860,7 +892,7 @@ async function sendSurveyReminderEmail({ pool, jobId, testEmailOverride }) {
 
   const poller = await emailClient.beginSend({
     senderAddress,
-    content: { subject, plainText },
+    content: { subject, plainText: stripLinkMarkdown(plainText), html: renderEmailHtml(plainText) },
     recipients: buildRecipients(recipientList, tmpl),
   });
   const result = await poller.pollUntilDone();
@@ -937,7 +969,7 @@ async function sendServiceCallReminderEmail({ pool, jobId, bookingId, testEmailO
 
   const poller = await emailClient.beginSend({
     senderAddress,
-    content: { subject, plainText },
+    content: { subject, plainText: stripLinkMarkdown(plainText), html: renderEmailHtml(plainText) },
     recipients: buildRecipients(recipientList, tmpl),
   });
   const result = await poller.pollUntilDone();
@@ -1009,7 +1041,7 @@ async function sendFeedbackReviewEmail({ pool, jobId, testEmailOverride }) {
 
   const poller = await emailClient.beginSend({
     senderAddress,
-    content: { subject, plainText },
+    content: { subject, plainText: stripLinkMarkdown(plainText), html: renderEmailHtml(plainText) },
     recipients: buildRecipients(recipientList, tmpl),
   });
   const result = await poller.pollUntilDone();
@@ -1116,9 +1148,14 @@ async function sendFitterCheckEmail({ pool, jobId, fitter, kind, bookingId, test
 
   const { hostname } = await getSenderDomain();
   const senderUsername = process.env.EMAIL_SENDER_USERNAME || 'donotreply';
+  const checkPlainText = fillTemplate(tmpl.body, vars);
   const poller = await emailClient.beginSend({
     senderAddress: senderUsername + '@' + hostname,
-    content: { subject: fillTemplate(tmpl.subject, vars), plainText: fillTemplate(tmpl.body, vars) },
+    content: {
+      subject: fillTemplate(tmpl.subject, vars),
+      plainText: stripLinkMarkdown(checkPlainText),
+      html: renderEmailHtml(checkPlainText),
+    },
     recipients: buildRecipients(recipientList, tmpl),
   });
   const result = await poller.pollUntilDone();
@@ -1195,7 +1232,7 @@ async function sendSurveyCompleteEmail({ pool, jobId, testEmailOverride }) {
 
   const poller = await emailClient.beginSend({
     senderAddress,
-    content: { subject, plainText },
+    content: { subject, plainText: stripLinkMarkdown(plainText), html: renderEmailHtml(plainText) },
     recipients: buildRecipients(recipientList, tmpl),
   });
   const result = await poller.pollUntilDone();
