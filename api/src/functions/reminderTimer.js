@@ -38,8 +38,14 @@ app.timer('reminderTimer', {
         // One set of reminders per install visit, each tracked against its own booking. Reading
         // the job's single mirrored date instead would remind about the next visit only, and the
         // job-level "already sent" flag would then silence every later phase for good.
+        //
+        // Honours the "Send install booked email automatically" switch, whose label promises it
+        // covers each install date's "own confirmation and its own reminders". Reminders used to
+        // ignore it, so a date entered with the switch off — typically a provisional one the
+        // customer hadn't been told about — still got a reminder (M & J Building, 2026-10-05).
+        const installNotifyEnabled = job.tabs?.installation?.notifyEnabled !== false;
         for (const booking of installBookings(job)) {
-          if (!booking.date || booking.completed) continue;
+          if (!installNotifyEnabled || !booking.date || booking.completed) continue;
           const installDate = new Date(booking.date);
           installDate.setHours(0, 0, 0, 0);
           const daysUntil = Math.round((installDate - today) / 86400000);
