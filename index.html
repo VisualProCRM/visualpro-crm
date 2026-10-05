@@ -194,6 +194,10 @@ const recordProducts = (r) => canonProducts([...((r&&r.products)||[]),...((r&&r.
 // fitter's app, on the calendar and in mileage. Once `fitters` exists it is authoritative,
 // even when empty — the pickers clear the old `fitter` field whenever they write the list.
 const bookingFitters = (b) => !b ? [] : Array.isArray(b.fitters) ? b.fitters : (b.fitter ? [b.fitter] : []);
+// Where the work actually happens: the job's own site address, else the customer's. For a trade
+// customer the customer's address is their office, not the site, so showing it alone sent
+// fitters to the wrong place. Mirrors `job.siteAddress || customer.address` in the emails.
+const siteAddressOf = (job, cust) => ((job && job.siteAddress) || "").trim() || (cust && cust.address) || "";
 
 // A job's installation visits. Same "read both, write one" approach as bookingFitters: a job
 // installed in phases holds `tabs.installation.bookings[]`, while every job booked before this
@@ -3479,7 +3483,7 @@ const InstallPipelinePage = ({jobs,setJobs,customers,setCustomers,settings}) => 
                 </div>
                 <div style={{fontWeight:700,fontSize:15,color:C.text,marginBottom:4}}>{job.title}</div>
                 <div style={{fontSize:13,color:C.sky,fontWeight:600,marginBottom:4}}>{cust?.name}</div>
-                <div style={{fontSize:12,color:C.slate,marginBottom:4}}>{cust?.address}</div>
+                <div style={{fontSize:12,color:C.slate,marginBottom:4}}>{siteAddressOf(job,cust)}</div>
                 {job.value&&<div style={{fontSize:14,fontWeight:800,color:C.mint}}>£{Number(job.value).toLocaleString()}</div>}
                 {job.products?.length>0&&<div style={{fontSize:12,color:C.muted,marginTop:4}}>{job.products.join(", ")}</div>}
                 {job.windowcad&&<div style={{fontSize:12,color:C.slate,marginTop:4}}>🪟 {job.windowcad}</div>}
@@ -6062,6 +6066,7 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
   if(view==="job"&&selectedJob){
     const job=jobs.find(j=>j.id===selectedJob.id)||selectedJob;
     const cust=customers.find(c=>c.id===job.customerId);
+    const siteAddr=siteAddressOf(job,cust);
     return (
       <div style={{display:"flex",flexDirection:"column",height:"100vh",background:C.slateLight,fontFamily:"'Inter','Segoe UI',sans-serif",maxWidth:430,margin:"0 auto"}}>
         {/* Header */}
@@ -6070,7 +6075,7 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
             <button onClick={()=>{setView("calendar");setActiveTab("details");}} style={{background:"rgba(255,255,255,0.15)",border:"none",color:"#fff",borderRadius:8,padding:"6px 12px",cursor:"pointer",fontSize:14}}>‹ Back</button>
             <div style={{flex:1,minWidth:0}}>
               <div style={{fontWeight:800,fontSize:16,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{job.title}</div>
-              <div style={{fontSize:12,opacity:.7,marginTop:2}}>{cust?.name}</div>
+              <div style={{fontSize:12,opacity:.7,marginTop:2}}>{cust?.name}{job.reference?` · ${job.reference}`:""}</div>
             </div>
           </div>
           {/* Tab bar */}
@@ -6101,21 +6106,21 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
                     )}
                   </div>
                 ))}
-                {cust?.address&&(
+                {siteAddr&&(
                   <div>
-                    <a href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(cust.address)}`} target="_blank" rel="noreferrer"
+                    <a href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(siteAddr)}`} target="_blank" rel="noreferrer"
                       style={{display:"flex",gap:10,padding:"8px 0",borderBottom:`1px solid ${C.border}`,fontSize:14,textDecoration:"none",alignItems:"flex-start"}}>
                       <span style={{fontSize:16,flexShrink:0}}>📍</span>
                       <div style={{flex:1}}>
-                        <div style={{color:C.sky,fontWeight:600}}>{cust.address}</div>
+                        <div style={{color:C.sky,fontWeight:600}}>{siteAddr}</div>
                         <div style={{fontSize:12,color:C.mint,marginTop:2,fontWeight:600}}>Tap for directions in Google Maps →</div>
                       </div>
                     </a>
                     {/* Mini map */}
                     <div style={{borderRadius:10,overflow:"hidden",border:`1px solid ${C.border}`,marginTop:10}}>
                       <iframe title="map" width="100%" height="180" style={{border:"none",display:"block"}} loading="lazy"
-                        src={`https://maps.google.com/maps?q=${encodeURIComponent(cust.address)}&output=embed&z=15`}/>
-                      <a href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(cust.address)}`} target="_blank" rel="noreferrer"
+                        src={`https://maps.google.com/maps?q=${encodeURIComponent(siteAddr)}&output=embed&z=15`}/>
+                      <a href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(siteAddr)}`} target="_blank" rel="noreferrer"
                         style={{display:"block",background:C.sky,color:"#fff",textAlign:"center",padding:"10px",fontSize:14,fontWeight:700,textDecoration:"none"}}>
                         🗺️ Get Directions
                       </a>
@@ -6642,7 +6647,8 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
                   </div>
                   <div style={{fontWeight:700,fontSize:15,color:C.navy,marginBottom:4}}>{ev.job.title}</div>
                   <div style={{fontSize:13,color:C.slate}}>{cust?.name}</div>
-                  <div style={{fontSize:12,color:C.muted,marginTop:2}}>{cust?.address}</div>
+                  {(ev.bookingName||ev.job.reference)&&<div style={{fontSize:13,fontWeight:700,color:C.navy,marginTop:2}}>{ev.bookingName||ev.job.reference}</div>}
+                  <div style={{fontSize:12,color:C.muted,marginTop:2}}>{siteAddressOf(ev.job,cust)}</div>
                   {/* Date info */}
                   <div style={{marginTop:8,padding:"8px 10px",background:C.slateLight,borderRadius:8}}>
                     <div style={{fontSize:12,fontWeight:600,color:C.navy}}>
@@ -7212,11 +7218,11 @@ const MileagePage = ({jobs,customers,settings}) => {
     jobs.forEach(job=>{
       const cust=customers.find(c=>c.id===job.customerId);
       const survey=job.tabs?.survey;
-      if(survey?.date&&bookingFitters(survey).includes(fitter)) evts.push({type:"Survey",date:survey.date,address:cust?.address||""});
+      if(survey?.date&&bookingFitters(survey).includes(fitter)) evts.push({type:"Survey",date:survey.date,address:siteAddressOf(job,cust)});
       const inst=job.tabs?.installation;
-      if(inst?.date&&(inst.fitters||[]).includes(fitter)) evts.push({type:"Install",date:inst.date,address:cust?.address||""});
+      if(inst?.date&&(inst.fitters||[]).includes(fitter)) evts.push({type:"Install",date:inst.date,address:siteAddressOf(job,cust)});
       (job.tabs?.serviceCall?.bookings||[]).forEach(b=>{
-        if(b.date&&bookingFitters(b).includes(fitter)) evts.push({type:"Service Call",date:b.date,address:cust?.address||""});
+        if(b.date&&bookingFitters(b).includes(fitter)) evts.push({type:"Service Call",date:b.date,address:siteAddressOf(job,cust)});
       });
     });
     return evts
@@ -8093,6 +8099,8 @@ function App() {
                   (cust?.name||"").toLowerCase().includes(q)||
                   (j.windowcad||"").toLowerCase().includes(q)||
                   (cust?.address||"").toLowerCase().includes(q)||
+                  (j.siteAddress||"").toLowerCase().includes(q)||
+                  (j.reference||"").toLowerCase().includes(q)||
                   (cust?.phone||"").includes(q);
               }).slice(0,6).map(j=>({
                 type:j.status===COMPLETED_STAGE?"Completed Job":"Job",
