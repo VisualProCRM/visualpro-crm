@@ -8,6 +8,29 @@ A shared place for feature ideas, wherever they come from — the office, a fitt
 
 ## Requested
 
+### Install bookings on weekends — 🔍 scoped 2026-10-05, not started
+- Raised by: office — 2026-10-05. Installs need to be bookable on Saturdays and Sundays.
+- **What happens today**: a visit that starts on a weekend is silently moved to the following Monday in every view (office Fitter Calendar, fitter app, fitter check-in matching) — no error, just the wrong day. The "weekends auto-skipped" rule (the Installation tab's own label) is hard-coded as five copies in `index.html`: `visitWorkingDays` (~line 222), the Installation tab's day chips (~1873), the office Calendar (~3599), the fitter app's events (~5960) and its card end-date (~6625). **None in the API** — reminders and emails use the visit's start date directly, so they already cope with a weekend date.
+- **Two decisions needed before building**:
+  1. A multi-day visit that starts on or crosses a weekend. Simplest: the date picked always counts, later days still skip weekends. Alternative: a per-visit "include weekends" tick that makes the days consecutive.
+  2. The default **Working Week** views (Fitter Calendar and Track Orders) show Mon–Fri only, so a weekend visit would be invisible there until someone switches to Week view. Suggested: show Sat/Sun columns automatically when the visible week contains a weekend visit.
+- **Check first**: any existing booking whose start date falls on a weekend currently displays on Monday and would jump to the weekend date. Find them in the live-data review before shipping.
+- Sizing: roughly 30–45 minutes including testing, front-end only.
+
+### Incident: fitter app showed the customer's address, not the job's site — ✅ fixed 2026-10-05 (`458bdd7`)
+- Raised by: office — 2026-10-05. Christian and Ben were booked at 7 Cheddington, but the fitter app showed 4 Oaken Copse (Conservatory Renovators' own address) on every job for that customer.
+- **Cause**: the fitter app read `customer.address` everywhere and never `job.siteAddress` — including the job screen's address, mini map and "Get Directions" button, which would have navigated fitters to the wrong place. The job's site address was correct throughout (confirmed on the Cheddington record). Same family as the 23 Sept email incident: the emails were fixed then, but the other readers were never audited.
+- **Fix**: one shared `siteAddressOf(job, customer)` helper (site address, else the customer's), used by the fitter app's list cards, job screen, map and directions, the Mileage page's event addresses and the Installation Pipeline's completed-job cards; global search now also matches a job's site address and reference; fitter cards also show the install name (or job reference) so two jobs for one customer can be told apart. Tested against the real Cheddington data.
+- **Lesson (second time)**: when a field moves between record types, audit every reader, not just the screens being looked at.
+- **Still open**: (a) review of all live jobs for trade customers with no site address — needs a session token; (b) the Mileage page reads only each job's next install visit (the single mirrored date), not every phase — separate gap, harmless until mileage distances go live.
+
+### Incident: install reminder emailed M & J Building for a booking the office hadn't scheduled — ✅ fixed 2026-10-05 (`4790e59`)
+- Raised by: office — 2026-10-05. A "your installation is in 7 days" email went at 08:01 for Mon 12 Oct 08:30, Christian Collier and Ben Elsley, 102 Ellis Road, Crowthorne. The office said the work wasn't scheduled.
+- **Cause (most likely — the job's Installation tab has not yet been checked)**: the "Send install booked email automatically" switch says it covers each date's "own confirmation **and** its own reminders", but the reminder timer only honoured it for survey and service-call reminders, never installs. Long-standing — the install loop has never checked it, since the timer was first written; Phase 5 carried it over unchanged. So a date entered with the switch off (e.g. a provisional one) suppressed the confirmation but still got the 7-day and 1-day reminders.
+- **Fix**: install reminders now honour the switch. Verified with the real timer handler against fake jobs: it failed on the old code (reminders sent for switch-off jobs) and passes on the new.
+- **Not covered**: a date with no fitters assigned still gets a reminder, whereas survey/service-call reminders (and the booking confirmation) require fitters. Candidate follow-up.
+- **Open**: confirm what the M & J job's green "booked" box says. If the date stays and the switch is on, the 1-day reminder fires Sun 11 Oct. Also the live-data review should list any other jobs with the switch off and a visit coming up.
+
 ### Bug: Settings edits silently lost on the 20-minute session token refresh — ✅ fixed 2026-10-02 (`0d5417d`)
 - Raised by: office — 2026-10-02. Edited the Feedback Form email template (adding review links), closed and reopened Settings later, and the edit wasn't there.
 - **Cause**: the silent 20-minute token renewal changed `authToken`, which re-triggered a "re-fetch Settings after login" effect every single renewal, not just the first login. That effect's merge logic replaces each email template wholesale with whatever's currently on the server — so any edit sitting in the textarea, not yet saved when a renewal landed, was silently discarded with no error shown. Not specific to this one template — could have hit any Settings field, any time a 20-minute boundary landed mid-edit.
