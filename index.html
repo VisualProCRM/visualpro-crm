@@ -3674,7 +3674,14 @@ const CalendarPage = ({customers,jobs,settings,onNavigate}) => {
     return new Date(d.getFullYear(),d.getMonth(),d.getDate()+diff);
   };
   const weekStart=startOfWeek(viewDate);
-  const numDays=viewMode==="workingWeek"?5:7;
+  // Working Week is Monday-Friday, but a visit booked on a Saturday or Sunday would be invisible in
+  // it. So for any week that has something on the weekend (respecting the fitter filter above), that
+  // week shows all seven days; other weeks stay at five.
+  const weekendHasBooking=viewMode==="workingWeek"&&[5,6].some(i=>{
+    const dt=new Date(weekStart.getFullYear(),weekStart.getMonth(),weekStart.getDate()+i);
+    return eventsForDate(fmtDate(dt.getFullYear(),dt.getMonth(),dt.getDate())).length>0;
+  });
+  const numDays=viewMode==="workingWeek"&&!weekendHasBooking?5:7;
   const weekDays=Array.from({length:numDays},(_,i)=>new Date(weekStart.getFullYear(),weekStart.getMonth(),weekStart.getDate()+i));
 
   const prev=()=>{
