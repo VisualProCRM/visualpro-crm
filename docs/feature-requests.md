@@ -609,3 +609,8 @@ A shared place for feature ideas, wherever they come from — the office, a fitt
 ### Multi-job/multi-survey booking per fitter per day
 - Requested by: office — 2026-07-30
 - Turned out to already work — nothing in the app prevents or hides multiple bookings for the same fitter on the same day; both the office and fitter mobile calendars already show every booking for a day. No build needed, confirmed 2026-07-30.
+
+### Customer-link change log — ✅ built and live 2026-10-05 (`ec189d0`); audit + clean-up due 2026-10-06
+- Raised by: office, after the Heathhill / M & J incident above. Every change to a job's customer link is recorded on the job as `customerLinkLog` (time, from, to, source, who), server-owned and carried forward on each save. Stored on the job, not in a table, because the API's database role cannot create tables. Source is `office-save` for now; the WindowCAD7 sync cannot move a link (it patches from the stored job).
+- **Next (morning of 2026-10-06)**: with the office's session token, pull every job + customer and list suspect links (customer name absent from the job name/reference; trade customer with no site address; no customer) — read-only, as a backend list rather than an in-app page. The office decides each correction; fixes applied by one-off script with the old values saved so each can be undone.
+- **Not started**: stale-tab guard (app sends the customer it loaded; server changes the link only if it differs); resend-booking-confirmation button; re-confirm prompt when a booked visit's date or fitters change. The office chose not to pursue the last two for now.
