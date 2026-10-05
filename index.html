@@ -219,18 +219,52 @@ const installBookings = (job) => {
 // The visit the rest of the app should show when it only has room for one: the next one still
 // outstanding, else the last. Its date is mirrored onto `tabs.installation.date` on every save so
 // the card badges, dashboard and job list keep working untouched.
-// The working days one visit covers, weekends skipped — the same rule the booking UI shows.
-const visitWorkingDays = (b) => {
-  if (!b || !b.date) return [];
+// ── The days an install visit covers ─────────────────────────────────────────────────────────
+// ONE definition, used by the Installation tab, the office Fitter Calendar, the fitter app and
+// fitter check-in, so they cannot drift apart. (This rule used to be copied in five places.)
+//   - A visit saved with an `endDate` covers every date from `date` to `endDate`. The first and last
+//     day are always worked; a Saturday or Sunday in between is off and a weekday on, unless the
+//     office clicked that day the other way (`dayOverrides[date]` = true to work it, false to skip it).
+//   - A visit saved before end dates existed has only `date` + `duration` and keeps the old rule
+//     exactly: working days only, weekends skipped (so a weekend start has always slid to Monday).
+const MAX_VISIT_DAYS = 31;
+const addIsoDays = (iso, n) => { const d = new Date(iso + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+// Every date from start to end with its on/off state — what the Installation tab shows as chips.
+const visitRange = (b) => {
+  if (!b || !b.date || !b.endDate) return [];
+  const end = b.endDate < b.date ? b.date : b.endDate;
   const out = [];
-  let cur = new Date(b.date);
-  let remaining = Number(b.duration || 2);
-  while (remaining > 0) {
-    const dow = cur.getDay();
-    if (dow !== 0 && dow !== 6) { out.push(cur.toISOString().slice(0, 10)); remaining -= remaining >= 2 ? 2 : remaining; }
-    cur = new Date(cur); cur.setDate(cur.getDate() + 1);
+  for (let i = 0, cur = b.date; i < MAX_VISIT_DAYS && cur <= end; i++, cur = addIsoDays(cur, 1)) {
+    const dow = new Date(cur + "T00:00:00Z").getUTCDay();
+    const weekend = dow === 0 || dow === 6;
+    const locked = cur === b.date || cur === end;
+    const ov = b.dayOverrides ? b.dayOverrides[cur] : undefined;
+    out.push({ date: cur, weekend, locked, on: locked ? true : (ov !== undefined ? ov : !weekend) });
   }
   return out;
+};
+const visitWorkingDays = (b) => {
+  if (!b || !b.date) return [];
+  if (b.endDate) return visitRange(b).filter(d => d.on).map(d => d.date);
+  // The old rule, in UTC throughout. It used to mix local-time stepping with a UTC date string, which
+  // went wrong for a visit running across the March clock change: it listed the Sunday as worked and
+  // pushed every later day a day early.
+  const out = [];
+  let remaining = Number(b.duration || 2);
+  for (let i = 0, cur = String(b.date).slice(0, 10); remaining > 0 && i < 400; i++, cur = addIsoDays(cur, 1)) {
+    const dow = new Date(cur + "T00:00:00Z").getUTCDay();
+    if (dow !== 0 && dow !== 6) { out.push(cur); remaining -= remaining >= 2 ? 2 : remaining; }
+  }
+  return out;
+};
+// A visit as the Installation tab edits it: always has an end date and day overrides. A visit saved
+// before end dates existed is shown with the first and last day its old rule actually worked (so a
+// weekend start shows as the Monday every calendar already put it on), and is only rewritten in the
+// new shape when someone edits its dates or days.
+const visitAsRange = (b) => {
+  if (b.endDate) return { ...b, dayOverrides: b.dayOverrides || {} };
+  const days = visitWorkingDays(b);
+  return { ...b, date: days.length ? days[0] : (b.date || ""), endDate: days.length ? days[days.length - 1] : (b.date || ""), dayOverrides: {} };
 };
 // Which visit a fitter's check in/out belongs to: the one they're on site for today, else their
 // next one, else their most recent. A fitter booked on both phases of a job would otherwise check
@@ -1864,46 +1898,41 @@ const CardDetailModal = ({record,customers,jobs,onSave,onSaveCustomer,onDelete,o
                 endTime:lead?(lead.endTime||""):"",duration:lead?(lead.duration||"2"):"2",
                 fitters:lead?(lead.fitters||[]):[]}}}));
             };
-            const addRow=()=>writeRows([...rows,{id:uid(),name:"",date:"",startTime:"",endTime:"",duration:"2",fitters:[],completed:false}]);
+            const addRow=()=>writeRows([...rows,{id:uid(),name:"",date:"",endDate:"",dayOverrides:{},startTime:"",endTime:"",duration:"2",fitters:[],completed:false}]);
             const setRow=(id,patch)=>writeRows(rows.map(b=>b.id===id?{...b,...patch}:b));
             const removeRow=(id)=>{
               if(window.confirm("Remove this install date? Any emails already sent for it stay sent.")) writeRows(rows.filter(b=>b.id!==id));
             };
 
-            // Weekend-skipping helper — adds working days to a start date
-            const addWorkingDays=(startDateStr,halfDays)=>{
-              if(!startDateStr||!halfDays) return [];
-              const dates=[];
-              let current=new Date(startDateStr);
-              let remaining=halfDays;
-              while(remaining>0){
-                const dow=current.getDay(); // 0=Sun,6=Sat
-                if(dow!==0&&dow!==6){
-                  dates.push({
-                    date:current.toISOString().slice(0,10),
-                    label:current.toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short"}),
-                    session:remaining>=2?"Full day":remaining===1?"AM":"",
-                    halfDay:remaining<2,
-                  });
-                  remaining-=remaining>=2?2:1;
-                }
-                current=new Date(current);
-                current.setDate(current.getDate()+1);
-              }
-              return dates;
+            // A visit runs from its Start Date to its End Date; the day chips show every date in between
+            // and the office clicks a day to skip it or add it back (see visitRange). The legacy
+            // `duration` is still written, as the number of worked days x 2 (its old unit), so anything
+            // still reading it — the mirrored single-date fields, an older copy of the app open on a
+            // phone — keeps working.
+            const durationFor=(v)=>String(Math.max(1,visitWorkingDays(v).length)*2);
+            // Rewrites a visit's dates. A visit saved before end dates existed is converted to the new
+            // shape here, the first time its dates or days are touched; until then it works as before.
+            const setVisitDates=(b,patch)=>{
+              const cur=visitAsRange(b);
+              const date=patch.date!==undefined?patch.date:cur.date;
+              if(!date){ setRow(b.id,{date:"",endDate:"",dayOverrides:{},duration:"2"}); return; }
+              let endDate=patch.endDate!==undefined?patch.endDate:cur.endDate;
+              if(!endDate||endDate<date) endDate=date;
+              const cap=addIsoDays(date,MAX_VISIT_DAYS-1);
+              if(endDate>cap) endDate=cap;
+              // Only the days strictly between the two ends can carry an override.
+              const dayOverrides={};
+              Object.keys(cur.dayOverrides||{}).forEach(k=>{ if(k>date&&k<endDate) dayOverrides[k]=cur.dayOverrides[k]; });
+              setRow(b.id,{date,endDate,dayOverrides,duration:durationFor({date,endDate,dayOverrides})});
             };
-
-            const DURATION_OPTIONS=[
-              {value:"1",label:"Half Day (AM)"},
-              {value:"2",label:"1 Day"},
-              {value:"3",label:"1.5 Days"},
-              {value:"4",label:"2 Days"},
-              {value:"6",label:"3 Days"},
-              {value:"8",label:"4 Days"},
-              {value:"10",label:"5 Days"},
-              {value:"12",label:"6 Days"},
-              {value:"14",label:"7 Days (2 weeks)"},
-            ];
+            const toggleVisitDay=(b,iso)=>{
+              const cur=visitAsRange(b);
+              const day=visitRange(cur).find(d=>d.date===iso);
+              if(!day||day.locked) return;
+              const dayOverrides={...(cur.dayOverrides||{}),[iso]:!day.on};
+              setRow(b.id,{date:cur.date,endDate:cur.endDate,dayOverrides,duration:durationFor({date:cur.date,endDate:cur.endDate,dayOverrides})});
+            };
+            const fmtDay=(iso)=>new Date(iso+"T00:00:00Z").toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short",timeZone:"UTC"});
 
             const doneCount=rows.filter(b=>b.completed).length;
 
@@ -1930,8 +1959,9 @@ const CardDetailModal = ({record,customers,jobs,onSave,onSaveCustomer,onDelete,o
                   )}
 
                   {rows.map((b,i)=>{
-                    const scheduledDays=b.date?addWorkingDays(b.date,Number(b.duration||"2")):[];
-                    const endDate=scheduledDays.length>0?scheduledDays[scheduledDays.length-1].date:"";
+                    const v=visitAsRange(b);
+                    const range=visitRange(v);
+                    const workedCount=range.filter(d=>d.on).length;
                     const booked=!!b.date&&bookingFitters(b).length>0;
                     return (
                       <div key={b.id} style={{padding:14,borderBottom:`1px solid ${C.border}`,background:b.completed?"#F6FEF9":C.white}}>
@@ -1953,29 +1983,33 @@ const CardDetailModal = ({record,customers,jobs,onSave,onSaveCustomer,onDelete,o
                         </div>
 
                         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:12,marginBottom:12}}>
-                          <Inp label="Start Date" type="date" value={b.date||""} onChange={e=>setRow(b.id,{date:e.target.value})}/>
+                          <Inp label="Start Date" type="date" value={v.date||""} onChange={e=>setVisitDates(b,{date:e.target.value})}/>
+                          <Inp label="End Date" type="date" value={v.endDate||""} onChange={e=>setVisitDates(b,{endDate:e.target.value})}/>
                           <Inp label="Start Time" type="time" value={b.startTime||""} onChange={e=>setRow(b.id,{startTime:e.target.value})}/>
                           <Inp label="End Time" type="time" value={b.endTime||""} onChange={e=>setRow(b.id,{endTime:e.target.value})}/>
-                          <Sel label="Duration" value={b.duration||"2"} onChange={e=>setRow(b.id,{duration:e.target.value})}>
-                            {DURATION_OPTIONS.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
-                          </Sel>
                         </div>
 
-                        {scheduledDays.length>0&&(
+                        {range.length>0&&(
                           <div style={{marginBottom:12}}>
-                            <label style={{fontSize:11,fontWeight:700,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",display:"block",marginBottom:6}}>Scheduled Days (Weekends Auto-Skipped)</label>
-                            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                              {scheduledDays.map((day,di)=>(
-                                <div key={di} style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:6,padding:"4px 10px",fontSize:12,color:C.navy,fontWeight:600}}>
-                                  {day.label}{day.halfDay?<span style={{color:C.slate,fontWeight:400}}> (AM)</span>:""}
-                                </div>
-                              ))}
+                            <label style={{fontSize:11,fontWeight:700,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",display:"block",marginBottom:6}}>Scheduled Days — click a day to skip it or add it back</label>
+                            <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+                              {range.map(d=>{
+                                const isStart=d.date===v.date, isEnd=d.date===v.endDate;
+                                const tag=d.locked?(isStart&&isEnd?"start & end":isStart?"start":"end"):d.on?"working":d.weekend?"weekend":"skipped";
+                                const look=d.locked?{background:C.navy,border:`1.5px solid ${C.navy}`,color:"#fff",cursor:"default"}
+                                  :d.on?{background:C.skyLight,border:`1.5px solid ${C.sky}`,color:C.navy,cursor:"pointer"}
+                                  :{background:C.white,border:`1.5px dashed ${C.border}`,color:C.muted,cursor:"pointer"};
+                                return (
+                                  <button key={d.date} type="button" onClick={()=>toggleVisitDay(b,d.date)}
+                                    title={d.locked?"First and last day are fixed — change the Start or End date to move them":d.on?"Click to skip this day":"Click to work this day"}
+                                    style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2,padding:"7px 12px",borderRadius:10,minWidth:92,fontFamily:"inherit",...look}}>
+                                    <span style={{fontSize:13,fontWeight:700}}>{fmtDay(d.date)}</span>
+                                    <span style={{fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.05em"}}>{tag}</span>
+                                  </button>
+                                );
+                              })}
                             </div>
-                            {endDate&&endDate!==b.date&&(
-                              <div style={{fontSize:12,color:C.slate,marginTop:6}}>
-                                📅 Finishes: <strong>{new Date(endDate).toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</strong>
-                              </div>
-                            )}
+                            <div style={{fontSize:12,color:C.muted,marginTop:8}}>The first and last day are fixed — change the Start or End date to move them.</div>
                           </div>
                         )}
 
@@ -2001,7 +2035,7 @@ const CardDetailModal = ({record,customers,jobs,onSave,onSaveCustomer,onDelete,o
                         {booked&&(
                           <div style={{background:b.completed?C.slateLight:"#F0FDF4",border:`1px solid ${b.completed?C.border:"#86EFAC"}`,borderRadius:8,padding:"10px 12px"}}>
                             <div style={{fontSize:13,fontWeight:700,color:b.completed?C.slate:"#15803D",marginBottom:4}}>
-                              {b.completed?`✔ Completed${b.completedAt?` ${b.completedAt}`:""}`:`✅ Booked — ${new Date(b.date).toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}`}
+                              {b.completed?`✔ Completed${b.completedAt?` ${b.completedAt}`:""}`:`✅ Booked — ${v.endDate&&v.endDate!==v.date?`${fmtDay(v.date)} → ${fmtDay(v.endDate)} · ${workedCount} working days`:new Date(v.date+"T00:00:00Z").toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long",year:"numeric",timeZone:"UTC"})}`}
                               {b.startTime?` · ${b.startTime}`:""}{b.endTime?` – ${b.endTime}`:""}
                             </div>
                             <div style={{fontSize:12,color:b.completed?C.slate:"#166534"}}>👷 {bookingFitters(b).join(", ")}</div>
@@ -3590,20 +3624,9 @@ const CalendarPage = ({customers,jobs,settings,onNavigate}) => {
     return installBookings(j).flatMap(b=>{
       const bFitters=bookingFitters(b);
       if(!b.date||bFitters.length===0) return [];
-      const duration=Number(b.duration||2);
-      // Generate all working days for this install
-      const workingDays=[];
-      let current=new Date(b.date);
-      let remaining=duration;
-      while(remaining>0){
-        const dow=current.getDay();
-        if(dow!==0&&dow!==6){
-          workingDays.push(current.toISOString().slice(0,10));
-          remaining-=remaining>=2?2:remaining;
-        }
-        current=new Date(current);
-        current.setDate(current.getDate()+1);
-      }
+      // Every day this visit covers — one shared rule (visitWorkingDays), so a skipped day or a
+      // weekend day booked on the Installation tab appears here and nowhere it shouldn't.
+      const workingDays=visitWorkingDays(b);
       return workingDays.map(date=>({
           date,fitters:bFitters,fitter:bFitters.join(", "),
           label:b.name?`${j.title} — ${b.name}`:j.title,
@@ -5951,20 +5974,13 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
       // and nothing else, which reading the job's single mirrored date would get wrong.
       installBookings(j).forEach(b=>{
         if(!b.date||!bookingFitters(b).includes(fitterName)) return;
-        // Expand across working days
-        const duration=Number(b.duration||2);
-        let current=new Date(b.date);
-        let remaining=duration;
-        let dayIndex=1;
-        while(remaining>0){
-          const dow=current.getDay();
-          if(dow!==0&&dow!==6){
-            evts.push({type:"Install",date:current.toISOString().slice(0,10),time:b.startTime||"",endTime:b.endTime||"",job:j,dayIndex,totalDays:Math.ceil(duration/2),bookingName:b.name||""});
-            remaining-=remaining>=2?2:remaining;
-            dayIndex++;
-          }
-          current=new Date(current);current.setDate(current.getDate()+1);
-        }
+        // One event per day the visit covers. `visit` rides along so a card can describe THIS visit
+        // (its own days and length) rather than the job's single mirrored duration, which belongs to
+        // whichever visit happens to be next.
+        const vdays=visitWorkingDays(b);
+        vdays.forEach((date,idx)=>{
+          evts.push({type:"Install",date,time:b.startTime||"",endTime:b.endTime||"",job:j,dayIndex:idx+1,totalDays:vdays.length,bookingName:b.name||"",visit:b});
+        });
       });
       if(survey?.date&&bookingFitters(survey).includes(fitterName)){
         evts.push({type:"Survey",date:survey.date,time:survey.time||"",job:j});
@@ -6611,23 +6627,12 @@ const FitterApp = ({fitterName,jobs,customers,setJobs,settings,onLogout}) => {
             return deduped.map((ev,i)=>{
               const cust=customers.find(c=>c.id===ev.job.customerId);
               const isToday=ev.date===today;
-              const inst=ev.job.tabs?.installation;
-              const duration=inst?.duration?Number(inst.duration):2;
-              const totalDays=ev.type==="Install"?Math.ceil(duration/2):null;
-              const isHalfDay=duration===1;
-              // Calculate end date (skipping weekends)
-              let endDate="";
-              if(ev.type==="Install"&&totalDays>1){
-                let current=new Date(ev.date);
-                let remaining=duration;
-                let last=null;
-                while(remaining>0){
-                  const dow=current.getDay();
-                  if(dow!==0&&dow!==6){last=current.toISOString().slice(0,10);remaining-=remaining>=2?2:remaining;}
-                  current=new Date(current);current.setDate(current.getDate()+1);
-                }
-                endDate=last||ev.date;
-              }
+              // This visit's own days (from the event), not the job's mirrored single-date fields.
+              const vdays=ev.type==="Install"&&ev.visit?visitWorkingDays(ev.visit):[];
+              const totalDays=ev.type==="Install"?vdays.length:null;
+              // Old "Half Day (AM)" visits keep their label; new visits state hours with start/end times.
+              const isHalfDay=ev.type==="Install"&&!!ev.visit&&!ev.visit.endDate&&Number(ev.visit.duration)===1;
+              const endDate=vdays.length>1?vdays[vdays.length-1]:"";
               const formatDate=(d)=>new Date(d).toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short",year:"numeric"});
 
               return (
