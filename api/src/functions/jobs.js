@@ -2,6 +2,7 @@ const { app } = require('@azure/functions');
 const { getPool, sql } = require('../db');
 const { mapJobRow } = require('../mapRow');
 const { requireAuth } = require('../auth');
+const { nextLinkLog } = require('../customerLink');
 const { sendInstallBookedEmail, sendSurveyBookedEmail, sendServiceCallBookedEmail, sendFeedbackReviewEmail, feedbackQualifiesForReview, sendSurveyCompleteEmail, bookingFitters, installBookings, sendFitterCheckEmail, bumpFollowedUpStage } = require('../reminderCore');
 
 app.http('jobsList', {
@@ -79,7 +80,7 @@ app.http('jobsUpdate', {
   authLevel: 'anonymous',
   handler: async (request, context) => {
     try {
-      requireAuth(request);
+      const auth = requireAuth(request);
       const id = Number(request.params.id);
       const body = await request.json();
       const pool = await getPool();
@@ -87,8 +88,15 @@ app.http('jobsUpdate', {
       // Fetch the current row first so we can detect a survey being booked for the first
       // time (date+fitter newly set) — that's a genuine event, not something the daily
       // reminder timer can catch, so it's triggered here as a side effect of the save.
-      const beforeResult = await pool.request().input('Id', sql.Int, id).query('SELECT DataJson FROM dbo.Jobs WHERE Id = @Id AND TenantId = 1');
+      const beforeResult = await pool.request().input('Id', sql.Int, id).query('SELECT DataJson, CustomerId FROM dbo.Jobs WHERE Id = @Id AND TenantId = 1');
       const before = beforeResult.recordset.length ? JSON.parse(beforeResult.recordset[0].DataJson) : null;
+
+      // Who a job belongs to decides who its emails go to, so any change to it is recorded: the
+      // stored log is carried forward (never taken from the client) and an entry is added when
+      // this save moves the link. Compared against the column, which is what emails are sent by.
+      if (beforeResult.recordset.length) {
+        body.customerLinkLog = nextLinkLog(before?.customerLinkLog, beforeResult.recordset[0].CustomerId, body.customerId, 'office-save', auth.email || auth.role);
+      }
 
       // Check-ins are never taken from the client. A job save sends the whole record, so a
       // client holding a copy from before a fitter checked in or out would erase it — which is
