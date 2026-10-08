@@ -97,7 +97,11 @@ const DEFAULT_INSTALL_REMINDER_WEEK = {
 
 This is a friendly reminder that your installation is coming up in the next week:
 
-Date: {{installDate}}
+Start date: {{installDate}}
+End date: {{installEndDate}}
+Not at address: {{installSkippedDays}}
+Start time: {{startTime}}
+End time: {{endTime}}
 Installers: {{fitterNames}}
 Address: {{address}}
 
@@ -119,7 +123,11 @@ const DEFAULT_INSTALL_REMINDER_DAY = {
 
 This is a friendly reminder that your installation is scheduled for tomorrow:
 
-Date: {{installDate}}
+Start date: {{installDate}}
+End date: {{installEndDate}}
+Not at address: {{installSkippedDays}}
+Start time: {{startTime}}
+End time: {{endTime}}
 Installers: {{fitterNames}}
 Address: {{address}}
 
@@ -139,9 +147,13 @@ const DEFAULT_INSTALL_BOOKED = {
   subject: 'Your Installation has been Booked – {{customerName}}',
   body: `Dear {{customerName}},
 
-Great news! Your installation has been confirmed for:
+Great news! Your installation has been confirmed for {{installName}}.
 
-Date: {{installDate}}
+Start date: {{installDate}}
+End date: {{installEndDate}}
+Not at address: {{installSkippedDays}}
+Start time: {{startTime}}
+End time: {{endTime}}
 Installers: {{fitterNames}}
 Address: {{address}}
 
@@ -175,7 +187,7 @@ const DEFAULT_SERVICE_CALL_BOOKED = {
   subject: 'Your Service Call has been Booked – {{customerName}}',
   body: `Dear {{customerName}},
 
-Thank you for contacting us. We're pleased to confirm your service call has been booked for:
+Thank you for contacting us. We're pleased to confirm your service call has been booked for {{serviceCallName}}.
 
 Date: {{serviceCallDate}}
 Fitter: {{fitterName}}

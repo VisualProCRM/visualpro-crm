@@ -338,9 +338,13 @@ Kind regards,
     subject: "Your Installation has been Booked – {{customerName}}",
     body: `Dear {{customerName}},
 
-Great news! Your installation has been confirmed for:
+Great news! Your installation has been confirmed for {{installName}}.
 
-📅 Date: {{installDate}}
+📅 Start date: {{installDate}}
+📅 End date: {{installEndDate}}
+🚫 Not at address: {{installSkippedDays}}
+⏰ Start time: {{startTime}}
+⏰ End time: {{endTime}}
 👷 Installers: {{fitterNames}}
 📍 Address: {{address}}
 
@@ -357,7 +361,7 @@ Kind regards,
     subject: "Your Service Call has been Booked – {{customerName}}",
     body: `Dear {{customerName}},
 
-Thank you for contacting us. We're pleased to confirm your service call has been booked for:
+Thank you for contacting us. We're pleased to confirm your service call has been booked for {{serviceCallName}}.
 
 📅 Date: {{serviceCallDate}}
 👷 Fitter: {{fitterName}}
@@ -389,7 +393,11 @@ Kind regards,
 
 This is a friendly reminder that your installation is coming up in the next week:
 
-📅 Date: {{installDate}}
+📅 Start date: {{installDate}}
+📅 End date: {{installEndDate}}
+🚫 Not at address: {{installSkippedDays}}
+⏰ Start time: {{startTime}}
+⏰ End time: {{endTime}}
 👷 Installers: {{fitterNames}}
 📍 Address: {{address}}
 
@@ -411,7 +419,11 @@ Kind regards,
 
 This is a friendly reminder that your installation is scheduled for tomorrow:
 
-📅 Date: {{installDate}}
+📅 Start date: {{installDate}}
+📅 End date: {{installEndDate}}
+🚫 Not at address: {{installSkippedDays}}
+⏰ Start time: {{startTime}}
+⏰ End time: {{endTime}}
 👷 Installers: {{fitterNames}}
 📍 Address: {{address}}
 
@@ -1968,7 +1980,7 @@ const CardDetailModal = ({record,customers,jobs,onSave,onSaveCustomer,onDelete,o
                         <div style={{display:"flex",alignItems:"flex-end",gap:12,marginBottom:12}}>
                           <div style={{flex:1}}>
                             <label style={{fontSize:11,fontWeight:600,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",display:"block",marginBottom:4}}>
-                              Name this install — added to the details block in the emails
+                              Name this install — shown as “…your installation has been confirmed for {(b.name||"").trim()||"[the site address]"}.”
                             </label>
                             <input value={b.name||""} onChange={e=>setRow(b.id,{name:e.target.value})}
                               placeholder={`e.g. ${data.reference||data.title||"This job"} – Phase ${i+1}`}
@@ -2686,7 +2698,7 @@ const CardDetailModal = ({record,customers,jobs,onSave,onSaveCustomer,onDelete,o
           e.target.value="";
         };
         const removeSupplierInvoice=(i)=>updateSC("supplierInvoices",(sc.supplierInvoices||[]).filter((_,idx)=>idx!==i));
-        const addBooking=()=>updateSC("bookings",[...(sc.bookings||[]),{id:uid(),date:"",startTime:"",endTime:"",fitters:[],notes:""}]);
+        const addBooking=()=>updateSC("bookings",[...(sc.bookings||[]),{id:uid(),name:"",date:"",startTime:"",endTime:"",fitters:[],notes:""}]);
         const updateBooking=(bid,field,val)=>updateSC("bookings",(sc.bookings||[]).map(b=>b.id===bid?{...b,[field]:val}:b));
         const removeBooking=(bid)=>updateSC("bookings",(sc.bookings||[]).filter(b=>b.id!==bid));
         const calcDuration=(start,end)=>{
@@ -2789,7 +2801,7 @@ const CardDetailModal = ({record,customers,jobs,onSave,onSaveCustomer,onDelete,o
                     <div style={{color:"rgba(255,255,255,0.6)",fontSize:11}}>{(sc.bookings||[]).length} booking{(sc.bookings||[]).length!==1?"s":""} · Appear on Fitter Calendar</div>
                   </div>
                 </div>
-                <button onClick={addBooking} style={{background:"rgba(255,255,255,0.15)",border:"1px solid rgba(255,255,255,0.3)",color:"#fff",borderRadius:8,padding:"6px 14px",fontSize:13,fontWeight:600,cursor:"pointer"}}>+ Book Service Call</button>
+                <button onClick={addBooking} style={{background:C.sky,border:`1px solid ${C.sky}`,color:"#fff",borderRadius:8,padding:"6px 14px",fontSize:13,fontWeight:600,cursor:"pointer"}}>+ Book Service Call</button>
               </div>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:C.slateLight,borderBottom:`1px solid ${C.border}`}}>
                 <div style={{fontSize:13,fontWeight:600,color:C.text}}>Send service call booked email automatically</div>
@@ -2812,6 +2824,14 @@ const CardDetailModal = ({record,customers,jobs,onSave,onSaveCustomer,onDelete,o
                         {isPast&&<span style={{background:C.slateLight,color:C.muted,fontSize:11,padding:"2px 8px",borderRadius:10}}>Past</span>}
                       </div>
                       <button onClick={()=>removeBooking(b.id)} style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:18,lineHeight:1}}>×</button>
+                    </div>
+                    <div style={{marginBottom:10}}>
+                      <label style={{fontSize:11,fontWeight:600,color:C.slate,textTransform:"uppercase",letterSpacing:"0.05em",display:"block",marginBottom:4}}>
+                        Name this service call — shown as “…your service call has been booked for {(b.name||"").trim()||"[the site address]"}.”
+                      </label>
+                      <input value={b.name||""} onChange={e=>updateBooking(b.id,"name",e.target.value)}
+                        placeholder={`e.g. ${data.reference||data.title||"This job"} – Front door seal`}
+                        style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:6,padding:"8px 10px",fontSize:14,fontWeight:700,color:C.navy,outline:"none",background:C.white,boxSizing:"border-box"}}/>
                     </div>
                     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:10}}>
                       {[["Date","date","date"],["Start Time","time","startTime"],["End Time","time","endTime"]].map(([lbl,type,field])=>(
@@ -4789,7 +4809,12 @@ const SettingsPage = ({settings,setSettings,onNewEnquiry}) => {
     ["{{customerName}}","Customer's full name"],
     ["{{firstName}}","Customer's first name"],
     ["{{surveyDate}}","Survey date"],
-    ["{{installDate}}","Installation date"],
+    ["{{installDate}}","Installation start date"],
+    ["{{installEndDate}}","Installation end date (left out for a one-day job)"],
+    ["{{installSkippedDays}}","Days within the install the fitters are not at the address (left out if none)"],
+    ["{{installName}}","The install's name box — or the site address if empty (booking confirmation)"],
+    ["{{serviceCallName}}","The service call's name box — or the site address if empty (booking confirmation)"],
+    ["{{endTime}}","Booking end time (left out if not set)"],
     ["{{startTime}}","Booking start time (survey/install/service call)"],
     ["{{fitterName}}","Single fitter name (surveyor, for the survey-complete email)"],
     ["{{fitterNames}}","All assigned fitters"],
