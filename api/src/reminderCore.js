@@ -432,6 +432,91 @@ function withInstallName(body, name) {
   return lines.join('\n');
 }
 
+// ── The days an install visit covers, for the customer emails ───────────────────────────────────────
+// The same rule as visitRange / visitWorkingDays / visitAsRange in index.html, which the Installation
+// tab, the calendars and the fitter app all share — keep the two in step. A visit with an `endDate`
+// covers every date from `date` to `endDate`: the first and last are always worked, a Saturday or
+// Sunday between them is off and a weekday on, unless the office clicked that day the other way
+// (`dayOverrides[date]`). A visit saved before end dates existed has only `date` + `duration` and
+// keeps the old rule: working days only, so a weekend start has always slid to the Monday.
+const MAX_VISIT_DAYS = 31;
+const addIsoDays = (iso, n) => {
+  const d = new Date(iso + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+};
+const longDate = (iso) =>
+  iso
+    ? new Date(String(iso).slice(0, 10) + 'T00:00:00Z').toLocaleDateString('en-GB', {
+        weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC',
+      })
+    : '';
+// "A", "A and B", "A, B and C".
+const joinList = (items) => (items.length <= 1 ? items.join('') : items.slice(0, -1).join(', ') + ' and ' + items[items.length - 1]);
+
+// { start, end, skipped[] } for one visit: its first and last day, and every day between them that
+// is switched off. Null when the visit has no date.
+function visitSpan(b) {
+  if (!b || !b.date) return null;
+  const date = String(b.date).slice(0, 10);
+  if (b.endDate) {
+    const end = String(b.endDate).slice(0, 10) < date ? date : String(b.endDate).slice(0, 10);
+    const skipped = [];
+    for (let i = 0, cur = date; i < MAX_VISIT_DAYS && cur <= end; i++, cur = addIsoDays(cur, 1)) {
+      const dow = new Date(cur + 'T00:00:00Z').getUTCDay();
+      const weekend = dow === 0 || dow === 6;
+      const ov = b.dayOverrides ? b.dayOverrides[cur] : undefined;
+      const on = cur === date || cur === end ? true : ov !== undefined ? ov : !weekend;
+      if (!on) skipped.push(cur);
+    }
+    return { start: date, end, skipped };
+  }
+  const worked = [];
+  let remaining = Number(b.duration || 2);
+  for (let i = 0, cur = date; remaining > 0 && i < 400; i++, cur = addIsoDays(cur, 1)) {
+    const dow = new Date(cur + 'T00:00:00Z').getUTCDay();
+    if (dow !== 0 && dow !== 6) {
+      worked.push(cur);
+      remaining -= remaining >= 2 ? 2 : remaining;
+    }
+  }
+  if (!worked.length) return { start: date, end: date, skipped: [] };
+  const start = worked[0];
+  const end = worked[worked.length - 1];
+  const skipped = [];
+  for (let cur = start; cur <= end; cur = addIsoDays(cur, 1)) if (!worked.includes(cur)) skipped.push(cur);
+  return { start, end, skipped };
+}
+
+// What an install visit's date and time placeholders become. A one-day visit has no end date and no
+// skipped days, so the lines carrying those placeholders are left out of the email (dropEmptyLines).
+function installVisitVars(booking) {
+  const span = visitSpan(booking);
+  return {
+    installDate: span ? longDate(span.start) : '',
+    installEndDate: span && span.end !== span.start ? longDate(span.end) : '',
+    installSkippedDays: span ? joinList(span.skipped.map(longDate)) : '',
+    startTime: booking.startTime || '',
+    endTime: booking.endTime || '',
+  };
+}
+
+// A template line whose only placeholder has nothing to show is dropped rather than sent as a bare
+// label ("End date:" with nothing after it). Only these placeholders are optional; every other line
+// of every other template is sent exactly as written, as before.
+const OPTIONAL_PLACEHOLDERS = ['installEndDate', 'installSkippedDays', 'endTime'];
+function dropEmptyLines(body, vars) {
+  return String(body || '')
+    .split('\n')
+    .filter((line) => {
+      const tokens = line.match(/\{\{[a-zA-Z]+\}\}/g) || [];
+      if (tokens.length !== 1) return true;
+      const key = tokens[0].slice(2, -2);
+      return !(OPTIONAL_PLACEHOLDERS.includes(key) && !vars[key]);
+    })
+    .join('\n');
+}
+
 // Writes an email's sent-status back against the one visit it was sent for. Jobs still on the old
 // single-date shape keep writing to tabs.installation, so nothing already booked changes meaning.
 function markInstallBooking(job, bookingId, apply) {
@@ -554,25 +639,26 @@ async function sendJobReminder({ pool, jobId, reminderKey, bookingId, testEmailO
 
   const visits = installBookings(job);
   const booking = (bookingId && visits.find((b) => b.id === bookingId)) || visits[0] || {};
-  const installDate = booking.date;
+  const address = job.siteAddress || customer.address || '';
   const vars = {
     customerName: customer.name || '',
     firstName: customer.firstName || '',
     // The site, not the contact. Site addresses moved onto the job on 2026-09-17 and customer
     // addresses were cleared, so reading the customer alone left 38 emails with a blank address
     // and 4 quoting a DIFFERENT site belonging to the same trade customer.
-    address: job.siteAddress || customer.address || '',
-    installDate: installDate
-      ? new Date(installDate).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
-      : '',
-    startTime: booking.startTime || '',
+    address,
+    // What this visit is called in the booking confirmation; the site when nobody named it.
+    installName: (booking.name || '').trim() || address,
+    // Start, end, the days not worked in between, and the times — see installVisitVars.
+    ...installVisitVars(booking),
     fitterNames: bookingFitters(booking).join(', '),
     companyName: settings.companyName || 'VisualPro',
     companyPhone: settings.companyPhone || '',
   };
 
   const subject = fillTemplate(tmpl.subject, vars);
-  const plainText = fillTemplate(withInstallName(tmpl.body, booking.name), vars);
+  // The reminders do not carry the install's name — only the booking confirmation does.
+  const plainText = fillTemplate(dropEmptyLines(tmpl.body, vars), vars);
 
   const { hostname } = await getSenderDomain();
   const senderUsername = process.env.EMAIL_SENDER_USERNAME || 'donotreply';
@@ -637,25 +723,28 @@ async function sendInstallBookedEmail({ pool, jobId, bookingId, testEmailOverrid
 
   const visits = installBookings(job);
   const booking = (bookingId && visits.find((b) => b.id === bookingId)) || visits[0] || {};
-  const installDate = booking.date;
+  const address = job.siteAddress || customer.address || '';
   const vars = {
     customerName: customer.name || '',
     firstName: customer.firstName || '',
     // The site, not the contact. Site addresses moved onto the job on 2026-09-17 and customer
     // addresses were cleared, so reading the customer alone left 38 emails with a blank address
     // and 4 quoting a DIFFERENT site belonging to the same trade customer.
-    address: job.siteAddress || customer.address || '',
-    installDate: installDate
-      ? new Date(installDate).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
-      : '',
-    startTime: booking.startTime || '',
+    address,
+    // What this visit is called in the booking confirmation; the site when nobody named it.
+    installName: (booking.name || '').trim() || address,
+    // Start, end, the days not worked in between, and the times — see installVisitVars.
+    ...installVisitVars(booking),
     fitterNames: bookingFitters(booking).join(', '),
     companyName: settings.companyName || 'VisualPro',
     companyPhone: settings.companyPhone || '',
   };
 
   const subject = fillTemplate(tmpl.subject, vars);
-  const plainText = fillTemplate(withInstallName(tmpl.body, booking.name), vars);
+  // A template saved before {{installName}} existed has nowhere for the name, so it still gets the
+  // old automatic "Install:" line above its date until it is given the placeholder.
+  const bookedBody = tmpl.body.includes('{{installName}}') ? tmpl.body : withInstallName(tmpl.body, booking.name);
+  const plainText = fillTemplate(dropEmptyLines(bookedBody, vars), vars);
 
   const { hostname } = await getSenderDomain();
   const senderUsername = process.env.EMAIL_SENDER_USERNAME || 'donotreply';
@@ -799,6 +888,8 @@ async function sendServiceCallBookedEmail({ pool, jobId, bookingId, testEmailOve
     // addresses were cleared, so reading the customer alone left 38 emails with a blank address
     // and 4 quoting a DIFFERENT site belonging to the same trade customer.
     address: job.siteAddress || customer.address || '',
+    // What this visit is called in the booking confirmation; the site when nobody named it.
+    serviceCallName: (booking.name || '').trim() || (job.siteAddress || customer.address || ''),
     serviceCallDate: booking.date
       ? new Date(booking.date).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
       : '',
@@ -1267,6 +1358,9 @@ function bookingFitters(b) {
 module.exports = {
   bookingFitters,
   installBookings,
+  visitSpan,
+  installVisitVars,
+  dropEmptyLines,
   bumpFollowedUpStage,
   sendFollowUpEmail,
   sendFitterCheckEmail,
