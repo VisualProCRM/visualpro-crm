@@ -625,7 +625,7 @@ A shared place for feature ideas, wherever they come from — the office, a fitt
 
 ### Install/service-call email templates edited in Settings — ✅ done 2026-10-08
 - Install Booked, 7-day and 1-day reminders now use Start date / End date / Not at address / Start time / End time, and Install Booked and Service Call Booked carry `{{installName}}` / `{{serviceCallName}}` inline ("…confirmed for X."). Subjects, BCCs and every other line untouched. Old settings saved as `ROLLBACK-20261008-settings.json` (session scratchpad, not in the repo). Verified by running the live code against the real saved templates and real upcoming bookings (M&J 3–4 Nov, Rosemary Gardens, Heathhill, 45 Greenhaven).
-- **Cleanup due**: `withInstallName` in `reminderCore.js` (the automatic "Install:" line, used only when a booking-confirmation template has no `{{installName}}`) is now dead weight — remove it.
+- **Cleanup done 2026-10-08**: the automatic "Install:" line (`withInstallName`) was removed once the saved Install Booked template carried `{{installName}}`. A confirmation template without that placeholder now simply has no install name.
 
 ### Incident: emails open "Dear ," for customers with no first name — ✅ fixed 2026-10-08 (`2fa9238`)
 - **Cause**: the saved templates greet with `{{firstName}}` (since 2026-10-02), but 52 of 59 customers have no first name stored, and the server sends `customer.firstName || ''` with no fallback. So those customers get "Dear ,". The `{{firstName}}` work I shipped had no fallback — my miss.

@@ -434,20 +434,6 @@ function installBookings(job) {
   }];
 }
 
-// The office asked that the install's name appear only inside the details block, leaving the
-// subject line and the saved templates exactly as they are — they like the emails as they read
-// now. So rather than a token they would have to place themselves, insert one line directly above
-// whichever line carries {{installDate}}. A template with no date line has nothing to attach to,
-// so the name is simply left out rather than dropped somewhere it doesn't belong.
-function withInstallName(body, name) {
-  if (!name) return body;
-  const lines = String(body || '').split('\n');
-  const i = lines.findIndex((l) => l.includes('{{installDate}}'));
-  if (i === -1) return body;
-  lines.splice(i, 0, `🔨 Install: ${name}`);
-  return lines.join('\n');
-}
-
 // ── The days an install visit covers, for the customer emails ───────────────────────────────────────
 // The same rule as visitRange / visitWorkingDays / visitAsRange in index.html, which the Installation
 // tab, the calendars and the fitter app all share — keep the two in step. A visit with an `endDate`
@@ -757,10 +743,7 @@ async function sendInstallBookedEmail({ pool, jobId, bookingId, testEmailOverrid
   };
 
   const subject = fillTemplate(tmpl.subject, vars);
-  // A template saved before {{installName}} existed has nowhere for the name, so it still gets the
-  // old automatic "Install:" line above its date until it is given the placeholder.
-  const bookedBody = tmpl.body.includes('{{installName}}') ? tmpl.body : withInstallName(tmpl.body, booking.name);
-  const plainText = fillTemplate(dropEmptyLines(bookedBody, vars), vars);
+  const plainText = fillTemplate(dropEmptyLines(tmpl.body, vars), vars);
 
   const { hostname } = await getSenderDomain();
   const senderUsername = process.env.EMAIL_SENDER_USERNAME || 'donotreply';
