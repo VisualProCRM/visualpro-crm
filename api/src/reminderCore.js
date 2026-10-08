@@ -36,6 +36,10 @@ async function getSenderDomain() {
   return { hostname, rawProperties: props };
 }
 
+// What {{firstName}} becomes. Most customers have no first name stored (52 of 59 on 2026-10-08), and a
+// template that greets "Dear {{firstName}}," then sent "Dear ," — so fall back to the customer's name.
+const greetingName = (customer) => (customer.firstName || '').trim() || (customer.name || '').trim();
+
 function fillTemplate(tmpl, vars) {
   return Object.entries(vars).reduce(
     (str, [key, val]) => str.replaceAll(`{{${key}}}`, val || ''),
@@ -585,7 +589,7 @@ async function sendFollowUpEmail({ pool, jobId, taskId, testEmailOverride }) {
 
   const vars = {
     customerName: customer.name || '',
-    firstName: customer.firstName || '',
+    firstName: greetingName(customer),
     companyName: settings.companyName || 'VisualPro',
     companyPhone: settings.companyPhone || '',
   };
@@ -654,7 +658,7 @@ async function sendJobReminder({ pool, jobId, reminderKey, bookingId, testEmailO
   const address = job.siteAddress || customer.address || '';
   const vars = {
     customerName: customer.name || '',
-    firstName: customer.firstName || '',
+    firstName: greetingName(customer),
     // The site, not the contact. Site addresses moved onto the job on 2026-09-17 and customer
     // addresses were cleared, so reading the customer alone left 38 emails with a blank address
     // and 4 quoting a DIFFERENT site belonging to the same trade customer.
@@ -738,7 +742,7 @@ async function sendInstallBookedEmail({ pool, jobId, bookingId, testEmailOverrid
   const address = job.siteAddress || customer.address || '';
   const vars = {
     customerName: customer.name || '',
-    firstName: customer.firstName || '',
+    firstName: greetingName(customer),
     // The site, not the contact. Site addresses moved onto the job on 2026-09-17 and customer
     // addresses were cleared, so reading the customer alone left 38 emails with a blank address
     // and 4 quoting a DIFFERENT site belonging to the same trade customer.
@@ -816,7 +820,7 @@ async function sendSurveyBookedEmail({ pool, jobId, testEmailOverride }) {
   const surveyDate = job.tabs?.survey?.date;
   const vars = {
     customerName: customer.name || '',
-    firstName: customer.firstName || '',
+    firstName: greetingName(customer),
     // The site, not the contact. Site addresses moved onto the job on 2026-09-17 and customer
     // addresses were cleared, so reading the customer alone left 38 emails with a blank address
     // and 4 quoting a DIFFERENT site belonging to the same trade customer.
@@ -895,7 +899,7 @@ async function sendServiceCallBookedEmail({ pool, jobId, bookingId, testEmailOve
 
   const vars = {
     customerName: customer.name || '',
-    firstName: customer.firstName || '',
+    firstName: greetingName(customer),
     // The site, not the contact. Site addresses moved onto the job on 2026-09-17 and customer
     // addresses were cleared, so reading the customer alone left 38 emails with a blank address
     // and 4 quoting a DIFFERENT site belonging to the same trade customer.
@@ -972,7 +976,7 @@ async function sendSurveyReminderEmail({ pool, jobId, testEmailOverride }) {
   const surveyDate = job.tabs?.survey?.date;
   const vars = {
     customerName: customer.name || '',
-    firstName: customer.firstName || '',
+    firstName: greetingName(customer),
     // The site, not the contact. Site addresses moved onto the job on 2026-09-17 and customer
     // addresses were cleared, so reading the customer alone left 38 emails with a blank address
     // and 4 quoting a DIFFERENT site belonging to the same trade customer.
@@ -1049,7 +1053,7 @@ async function sendServiceCallReminderEmail({ pool, jobId, bookingId, testEmailO
 
   const vars = {
     customerName: customer.name || '',
-    firstName: customer.firstName || '',
+    firstName: greetingName(customer),
     // The site, not the contact. Site addresses moved onto the job on 2026-09-17 and customer
     // addresses were cleared, so reading the customer alone left 38 emails with a blank address
     // and 4 quoting a DIFFERENT site belonging to the same trade customer.
@@ -1126,7 +1130,7 @@ async function sendFeedbackReviewEmail({ pool, jobId, testEmailOverride }) {
 
   const vars = {
     customerName: customer.name || '',
-    firstName: customer.firstName || '',
+    firstName: greetingName(customer),
     // The site, not the contact. Site addresses moved onto the job on 2026-09-17 and customer
     // addresses were cleared, so reading the customer alone left 38 emails with a blank address
     // and 4 quoting a DIFFERENT site belonging to the same trade customer.
@@ -1234,7 +1238,7 @@ async function sendFitterCheckEmail({ pool, jobId, fitter, kind, bookingId, test
 
   const vars = {
     customerName: customer.name || '',
-    firstName: customer.firstName || '',
+    firstName: greetingName(customer),
     jobTitle: job.title || '',
     address: job.siteAddress || customer.address || '',
     fitterName: fitter,
@@ -1310,7 +1314,7 @@ async function sendSurveyCompleteEmail({ pool, jobId, testEmailOverride }) {
   const surveyDate = job.tabs?.survey?.date;
   const vars = {
     customerName: customer.name || '',
-    firstName: customer.firstName || '',
+    firstName: greetingName(customer),
     // The site, not the contact. Site addresses moved onto the job on 2026-09-17 and customer
     // addresses were cleared, so reading the customer alone left 38 emails with a blank address
     // and 4 quoting a DIFFERENT site belonging to the same trade customer.
