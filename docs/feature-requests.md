@@ -634,3 +634,16 @@ A shared place for feature ideas, wherever they come from — the office, a fitt
 
 ### Customer-link audit (read-only, 2026-10-08) — findings parked; the office wants it treated as bigger work
 - All 12 upcoming bookings go to the right customer. Not fixed: job #48 "Heathhill Developments" (7 Greenside, New Enquiry) is linked to Tanya Mortley, and the office says Tanya should be a separate customer AND a separate job — a proper split, not a re-link. Also: duplicate customers sharing an email (Tanya Mortley #32/#95, Julia & Paul Symons #59/#98, Kady Construction #100/#102, several test records on enquiries@visualglazing.co.uk); leftover "Visual Glazing Ltd" test quotes linked to real customers; jobs for trade customers with no site address (#45 would email "4 Oaken Copse", #35 "27 Hankley Common", plus a few Tanya Mortley / Forrest Builders quotes); ICD Construction has a service call but no email address.
+
+### Snagging: capture defects against specific windows, doors and bifolds — 📝 backlog, scoped, not started
+- Raised by: office — 2026-10-09 (same day, no decision to build yet).
+- **The idea**: a "Defects to Note" section in the fitter app whose items map onto the digitised survey we already capture, so a fitter records each snag against the correct window, door or bifold rather than as a loose note on the job. The survey's items (room/elevation label, quoted size, per-item photos) are already stored on `job.tabs.survey.digitised`, which is what the fitter picks from.
+- **Why it fits**: the survey step-through form, per-item required photos and the "show fitter per-item photos on the office Survey tab" work already give every item a stable identity and a photo slot. A snag is the same shape: item + description + photo(s) + who/when.
+- **Questions to settle before building**:
+  1. *When is it captured?* During the install visit (per-visit, so a multi-phase job's snags stay with the right visit), at check-out, or after, on a handover walk-round with the customer?
+  2. *What does a snag hold?* Item, description (voice input already exists), photo(s), and perhaps a severity and an open/fixed state with who closed it and when.
+  3. *Jobs with no digitised survey* have no items to pick from — free-text item name as a fallback, or require the survey first?
+  4. *Where does the office see and act on them?* A snag list on the Installation tab; and does an open snag raise a service call (the Service Call tab already has bookings, fitters and a name box) or notify the office by email like survey completion does?
+  5. *Customer-facing?* A snag list or sign-off sent to the customer, and does it feed the Customer Feedback form and the "all done" completion?
+  6. *Sequencing with the Phase 5 install visits*: a job cannot reach Job Completed while a visit is unticked — should an open snag block completion too?
+- **Sizing note**: the data and photo plumbing exist; the real work is the fitter screen, the office view, and whatever the snag-to-service-call link needs. Needs a mockup first (visible UI on both sides).
