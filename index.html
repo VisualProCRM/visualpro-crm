@@ -7861,9 +7861,9 @@ function App() {
   // Only runs while someone is actually looking: the tab must be visible and there must have
   // been mouse/key/touch activity in the last 30 minutes. It used to poll every 20s around the
   // clock for every open tab, which kept the database busy (and, on the old serverless tier,
-  // awake — ~£142/month). Now polls every 2 minutes, and refreshes straight away when the tab
+  // awake — ~£142/month). Now polls every minute, and refreshes straight away when the tab
   // is shown again or the user starts using it after a quiet spell, so what they see is current.
-  const POLL_MS=2*60*1000, IDLE_MS=30*60*1000, RENEW_MS=20*60*1000;
+  const POLL_MS=60*1000, IDLE_MS=30*60*1000, RENEW_MS=20*60*1000;
   const lastActivity=useRef(Date.now());
   const userIsActive=()=>document.visibilityState==="visible"&&Date.now()-lastActivity.current<IDLE_MS;
   useEffect(()=>{
