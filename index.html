@@ -7857,14 +7857,43 @@ function App() {
   // a manual page reload. Safe to replace the whole array wholesale — CardDetailModal copies
   // its record into its own local state once on open, so a background refresh here never
   // disrupts anyone actively editing an open record.
+  //
+  // Only runs while someone is actually looking: the tab must be visible and there must have
+  // been mouse/key/touch activity in the last 30 minutes. It used to poll every 20s around the
+  // clock for every open tab, which kept the database busy (and, on the old serverless tier,
+  // awake — ~£142/month). Now polls every 2 minutes, and refreshes straight away when the tab
+  // is shown again or the user starts using it after a quiet spell, so what they see is current.
+  const POLL_MS=2*60*1000, IDLE_MS=30*60*1000, RENEW_MS=20*60*1000;
+  const lastActivity=useRef(Date.now());
+  const userIsActive=()=>document.visibilityState==="visible"&&Date.now()-lastActivity.current<IDLE_MS;
   useEffect(()=>{
     if(!userRole) return;
-    const timer=setInterval(()=>{
+    const mark=()=>{ lastActivity.current=Date.now(); };
+    const evs=["pointerdown","keydown","touchstart","wheel","mousemove"];
+    evs.forEach(e=>window.addEventListener(e,mark,{passive:true}));
+    return ()=>evs.forEach(e=>window.removeEventListener(e,mark));
+  },[userRole]);
+  useEffect(()=>{
+    if(!userRole) return;
+    let lastFetch=Date.now();
+    const refresh=()=>{
+      lastFetch=Date.now();
       Promise.all([apiListCustomers(),apiListJobs()])
         .then(([cs,js])=>{ setCustomers(cs); setJobs(js); })
         .catch(err=>console.error("Background refresh failed",err));
-    },20000);
-    return ()=>clearInterval(timer);
+    };
+    const timer=setInterval(()=>{ if(userIsActive()) refresh(); },POLL_MS);
+    // Catch up straight away on return / first activity after a pause, but never more than
+    // once per interval.
+    const wake=()=>{ if(userIsActive()&&Date.now()-lastFetch>=POLL_MS) refresh(); };
+    const evs=["pointerdown","keydown","touchstart","focus"];
+    evs.forEach(e=>window.addEventListener(e,wake,{passive:true}));
+    document.addEventListener("visibilitychange",wake);
+    return ()=>{
+      clearInterval(timer);
+      evs.forEach(e=>window.removeEventListener(e,wake));
+      document.removeEventListener("visibilitychange",wake);
+    };
   },[userRole]);
   const [pwInput,setPwInput]=useState("");
   const [pwError,setPwError]=useState(false);
@@ -7914,14 +7943,30 @@ function App() {
     setSessionExpiredHandler(()=>setSessionExpired(true));
     return ()=>setSessionExpiredHandler(null);
   },[]);
+  // Renews only while the user is active (see userIsActive above): an abandoned tab stops
+  // renewing and lapses after the 12h server-side expiry, instead of staying signed in
+  // forever. On returning after a quiet spell, renews straight away if it's due.
   useEffect(()=>{
     if(!authToken) return;
-    const timer=setInterval(()=>{
+    const renewedAt=Date.now();
+    let renewing=false;
+    const renew=()=>{
+      if(renewing) return;
+      renewing=true;
       apiRefreshToken()
         .then(({token})=>setAuthToken(token))
-        .catch(err=>console.error("Silent session refresh failed",err));
-    },20*60*1000);
-    return ()=>clearInterval(timer);
+        .catch(err=>{ renewing=false; console.error("Silent session refresh failed",err); });
+    };
+    const timer=setInterval(()=>{ if(userIsActive()) renew(); },RENEW_MS);
+    const wake=()=>{ if(userIsActive()&&Date.now()-renewedAt>=RENEW_MS) renew(); };
+    const evs=["pointerdown","keydown","touchstart","focus"];
+    evs.forEach(e=>window.addEventListener(e,wake,{passive:true}));
+    document.addEventListener("visibilitychange",wake);
+    return ()=>{
+      clearInterval(timer);
+      evs.forEach(e=>window.removeEventListener(e,wake));
+      document.removeEventListener("visibilitychange",wake);
+    };
   },[authToken]);
 
   const handleFitterLogin=()=>{
