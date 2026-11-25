@@ -1,4 +1,5 @@
 name: Deploy VisualPro CRM API
+# Re-run after any infra deploy: the infra deploy leaves the Function App serving 404 until this runs.
 
 on:
   push:
