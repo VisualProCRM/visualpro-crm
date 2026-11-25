@@ -49,15 +49,16 @@ resource sqlDatabase 'Microsoft.Sql/servers/databases@2023-08-01-preview' = {
   parent: sqlServer
   name: sqlDatabaseName
   location: location
+  // Basic DTU tier (fixed price). Was GP_S_Gen5 serverless, which never auto-paused because
+  // the app polls the API, and cost ~£142/month for a 38 MB database. Changed in the Portal on
+  // 2026-11-25; keep this file in step or the next infra deploy reverts it.
   sku: {
-    name: 'GP_S_Gen5'
-    tier: 'GeneralPurpose'
-    family: 'Gen5'
-    capacity: 1
+    name: 'Basic'
+    tier: 'Basic'
+    capacity: 5
   }
   properties: {
-    minCapacity: json('0.5')
-    autoPauseDelay: 60
+    maxSizeBytes: 2147483648
     zoneRedundant: false
   }
 }
